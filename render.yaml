@@ -12,7 +12,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: llama3-70b-8192
 
       # ── CORS ─────────────────────────────────────────────────────────────────
       # After deploying frontend to Vercel, update this to your Vercel URL
