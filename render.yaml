@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: studdy-buddy-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+
+    envVars:
+      # ── Groq API ─────────────────────────────────────────────────────────────
+      # ⚠️  Fill this in the Render dashboard — do NOT put your real key here
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+
+      # ── CORS ─────────────────────────────────────────────────────────────────
+      # After deploying frontend to Vercel, update this to your Vercel URL
+      # e.g. https://studdy-buddy.vercel.app
+      - key: CORS_ORIGINS
+        value: https://your-app.vercel.app
+
+      # ── Storage paths — in-container (reset on redeploy, free tier limitation)
+      - key: CHROMA_PERSIST_DIR
+        value: ./chroma_db
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: FAISS_INDEX_DIR
+        value: ./faiss_indexes
+
+      # ── Tuning ───────────────────────────────────────────────────────────────
+      - key: MAX_FILE_SIZE_MB
+        value: 20
+      - key: CHUNK_SIZE
+        value: 800
+      - key: CHUNK_OVERLAP
+        value: 100

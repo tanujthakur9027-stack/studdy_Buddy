@@ -1,0 +1,23 @@
+import type { NextConfig } from "next";
+
+// Safety guard: fail the Vercel build early if the backend URL was forgotten
+if (process.env.VERCEL && !process.env.NEXT_PUBLIC_API_URL) {
+  throw new Error(
+    "❌ NEXT_PUBLIC_API_URL is not set. " +
+    "Add it in Vercel → Project Settings → Environment Variables " +
+    "and set it to your Render backend URL (e.g. https://studdy-buddy-api.onrender.com)"
+  );
+}
+
+const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/api/py/:path*",
+        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/:path*`,
+      },
+    ];
+  },
+};
+
+export default nextConfig;

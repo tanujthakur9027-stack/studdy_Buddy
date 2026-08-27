@@ -1,0 +1,38 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.1
+python-multipart>=0.0.9
+pydantic>=2.7.4
+pydantic-settings>=2.3.4
+python-dotenv>=1.0.1
+
+# ── LLM — Groq (OpenAI-compatible API, free tier) ─────────────────────────────
+groq>=0.9.0
+
+# ── LangChain stack ───────────────────────────────────────────────────────────
+langchain>=0.2.6
+langchain-community>=0.2.6
+langchain-text-splitters>=0.2.2
+
+# ── Embeddings — HuggingFace local (no API key required) ─────────────────────
+langchain-huggingface>=0.0.3
+sentence-transformers>=2.7.0
+
+# ── Vector stores ─────────────────────────────────────────────────────────────
+chromadb>=0.5.3
+# Pin numpy BEFORE faiss-cpu to avoid ABI incompatibility with numpy 2.x
+numpy<2.0.0
+faiss-cpu>=1.8.0
+
+# ── PDF parsers — pdfplumber (primary) + PyPDF2 (fallback) + pypdf (LangChain) ─
+pdfplumber>=0.11.0
+PyPDF2>=3.0.1
+pypdf>=4.2.0
+
+# ── Document loaders ─────────────────────────────────────────────────────────
+python-docx>=1.1.2
+docx2txt>=0.8          # required by LangChain Docx2txtLoader
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+httpx>=0.27.0
+aiofiles>=23.2.1
+tiktoken>=0.7.0

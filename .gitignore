@@ -1,0 +1,38 @@
+﻿# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Secret files — NEVER commit these ────────────────────────────────────────
+backend/.env
+.env
+.env.local
+.env.production
+
+# ── Data / indexes ────────────────────────────────────────────────────────────
+backend/chroma_db/
+backend/faiss_indexes/
+backend/uploads/
+
+# ── Node / Next.js ────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/package-lock.json
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
