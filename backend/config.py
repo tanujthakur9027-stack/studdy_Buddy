@@ -5,7 +5,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # ── Groq LLM ──────────────────────────────────────────────────────────────
     groq_api_key: str = ""
-    groq_model: str = "llama3-70b-8192"
+    groq_model: str = "qwen/qwen3.8-27b"
 
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
