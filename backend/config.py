@@ -3,15 +3,12 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # ── Groq LLM ──────────────────────────────────────────────────────────────
-    groq_api_key: str = ""
-    groq_model: str = "qwen/qwen3.8-27b"
+    # ── OpenAI LLM ────────────────────────────────────────────────────────────
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
-    # FAISS in-memory index is kept per-process; this dir is used for optional
-    # persistence/serialisation of FAISS indexes to disk between restarts.
-    # ⚠️  FAISS is in-memory only — requires --workers 1 (see render.yaml / Dockerfile CMD)
     faiss_index_dir: str = "./faiss_indexes"
     upload_dir: str = "./uploads"
     max_file_size_mb: int = 20

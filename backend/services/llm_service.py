@@ -1,19 +1,21 @@
 """
-LLM service — thin async wrapper around the Groq chat completions API.
-Groq is OpenAI-API-compatible so the call shape is identical to the old
-AsyncOpenAI client; only the import and key field change.
+LLM service — async wrapper around the OpenAI chat completions API.
 """
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 from config import get_settings
 
 settings = get_settings()
-_client: AsyncGroq | None = None
+_client: AsyncOpenAI | None = None
 
 
-def get_client() -> AsyncGroq:
+def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncGroq(api_key=settings.groq_api_key)
+        if not settings.openai_api_key or settings.openai_api_key.strip() == "":
+            raise RuntimeError(
+                "OPENAI_API_KEY is not set. Add it in the Render dashboard → Environment."
+            )
+        _client = AsyncOpenAI(api_key=settings.openai_api_key.strip())
     return _client
 
 
@@ -26,7 +28,7 @@ async def chat(
 ) -> str:
     client = get_client()
     response = await client.chat.completions.create(
-        model=model or settings.groq_model,
+        model=model or settings.openai_model,
         temperature=temperature,
         max_tokens=max_tokens,
         messages=[
@@ -46,7 +48,7 @@ async def chat_with_history(
     client = get_client()
     messages = [{"role": "system", "content": system}] + history
     response = await client.chat.completions.create(
-        model=settings.groq_model,
+        model=settings.openai_model,
         temperature=temperature,
         max_tokens=max_tokens,
         messages=messages,

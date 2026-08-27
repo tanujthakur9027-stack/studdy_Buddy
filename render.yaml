@@ -7,16 +7,16 @@ services:
     plan: free
 
     envVars:
-      # ── Groq API ─────────────────────────────────────────────────────────────
+      # ── OpenAI API ───────────────────────────────────────────────────────────
       # Fill this in the Render dashboard — do NOT put your real key here
-      - key: GROQ_API_KEY
+      - key: OPENAI_API_KEY
         sync: false
-      - key: GROQ_MODEL
-        value: qwen/qwen3.8-27b
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
 
-      # ── CORS — set this to your Vercel URL after deploying frontend ───────────
+      # ── CORS — set to your Vercel URL after deploying frontend ────────────────
       - key: CORS_ORIGINS
-        value: https://studdy-buddy-rosy-eight.vercel.app
+        value: https://studdy-buddy-tau.vercel.app
 
       # ── Storage paths ────────────────────────────────────────────────────────
       - key: CHROMA_PERSIST_DIR

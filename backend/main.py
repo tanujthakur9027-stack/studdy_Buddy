@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     # Startup: ensure required directories exist
     for directory in [settings.upload_dir, settings.chroma_persist_dir, settings.faiss_index_dir]:
         Path(directory).mkdir(parents=True, exist_ok=True)
-    logger.info("StudyBuddy API started - model: %s", settings.groq_model)
+    logger.info("StudyBuddy API started - model: %s", settings.openai_model)
     yield
     logger.info("👋 StudyBuddy API shutting down")
 
@@ -79,7 +79,7 @@ async def health():
     indexed = list_indexed_docs()
     return JSONResponse({
         "status": "ok",
-        "model": settings.groq_model,
+        "model": settings.openai_model,
         "indexed_documents": len(indexed),
         "faiss_vectors": sum(d["vectors"] for d in indexed),
     })
