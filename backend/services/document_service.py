@@ -26,7 +26,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.vectorstores import FAISS
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import get_settings
@@ -35,18 +35,16 @@ from utils.text_utils import clean_text, count_tokens
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# ── Singleton embeddings (HuggingFace local — no API key required) ────────────
-_embeddings: Optional[HuggingFaceEmbeddings] = None
+# ── Singleton embeddings (fastembed ONNX — no PyTorch, no API key required) ───
+# BAAI/bge-small-en-v1.5: 384-dim, ~24 MB model, downloads once on first run.
+# Docker image stays ~200 MB (vs ~900 MB with sentence-transformers + PyTorch).
+_embeddings: Optional[FastEmbedEmbeddings] = None
 
 
-def get_embeddings() -> HuggingFaceEmbeddings:
+def get_embeddings() -> FastEmbedEmbeddings:
     global _embeddings
     if _embeddings is None:
-        # Model is pre-downloaded at Docker build time (see Dockerfile).
-        # On first local run it downloads ~22 MB and caches in ~/.cache/huggingface
-        _embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
+        _embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
     return _embeddings
 
 

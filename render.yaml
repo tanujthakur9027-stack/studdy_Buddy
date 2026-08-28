@@ -7,28 +7,30 @@ services:
     plan: free
 
     envVars:
-      # ── Primary LLM — OpenAI ─────────────────────────────────────────────────
-      # Set this in the Render dashboard → Environment — do NOT commit your real key
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
-
-      # ── Fallback LLM — Groq (FREE alternative) ───────────────────────────────
-      # If OPENAI_API_KEY is absent, set GROQ_API_KEY to use Groq instead.
-      # Get a free key at https://console.groq.com/keys
-      # - key: GROQ_API_KEY
+      # ── PRIMARY LLM — OpenAI ──────────────────────────────────────────────────
+      # If you have an OpenAI key, set it here. It takes priority over Groq.
+      # Get one at https://platform.openai.com/api-keys
+      # - key: OPENAI_API_KEY
       #   sync: false
-      # - key: GROQ_MODEL
-      #   value: llama-3.3-70b-versatile
+      # - key: OPENAI_MODEL
+      #   value: gpt-4o-mini
+
+      # ── FALLBACK LLM — Groq (FREE, no credit card required) ──────────────────
+      # Used automatically when OPENAI_API_KEY is absent.
+      # Get a FREE key at https://console.groq.com/keys  (sign up with GitHub)
+      # Recommended model: llama-3.3-70b-versatile (fast, capable, free)
+      - key: GROQ_API_KEY
+        sync: false          # ← paste your gsk_... key in the Render dashboard
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
 
       # ── CORS ──────────────────────────────────────────────────────────────────
-      # Production: set to your Vercel deployment URL
-      # Local dev: handled by .env (CORS_ORIGINS=http://localhost:3000)
+      # Set to your Vercel URL AFTER the frontend is deployed (Step 4 in DEPLOY.md)
+      # Multiple origins: comma-separated  e.g. https://a.vercel.app,https://b.vercel.app
       - key: CORS_ORIGINS
         value: https://studdy-buddy-tau.vercel.app
 
-      # ── Storage paths ────────────────────────────────────────────────────────
+      # ── Storage paths (inside the container) ─────────────────────────────────
       - key: CHROMA_PERSIST_DIR
         value: ./chroma_db
       - key: UPLOAD_DIR
@@ -36,7 +38,7 @@ services:
       - key: FAISS_INDEX_DIR
         value: ./faiss_indexes
 
-      # ── Tuning ───────────────────────────────────────────────────────────────
+      # ── Tuning ────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB
         value: 20
       - key: CHUNK_SIZE

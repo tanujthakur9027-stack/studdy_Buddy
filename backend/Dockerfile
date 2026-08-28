@@ -1,10 +1,12 @@
 FROM python:3.11-slim
 
 # System deps needed by pdfplumber / chromadb / faiss
+# libgomp1 is required by faiss-cpu on Linux
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgl1 \
     libglib2.0-0 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,15 +14,16 @@ WORKDIR /app
 # Copy requirements first for Docker layer caching
 COPY requirements.txt .
 
-# Install numpy first with a known-good wheel for python 3.11
+# Install numpy first (avoids build-time ABI conflicts with faiss-cpu)
 RUN pip install --no-cache-dir "numpy>=2.0.0"
 
 # Install all remaining dependencies
+# fastembed uses ONNX Runtime — no PyTorch, image stays ~200 MB
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download HuggingFace embedding model at BUILD time (~22 MB)
-# This avoids cold-start download delay on first request
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Embedding model cached')"
+# Pre-warm fastembed model at BUILD time so cold starts are instant
+# bge-small-en-v1.5 is ~24 MB and caches under /root/.cache/fastembed
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5'); print('fastembed model cached')"
 
 # Copy application code
 COPY . .
