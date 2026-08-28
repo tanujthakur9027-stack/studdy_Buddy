@@ -193,7 +193,7 @@ Respond ONLY with valid JSON (no markdown fences):
             system=_SYSTEM_PLANNER,
             user=user_prompt,
             temperature=0.55,
-            max_tokens=3000,   # Groq free tier: keep under 4096 output tokens
+            max_tokens=4096,   # Qwen3 needs room to think + output JSON
         )
         raw = strip_json_fences(raw)
         data = json.loads(raw)

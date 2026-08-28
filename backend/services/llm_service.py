@@ -3,8 +3,17 @@ LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
 
 Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (llama-3.3-70b-versatile by default).
+  - Else if GROQ_API_KEY is set → use Groq (qwen/qwen3.6-27b by default).
   - Neither set → raises RuntimeError with a helpful message.
+
+Qwen3 note:
+  Qwen3 models on Groq return a separate `reasoning_content` field for the
+  <think>…</think> block. The actual answer is always in `message.content`.
+  However, if max_tokens is hit mid-think, content may be empty.
+  We handle all cases:
+    1. content has JSON → use it directly (after stripping any stray tags)
+    2. content is empty but reasoning_content has JSON → extract from there
+    3. Both empty → raise so the caller can retry
 """
 from __future__ import annotations
 
@@ -18,7 +27,7 @@ settings = get_settings()
 
 # Lazily-initialised client singletons
 _openai_client: AsyncOpenAI | None = None
-_groq_client: AsyncOpenAI | None = None  # Groq's SDK is OpenAI-compatible
+_groq_client:   AsyncOpenAI | None = None  # Groq's SDK is OpenAI-compatible
 
 
 def _get_openai() -> AsyncOpenAI:
@@ -29,15 +38,9 @@ def _get_openai() -> AsyncOpenAI:
 
 
 def _get_groq() -> AsyncOpenAI:
-    """Groq exposes an OpenAI-compatible API, so we reuse AsyncOpenAI with a custom base_url."""
+    """Groq exposes an OpenAI-compatible API — reuse AsyncOpenAI with custom base_url."""
     global _groq_client
     if _groq_client is None:
-        try:
-            from groq import AsyncGroq  # type: ignore[import]
-            # Store as an attribute-compatible object; wrap in a shim below
-        except ImportError:
-            pass
-        # Use OpenAI SDK pointing at Groq's base URL (fully compatible)
         _groq_client = AsyncOpenAI(
             api_key=settings.groq_api_key.strip(),
             base_url="https://api.groq.com/openai/v1",
@@ -63,12 +66,47 @@ def get_client() -> tuple[AsyncOpenAI, str]:
     )
 
 
-def _strip_think_tags(text: str) -> str:
+def _extract_content(message) -> str:
     """
-    Qwen3 models prepend <think>...</think> reasoning blocks before the JSON.
-    Strip them so json.loads() always gets clean content.
+    Robustly extract the text answer from a chat completion message.
+
+    Qwen3 on Groq can return the answer in three ways:
+      A) message.content = "<think>…</think>\\n{…json…}"  — old behaviour
+      B) message.content = "{…json…}"  and reasoning in reasoning_content — new behaviour
+      C) message.content = None / ""   — hit max_tokens inside the think block
+
+    Strategy:
+      1. Try message.content after stripping <think>…</think> blocks.
+      2. If empty, look for a JSON object/array anywhere in the full raw text
+         (content + reasoning_content concatenated).
+      3. Return whatever we found; callers still validate via json.loads.
     """
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    content = (message.content or "").strip()
+
+    # Strip any <think>…</think> or unclosed <think>… blocks
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+    content = re.sub(r"<think>.*",          "", content, flags=re.DOTALL)
+    content = content.strip()
+
+    if content:
+        return content
+
+    # Fallback: scan reasoning_content for a JSON blob
+    reasoning = ""
+    try:
+        reasoning = (message.reasoning_content or "").strip()
+    except AttributeError:
+        pass
+
+    combined = (message.content or "") + reasoning
+    # Find the first complete JSON object or array
+    match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", combined)
+    if match:
+        logger.warning("LLM: content was empty — extracted JSON from reasoning_content")
+        return match.group(1)
+
+    logger.error("LLM: both content and reasoning_content are empty. Raw: %r", combined[:300])
+    return ""
 
 
 async def chat(
@@ -88,8 +126,7 @@ async def chat(
             {"role": "user",   "content": user},
         ],
     )
-    raw = response.choices[0].message.content or ""
-    return _strip_think_tags(raw)
+    return _extract_content(response.choices[0].message)
 
 
 async def chat_with_history(
@@ -106,5 +143,4 @@ async def chat_with_history(
         max_tokens=max_tokens,
         messages=messages,
     )
-    raw = response.choices[0].message.content or ""
-    return _strip_think_tags(raw)
+    return _extract_content(response.choices[0].message)
