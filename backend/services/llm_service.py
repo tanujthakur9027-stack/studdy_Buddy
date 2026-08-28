@@ -9,6 +9,7 @@ Provider selection:
 from __future__ import annotations
 
 import logging
+import re
 from openai import AsyncOpenAI
 from config import get_settings
 
@@ -62,16 +63,12 @@ def get_client() -> tuple[AsyncOpenAI, str]:
     )
 
 
-def _extra_body() -> dict:
+def _strip_think_tags(text: str) -> str:
     """
-    Qwen3 models on Groq default to 'thinking' mode which wraps output in
-    <think>...</think> tags — this breaks JSON parsing.
-    Passing thinking={"type": "disabled"} suppresses it.
-    Only sent when provider is Groq; ignored silently by OpenAI.
+    Qwen3 models prepend <think>...</think> reasoning blocks before the JSON.
+    Strip them so json.loads() always gets clean content.
     """
-    if settings.llm_provider == "groq" and "qwen" in settings.groq_model.lower():
-        return {"thinking": {"type": "disabled"}}
-    return {}
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 async def chat(
@@ -90,9 +87,9 @@ async def chat(
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
-        extra_body=_extra_body(),
     )
-    return response.choices[0].message.content or ""
+    raw = response.choices[0].message.content or ""
+    return _strip_think_tags(raw)
 
 
 async def chat_with_history(
@@ -108,6 +105,6 @@ async def chat_with_history(
         temperature=temperature,
         max_tokens=max_tokens,
         messages=messages,
-        extra_body=_extra_body(),
     )
-    return response.choices[0].message.content or ""
+    raw = response.choices[0].message.content or ""
+    return _strip_think_tags(raw)
