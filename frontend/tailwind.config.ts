@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import typography from "@tailwindcss/typography";
 
 const config: Config = {
   content: [
@@ -35,9 +36,24 @@ const config: Config = {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "bounce-slow": "bounce 2s infinite",
       },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: "none",
+            color: "#e5e7eb",
+            "h1,h2,h3,h4,h5,h6": { color: "#f9fafb" },
+            strong: { color: "#f9fafb" },
+            a: { color: "#6b8dfc" },
+            code: { color: "#a5b4fc", background: "rgba(99,102,241,0.1)", padding: "0.1em 0.3em", borderRadius: "4px" },
+            "pre code": { background: "transparent", padding: 0 },
+            pre: { background: "#111827", color: "#e5e7eb" },
+            blockquote: { color: "#9ca3af", borderLeftColor: "#4361f5" },
+          },
+        },
+      },
     },
   },
-  plugins: [],
+  plugins: [typography],
 };
 
 export default config;

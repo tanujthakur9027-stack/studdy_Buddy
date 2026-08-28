@@ -25,6 +25,8 @@ const SESSION_META = {
     bg:   "bg-brand-500/10  border-brand-500/20",
     text: "text-brand-400",
     dot:  "bg-brand-500",
+    /** Static Tailwind class — must be literal so Tailwind's purge keeps it */
+    borderLeft: "border-l-blue-500",
     badge: "blue" as const,
   },
   quiz: {
@@ -33,6 +35,7 @@ const SESSION_META = {
     bg:   "bg-purple-500/10 border-purple-500/20",
     text: "text-purple-400",
     dot:  "bg-purple-500",
+    borderLeft: "border-l-purple-500",
     badge: "purple" as const,
   },
   buffer: {
@@ -41,6 +44,7 @@ const SESSION_META = {
     bg:   "bg-amber-500/10  border-amber-500/20",
     text: "text-amber-400",
     dot:  "bg-amber-500",
+    borderLeft: "border-l-amber-500",
     badge: "yellow" as const,
   },
   rest: {
@@ -49,6 +53,7 @@ const SESSION_META = {
     bg:   "bg-gray-700/30   border-gray-700/50",
     text: "text-gray-400",
     dot:  "bg-gray-600",
+    borderLeft: "border-l-gray-600",
     badge: "gray" as const,
   },
 } as const;
@@ -454,9 +459,9 @@ export function RevisionPlanner({ docId }: Props) {
                     className={clsx(
                       "glass-card overflow-hidden border-l-4 transition-all",
                       dayFull    ? "border-l-green-500"
-                      : isToday  ? "border-l-brand-500"
+                      : isToday  ? "border-l-blue-500"
                       : isPast   ? "border-l-gray-700"
-                      : `border-l-${dm.dot.replace("bg-", "")}`,
+                      : dm.borderLeft,
                     )}
                   >
                     {/* Day header */}

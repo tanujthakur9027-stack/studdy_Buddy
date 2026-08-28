@@ -87,9 +87,16 @@ app.include_router(doubt.router)
 async def health():
     from services.document_service import list_indexed_docs
     indexed = list_indexed_docs()
+    provider = settings.llm_provider
+    active_model = (
+        settings.openai_model if provider == "openai"
+        else settings.groq_model if provider == "groq"
+        else "none"
+    )
     return JSONResponse({
         "status": "ok",
-        "model": settings.openai_model,
+        "provider": provider,
+        "model": active_model,
         "indexed_documents": len(indexed),
         "faiss_vectors": sum(d["vectors"] for d in indexed),
     })

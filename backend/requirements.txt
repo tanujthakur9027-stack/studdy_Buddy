@@ -5,8 +5,14 @@ pydantic>=2.7.4
 pydantic-settings>=2.3.4
 python-dotenv>=1.0.1
 
-# ── LLM — OpenAI ──────────────────────────────────────────────────────────────
+# ── LLM — OpenAI (primary) ───────────────────────────────────────────────────
 openai>=1.35.0
+
+# ── LLM — Groq (free fallback, optional) ─────────────────────────────────────
+# Used automatically when OPENAI_API_KEY is not set and GROQ_API_KEY is set.
+# The OpenAI SDK is used as a shim (Groq exposes an OpenAI-compatible API),
+# but the groq package is still needed for its optional AsyncGroq client path.
+groq>=0.9.0
 
 # ── LangChain stack ───────────────────────────────────────────────────────────
 langchain>=0.3.0
