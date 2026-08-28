@@ -22,7 +22,7 @@ services:
       - key: GROQ_API_KEY
         sync: false          # ← paste your gsk_... key in the Render dashboard
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: llama3-8b-8192
 
       # ── CORS ──────────────────────────────────────────────────────────────────
       # Set to your Vercel URL AFTER the frontend is deployed (Step 4 in DEPLOY.md)
