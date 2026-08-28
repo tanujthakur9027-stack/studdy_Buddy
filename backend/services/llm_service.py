@@ -5,15 +5,6 @@ Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
   - Else if GROQ_API_KEY is set → use Groq (qwen/qwen3.6-27b by default).
   - Neither set → raises RuntimeError with a helpful message.
-
-Qwen3 note:
-  Qwen3 models on Groq return a separate `reasoning_content` field for the
-  <think>…</think> block. The actual answer is always in `message.content`.
-  However, if max_tokens is hit mid-think, content may be empty.
-  We handle all cases:
-    1. content has JSON → use it directly (after stripping any stray tags)
-    2. content is empty but reasoning_content has JSON → extract from there
-    3. Both empty → raise so the caller can retry
 """
 from __future__ import annotations
 
@@ -25,9 +16,8 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Lazily-initialised client singletons
 _openai_client: AsyncOpenAI | None = None
-_groq_client:   AsyncOpenAI | None = None  # Groq's SDK is OpenAI-compatible
+_groq_client:   AsyncOpenAI | None = None
 
 
 def _get_openai() -> AsyncOpenAI:
@@ -38,7 +28,6 @@ def _get_openai() -> AsyncOpenAI:
 
 
 def _get_groq() -> AsyncOpenAI:
-    """Groq exposes an OpenAI-compatible API — reuse AsyncOpenAI with custom base_url."""
     global _groq_client
     if _groq_client is None:
         _groq_client = AsyncOpenAI(
@@ -49,10 +38,6 @@ def _get_groq() -> AsyncOpenAI:
 
 
 def get_client() -> tuple[AsyncOpenAI, str]:
-    """
-    Returns (client, model_name) for the configured provider.
-    Raises RuntimeError if neither OPENAI_API_KEY nor GROQ_API_KEY is set.
-    """
     provider = settings.llm_provider
     if provider == "openai":
         logger.debug("LLM provider: OpenAI (%s)", settings.openai_model)
@@ -68,45 +53,52 @@ def get_client() -> tuple[AsyncOpenAI, str]:
 
 def _extract_content(message) -> str:
     """
-    Robustly extract the text answer from a chat completion message.
+    Extract the usable text from a Groq/OpenAI chat message.
 
-    Qwen3 on Groq can return the answer in three ways:
-      A) message.content = "<think>…</think>\\n{…json…}"  — old behaviour
-      B) message.content = "{…json…}"  and reasoning in reasoning_content — new behaviour
-      C) message.content = None / ""   — hit max_tokens inside the think block
+    Qwen3 on Groq always puts <think>…</think> INSIDE message.content.
+    The actual answer (JSON) appears AFTER the closing </think> tag.
 
-    Strategy:
-      1. Try message.content after stripping <think>…</think> blocks.
-      2. If empty, look for a JSON object/array anywhere in the full raw text
-         (content + reasoning_content concatenated).
-      3. Return whatever we found; callers still validate via json.loads.
+    Strategy — try each in order, return first non-empty result:
+      1. Strip <think>…</think> block → take what's left
+      2. Take everything after the last </think>
+      3. Scan the raw text for the first JSON object / array
+      4. Return raw as-is (let caller handle it)
     """
-    content = (message.content or "").strip()
+    raw = (message.content or "").strip()
 
-    # Strip any <think>…</think> or unclosed <think>… blocks
-    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
-    content = re.sub(r"<think>.*",          "", content, flags=re.DOTALL)
-    content = content.strip()
-
-    if content:
-        return content
-
-    # Fallback: scan reasoning_content for a JSON blob
-    reasoning = ""
+    # Also grab reasoning_content if it exists (some API versions)
     try:
         reasoning = (message.reasoning_content or "").strip()
     except AttributeError:
-        pass
+        reasoning = ""
 
-    combined = (message.content or "") + reasoning
-    # Find the first complete JSON object or array
-    match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", combined)
-    if match:
-        logger.warning("LLM: content was empty — extracted JSON from reasoning_content")
-        return match.group(1)
+    full = raw  # primary source
 
-    logger.error("LLM: both content and reasoning_content are empty. Raw: %r", combined[:300])
-    return ""
+    # ── Strategy 1: strip closed <think>…</think> blocks ─────────────────────
+    s1 = re.sub(r"<think>.*?</think>", "", full, flags=re.DOTALL).strip()
+    if s1:
+        logger.debug("_extract_content: strategy 1 succeeded (%d chars)", len(s1))
+        return s1
+
+    # ── Strategy 2: take everything after the LAST </think> ──────────────────
+    parts = re.split(r"</think>", full, flags=re.DOTALL)
+    if len(parts) > 1:
+        s2 = parts[-1].strip()
+        if s2:
+            logger.debug("_extract_content: strategy 2 succeeded (%d chars)", len(s2))
+            return s2
+
+    # ── Strategy 3: find first JSON object or array anywhere in full+reasoning ─
+    combined = full + "\n" + reasoning
+    m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", combined)
+    if m:
+        s3 = m.group(1).strip()
+        logger.warning("_extract_content: strategy 3 (regex JSON scan) (%d chars)", len(s3))
+        return s3
+
+    # ── Strategy 4: fallback — return raw and let caller deal with it ─────────
+    logger.error("_extract_content: all strategies failed. raw=%r", full[:200])
+    return full
 
 
 async def chat(
@@ -114,7 +106,7 @@ async def chat(
     user: str,
     model: str | None = None,
     temperature: float = 0.7,
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
     response = await client.chat.completions.create(
@@ -126,14 +118,16 @@ async def chat(
             {"role": "user",   "content": user},
         ],
     )
-    return _extract_content(response.choices[0].message)
+    result = _extract_content(response.choices[0].message)
+    logger.debug("chat() -> %d chars, finish=%s", len(result), response.choices[0].finish_reason)
+    return result
 
 
 async def chat_with_history(
     system: str,
     history: list[dict],
     temperature: float = 0.7,
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
     messages = [{"role": "system", "content": system}] + history
@@ -143,4 +137,6 @@ async def chat_with_history(
         max_tokens=max_tokens,
         messages=messages,
     )
-    return _extract_content(response.choices[0].message)
+    result = _extract_content(response.choices[0].message)
+    logger.debug("chat_with_history() -> %d chars, finish=%s", len(result), response.choices[0].finish_reason)
+    return result

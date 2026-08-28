@@ -52,16 +52,20 @@ Respond ONLY with valid JSON matching this schema (no markdown fences):
   "key_points": ["<point 1>", "<point 2>", "<point 3>", "<point 4>", "<point 5>"]
 }}"""
 
+    import logging
+    log = logging.getLogger(__name__)
     try:
-        raw = await chat(system=system, user=user_prompt, temperature=0.65, max_tokens=1024)
-        raw = strip_json_fences(raw)
-        data = json.loads(raw)
+        raw = await chat(system=system, user=user_prompt, temperature=0.65, max_tokens=4096)
+        cleaned = strip_json_fences(raw)
+        log.info("explain raw len=%d cleaned len=%d preview=%r", len(raw), len(cleaned), cleaned[:120])
+        data = json.loads(cleaned)
         return ExplainResponse(
             explanation=data.get("explanation", ""),
             analogy=data.get("analogy", ""),
             key_points=data.get("key_points", []),
         )
     except json.JSONDecodeError as e:
+        log.error("explain JSON fail: %r", raw[:300])
         raise HTTPException(status_code=500, detail=f"LLM returned invalid JSON: {e}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
