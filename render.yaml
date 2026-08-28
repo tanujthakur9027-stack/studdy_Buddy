@@ -28,7 +28,7 @@ services:
       # Set to your Vercel URL AFTER the frontend is deployed (Step 4 in DEPLOY.md)
       # Multiple origins: comma-separated  e.g. https://a.vercel.app,https://b.vercel.app
       - key: CORS_ORIGINS
-        value: https://studdy-buddy-tau.vercel.app
+        value: https://studdy-buddy-gray.vercel.app
 
       # ── Storage paths (inside the container) ─────────────────────────────────
       - key: CHROMA_PERSIST_DIR
