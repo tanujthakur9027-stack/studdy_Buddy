@@ -62,6 +62,18 @@ def get_client() -> tuple[AsyncOpenAI, str]:
     )
 
 
+def _extra_body() -> dict:
+    """
+    Qwen3 models on Groq default to 'thinking' mode which wraps output in
+    <think>...</think> tags — this breaks JSON parsing.
+    Passing thinking={"type": "disabled"} suppresses it.
+    Only sent when provider is Groq; ignored silently by OpenAI.
+    """
+    if settings.llm_provider == "groq" and "qwen" in settings.groq_model.lower():
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
+
 async def chat(
     system: str,
     user: str,
@@ -78,6 +90,7 @@ async def chat(
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
+        extra_body=_extra_body(),
     )
     return response.choices[0].message.content or ""
 
@@ -95,5 +108,6 @@ async def chat_with_history(
         temperature=temperature,
         max_tokens=max_tokens,
         messages=messages,
+        extra_body=_extra_body(),
     )
     return response.choices[0].message.content or ""
