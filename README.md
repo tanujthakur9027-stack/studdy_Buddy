@@ -121,7 +121,7 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 
 # Start dev server
 npm run dev
-# → App running at http://localhost:3000
+  App running at https://studdy-buddy-gray.vercel.app
 ```
 
 ---
@@ -188,8 +188,9 @@ npm run dev
 
 | Name | Role |
 |------|------|
-| **Tanuj Kumar Singh** | Full-Stack Developer · AI/ML Integration · Project Lead |
-
+| **Bhavna Agarwal** | Full-Stack Developer · AI/ML Integration · Project Lead |
+| **Divya Goyal** | AI/ML Engineer |
+| **Tanuj Kumar Singh** | Full-Stack Developer · AI/ML Integration |
 > Built as a personal AI study assistant project combining Retrieval-Augmented Generation (RAG),
 > local ONNX embeddings, and a modern React frontend — designed to make studying smarter, faster,
 > and more personalized for every student.
@@ -220,7 +221,7 @@ npm run dev
 **Deploy**
 - [Vercel](https://vercel.com) — frontend hosting (free)
 - [Render](https://render.com) — backend Docker hosting (free)
-
+- Deploy Link - (https://studdy-buddy-gray.vercel.app)  
 ---
 
 *Made with ❤️ for students everywhere.*
