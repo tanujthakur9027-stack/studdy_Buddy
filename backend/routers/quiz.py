@@ -31,6 +31,7 @@ from models.schemas import (
 )
 from services.document_service import retrieve_context
 from services.llm_service import chat
+from utils.text_utils import strip_json_fences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -129,7 +130,7 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
             temperature=0.75,
             max_tokens=4000,
         )
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = strip_json_fences(raw)
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         logger.error("Quiz generation: LLM returned non-JSON — %s", exc)
@@ -287,7 +288,7 @@ async def submit_quiz(req: QuizSubmitRequest) -> QuizSubmitResponse:
                 temperature=0.5,
                 max_tokens=512,
             )
-            raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            raw = strip_json_fences(raw)
             parsed = json.loads(raw)
             recommendations = parsed.get("recommendations", [])
         except Exception as exc:

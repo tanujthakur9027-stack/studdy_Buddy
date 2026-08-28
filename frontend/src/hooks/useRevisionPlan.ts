@@ -88,9 +88,9 @@ export function useRevisionPlan(tasks: RevisionTask[]) {
   }, [tasks.length, completed.size]);
 
   const dayProgress = useCallback(
-    (date: string, dayTasks: RevisionTask[]) => {
+    (dayTasks: RevisionTask[]) => {
       if (!dayTasks.length) return 0;
-      const done = dayTasks.filter((t, i) => {
+      const done = dayTasks.filter((t) => {
         const globalIdx = tasks.findIndex(
           (x) => x.date === t.date && x.topic === t.topic,
         );

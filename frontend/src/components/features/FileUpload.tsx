@@ -10,9 +10,9 @@ import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
 interface Props {
-  onUploaded: (doc: UploadedDocument) => void;
+  onUploaded: (_doc: UploadedDocument) => void;
   documents: UploadedDocument[];
-  onRemove: (docId: string) => void;
+  onRemove: (_docId: string) => void;
 }
 
 export function FileUpload({ onUploaded, documents, onRemove }: Props) {
@@ -43,8 +43,9 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "application/pdf": [".pdf"],
-      "text/plain": [".txt"],
+      "application/pdf":   [".pdf"],
+      "text/plain":        [".txt"],
+      "text/markdown":     [".md"],
       "application/msword": [".doc"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
@@ -80,7 +81,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
           <p className="text-base font-semibold text-gray-200">
             {isDragActive ? "Drop files here" : "Drag & drop your notes or syllabus"}
           </p>
-          <p className="text-sm text-gray-500 mt-1">PDF, TXT, DOC, DOCX — up to 20 MB each</p>
+          <p className="text-sm text-gray-500 mt-1">PDF, TXT, MD, DOC, DOCX — up to 20 MB each</p>
         </div>
         <motion.button
           whileHover={{ scale: 1.03 }}

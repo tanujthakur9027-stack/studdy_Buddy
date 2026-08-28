@@ -165,7 +165,7 @@ function QuestionCard({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function ReviewScreen({ questions, answers, details, onBack, onRestart }: Props) {
+export function ReviewScreen({ questions, answers: _answers, details, onBack, onRestart }: Props) {
   const [filter, setFilter] = useState<"all" | "wrong" | "correct">("all");
   const topicMap = groupByTopic(details);
 
@@ -249,7 +249,7 @@ export function ReviewScreen({ questions, answers, details, onBack, onRestart }:
       {/* Question cards */}
       <div className="space-y-3">
         <AnimatePresence>
-          {filtered.map((detail, idx) => {
+          {filtered.map((detail) => {
             const question = questions.find((q) => q.id === detail.question_id);
             if (!question) return null;
             const globalIdx = details.findIndex((d) => d.question_id === detail.question_id);

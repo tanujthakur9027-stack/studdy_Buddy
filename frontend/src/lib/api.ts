@@ -23,7 +23,34 @@ export async function explainTopic(params: {
   doc_id?: string;
   level?: "eli5" | "beginner" | "intermediate";
 }): Promise<{ explanation: string; analogy: string; key_points: string[] }> {
-  const { data } = await api.post("/explain", params);
+  const { data } = await api.post("/api/explain", params);
+  return data;
+}
+
+// ── Ask (RAG Q&A with mode toggle + rich sources) ────────────────────────────
+export interface SourceChunk {
+  filename: string;
+  page: number;
+  chunk_index: number;
+  snippet: string;
+}
+
+export interface AskResponse {
+  answer: string;
+  mode_used: "standard" | "eli5";
+  sources: SourceChunk[];
+  follow_up_questions: string[];
+  context_chunks_used: number;
+}
+
+export async function askQuestion(params: {
+  question: string;
+  doc_id?: string;
+  mode?: "standard" | "eli5";
+  k?: number;
+  conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
+}): Promise<AskResponse> {
+  const { data } = await api.post("/api/ask", params);
   return data;
 }
 
@@ -136,12 +163,12 @@ export async function generateRevisionPlan(params: {
   return data;
 }
 
-// ── RAG Doubt Solver ─────────────────────────────────────────────────────────
+// ── RAG Doubt Solver (legacy — kept for backwards compat) ────────────────────
 export async function solveDoubt(params: {
   question: string;
   doc_id?: string;
   conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<{ answer: string; sources: string[]; follow_up_questions: string[] }> {
-  const { data } = await api.post("/doubt/solve", params);
+  const { data } = await api.post("/api/doubt/solve", params);
   return data;
 }

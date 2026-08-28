@@ -1,6 +1,6 @@
 "use client";
 import {
-  useState, useEffect, useCallback, useRef, useId,
+  useState, useEffect, useCallback, useRef,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -62,7 +62,6 @@ type Phase = "config" | "countdown" | "playing" | "results";
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function QuizGame({ docId }: Props) {
-  const uid = useId();
   const { play } = useSound();
 
   // ── Config state ──────────────────────────────────────────────────────────
@@ -251,10 +250,6 @@ export function QuizGame({ docId }: Props) {
 
   // ── Current question ref ──────────────────────────────────────────────────
   const q = questions[current];
-  const liveScore = Object.entries(answers).reduce((acc, [qid, ans]) => {
-    const question = questions.find((x) => x.id === qid);
-    return question && ans === question.correct_index ? acc + 1 : acc;
-  }, 0);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CONFIG SCREEN

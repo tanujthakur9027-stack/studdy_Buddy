@@ -1,11 +1,10 @@
 "use client";
-import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
 interface QuizTimerProps {
   timeLeft: number;
   totalTime: number;
-  onTick?: (t: number) => void;
+  onTick?: (_t: number) => void;
 }
 
 /**

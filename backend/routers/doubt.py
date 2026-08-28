@@ -1,11 +1,14 @@
 """
 Doubt solver router — RAG-powered conversational Q&A.
 """
+from __future__ import annotations
+
 import json
 from fastapi import APIRouter, HTTPException
 from models.schemas import DoubtRequest, DoubtResponse
 from services.llm_service import chat_with_history
 from services.document_service import retrieve_context
+from utils.text_utils import strip_json_fences
 
 router = APIRouter()
 
@@ -54,7 +57,7 @@ async def solve_doubt(req: DoubtRequest):
             temperature=0.65,
             max_tokens=1500,
         )
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = strip_json_fences(raw)
         data = json.loads(raw)
         return DoubtResponse(
             answer=data.get("answer", raw),

@@ -24,7 +24,8 @@ import pdfplumber
 import PyPDF2
 from langchain_core.documents import Document
 from langchain_community.document_loaders import Docx2txtLoader
-from langchain_community.vectorstores import FAISS, Chroma
+from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -111,17 +112,17 @@ def _extract_pdf_pypdf2(file_bytes: bytes) -> list[tuple[int, str]]:
     return pages
 
 
-def extract_pdf_pages(file_bytes: bytes, filename: str) -> list[tuple[int, str]]:
+def extract_pdf_pages(file_bytes: bytes, filename: str) -> tuple[list[tuple[int, str]], str]:
     """
     Try pdfplumber first; fall back to PyPDF2 if pdfplumber produces empty output
-    or raises. Logs which extractor was actually used.
+    or raises. Returns (pages, parser_name) so the caller gets both in one pass.
     """
     try:
         pages = _extract_pdf_pdfplumber(file_bytes)
         total_chars = sum(len(t) for _, t in pages)
         if total_chars > 50:
             logger.info("[%s] pdfplumber extracted %d pages, %d chars", filename, len(pages), total_chars)
-            return pages
+            return pages, "pdfplumber"
         logger.warning("[%s] pdfplumber gave sparse output (%d chars) — trying PyPDF2", filename, total_chars)
     except Exception as exc:
         logger.warning("[%s] pdfplumber failed (%s) — falling back to PyPDF2", filename, exc)
@@ -129,12 +130,19 @@ def extract_pdf_pages(file_bytes: bytes, filename: str) -> list[tuple[int, str]]
     pages = _extract_pdf_pypdf2(file_bytes)
     total_chars = sum(len(t) for _, t in pages)
     logger.info("[%s] PyPDF2 extracted %d pages, %d chars", filename, len(pages), total_chars)
-    return pages
+    return pages, "PyPDF2"
 
 
-def extract_txt(file_bytes: bytes) -> list[tuple[int, str]]:
-    """Parse plain-text. Splits on double-newlines to form logical 'pages'."""
+def _strip_md_frontmatter(text: str) -> str:
+    """Remove YAML frontmatter (--- ... ---) from markdown content."""
+    return re.sub(r"^---\s*\n.*?\n---\s*\n", "", text, flags=re.DOTALL)
+
+
+def extract_txt(file_bytes: bytes, is_markdown: bool = False) -> list[tuple[int, str]]:
+    """Parse plain-text or markdown. Splits on double-newlines to form logical 'pages'."""
     raw = file_bytes.decode("utf-8", errors="replace")
+    if is_markdown:
+        raw = _strip_md_frontmatter(raw)
     segments = [s.strip() for s in re.split(r"\n{2,}", raw) if s.strip()]
     # Group segments into pseudo-pages of ~1 500 chars each
     pages: list[tuple[int, str]] = []
@@ -250,16 +258,11 @@ async def process_and_index(
 
     # ── 1. Extract ────────────────────────────────────────────────────────────
     if ext == ".pdf":
-        pages = extract_pdf_pages(file_bytes, filename)
-        # Track which parser was actually used (inspect log would be opaque for callers)
-        try:
-            test = _extract_pdf_pdfplumber(file_bytes)
-            parser_used = "pdfplumber" if sum(len(t) for _, t in test) > 50 else "PyPDF2"
-        except Exception:
-            parser_used = "PyPDF2"
+        # extract_pdf_pages returns (pages, parser_name) in one pass — no double extraction
+        pages, parser_used = extract_pdf_pages(file_bytes, filename)
     elif ext in (".txt", ".md"):
-        pages = extract_txt(file_bytes)
-        parser_used = "plaintext"
+        pages = extract_txt(file_bytes, is_markdown=(ext == ".md"))
+        parser_used = "plaintext" if ext == ".txt" else "markdown"
     elif ext in (".docx", ".doc"):
         # Docx2txtLoader needs a path on disk — file already saved
         loader = Docx2txtLoader(filepath)
@@ -374,10 +377,11 @@ def retrieve_context(
 
 def list_indexed_docs() -> list[dict]:
     """Return metadata for all currently indexed documents (from FAISS registry)."""
-    return [
-        {
-            "doc_id": doc_id,
-            "vectors": idx.index.ntotal,
-        }
-        for doc_id, idx in _faiss_registry.items()
-    ]
+    result = []
+    for doc_id, idx in _faiss_registry.items():
+        try:
+            vectors = idx.index.ntotal
+        except Exception:
+            vectors = 0
+        result.append({"doc_id": doc_id, "vectors": vectors})
+    return result

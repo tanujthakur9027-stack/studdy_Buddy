@@ -1,13 +1,18 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, Send, Bot, User, Lightbulb, ArrowRight } from "lucide-react";
-import { solveDoubt } from "@/lib/api";
+import {
+  MessageCircle, Send, Bot, User, Lightbulb, ArrowRight,
+  Copy, CheckCheck, FileText,
+} from "lucide-react";
+import { askQuestion } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/types";
+import type { SourceChunk } from "@/lib/api";
 import toast from "react-hot-toast";
+import { clsx } from "clsx";
 
 interface Props { docId?: string }
 
@@ -19,19 +24,77 @@ const STARTER_QUESTIONS = [
   "What should I focus on for exams?",
 ];
 
+let _msgCounter = 0;
+function nextId() { return `msg_${++_msgCounter}_${Date.now()}`; }
+
+// ── Copy button ───────────────────────────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      aria-label="Copy answer"
+      className="p-1 rounded-lg text-gray-600 hover:text-gray-400 hover:bg-gray-800 transition-colors"
+    >
+      {copied
+        ? <CheckCheck className="h-3.5 w-3.5 text-green-400" />
+        : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+// ── Source chips ──────────────────────────────────────────────────────────────
+function SourceChips({ sources }: { sources: SourceChunk[] }) {
+  if (!sources.length) return null;
+  // Deduplicate by filename+page
+  const unique = sources.filter(
+    (s, i, arr) => arr.findIndex((x) => x.filename === s.filename && x.page === s.page) === i
+  );
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1">
+      {unique.map((src, i) => (
+        <span
+          key={i}
+          title={src.snippet}
+          className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400 cursor-default"
+        >
+          <FileText className="h-3 w-3 shrink-0 text-brand-400" />
+          {src.filename}
+          {src.page > 0 && <span className="text-gray-600">· p{src.page}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export function DoubtSolver({ docId }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput]       = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [messages,  setMessages]  = useState<ChatMessage[]>([]);
+  const [input,     setInput]     = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [mode,      setMode]      = useState<"standard" | "eli5">("standard");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = async (question: string) => {
+  const sendMessage = useCallback(async (question: string) => {
     if (!question.trim() || loading) return;
+
+    // Use a stable ID so we can reliably remove the message on error
+    const msgId = nextId();
     const userMsg: ChatMessage = {
+      id: msgId,
       role: "user",
       content: question.trim(),
       timestamp: new Date(),
@@ -42,38 +105,63 @@ export function DoubtSolver({ docId }: Props) {
 
     const history = messages.map(({ role, content }) => ({ role, content }));
     try {
-      const data = await solveDoubt({
+      const data = await askQuestion({
         question: question.trim(),
-        doc_id: docId,
+        doc_id:   docId,
+        mode,
+        k: 5,
         conversation_history: history,
       });
       const assistantMsg: ChatMessage = {
+        id: nextId(),
         role: "assistant",
         content: data.answer,
         sources: data.sources,
         followUpQuestions: data.follow_up_questions,
+        mode: data.mode_used,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to get answer");
-      setMessages((prev) => prev.filter((m) => m !== userMsg));
+      toast.error(
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Failed to get answer",
+      );
+      // Remove by stable ID — not by reference equality
+      setMessages((prev) => prev.filter((m) => m.id !== msgId));
     }
     setLoading(false);
-  };
+  }, [loading, messages, docId, mode]);
 
   return (
     <div className="flex flex-col h-[700px]">
       {/* Header */}
-      <div className="flex items-start gap-4 pb-5 border-b border-gray-800 mb-4 shrink-0">
+      <div className="flex items-start gap-4 pb-4 border-b border-gray-800 mb-4 shrink-0">
         <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400">
           <MessageCircle className="h-7 w-7" />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="section-heading">RAG Doubt Solver</h2>
           <p className="text-sm text-gray-400 mt-1">
             Ask anything about your uploaded documents — powered by Retrieval-Augmented Generation.
           </p>
+        </div>
+        {/* Mode toggle */}
+        <div className="flex gap-1 shrink-0">
+          {(["standard", "eli5"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={clsx(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+                mode === m
+                  ? "bg-brand-600 border-brand-500 text-white"
+                  : "bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600",
+              )}
+            >
+              {m === "eli5" ? "🧒 ELI5" : "📚 Standard"}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -93,6 +181,9 @@ export function DoubtSolver({ docId }: Props) {
                 {docId
                   ? "I've indexed your documents. Ask me anything!"
                   : "Upload a document first, or ask any general study question."}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                Mode: <span className="text-brand-400 font-medium">{mode === "eli5" ? "ELI5 (simplified)" : "Standard (detailed)"}</span>
               </p>
             </div>
 
@@ -115,9 +206,9 @@ export function DoubtSolver({ docId }: Props) {
         )}
 
         <AnimatePresence initial={false}>
-          {messages.map((msg, i) => (
+          {messages.map((msg) => (
             <motion.div
-              key={i}
+              key={msg.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25 }}
@@ -131,7 +222,14 @@ export function DoubtSolver({ docId }: Props) {
                 {msg.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
               </div>
 
-              <div className={`max-w-[85%] space-y-2 ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col`}>
+              <div className={`max-w-[85%] space-y-1.5 ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col`}>
+                {/* Mode badge for assistant */}
+                {msg.role === "assistant" && msg.mode && (
+                  <span className="text-[10px] text-gray-600 font-medium">
+                    {msg.mode === "eli5" ? "🧒 ELI5" : "📚 Standard"}
+                  </span>
+                )}
+
                 <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                   msg.role === "user"
                     ? "bg-brand-600 text-white rounded-tr-md"
@@ -146,16 +244,18 @@ export function DoubtSolver({ docId }: Props) {
                   )}
                 </div>
 
-                {/* Sources */}
+                {/* Rich sources */}
                 {msg.sources && msg.sources.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {msg.sources.map((src, si) => (
-                      <span key={si} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">
-                        📄 {src}
-                      </span>
-                    ))}
-                  </div>
+                  <SourceChips sources={msg.sources} />
                 )}
+
+                {/* Copy + timestamp row */}
+                <div className={`flex items-center gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {msg.role === "assistant" && <CopyButton text={msg.content} />}
+                  <p className="text-[10px] text-gray-600">
+                    {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
 
                 {/* Follow-up questions */}
                 {msg.followUpQuestions && msg.followUpQuestions.length > 0 && (
@@ -172,10 +272,6 @@ export function DoubtSolver({ docId }: Props) {
                     ))}
                   </div>
                 )}
-
-                <p className="text-[10px] text-gray-600">
-                  {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </p>
               </div>
             </motion.div>
           ))}
@@ -208,6 +304,7 @@ export function DoubtSolver({ docId }: Props) {
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage(input))}
             placeholder="Ask a question about your notes…"
             disabled={loading}
+            aria-label="Type your question"
             className="input-field flex-1"
           />
           <motion.button
@@ -215,12 +312,13 @@ export function DoubtSolver({ docId }: Props) {
             whileTap={{ scale: 0.95 }}
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
+            aria-label="Send message"
             className="btn-primary px-4"
           >
             {loading ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
           </motion.button>
         </div>
-        <p className="text-xs text-gray-600 mt-2">Press Enter to send · Shift+Enter for new line</p>
+        <p className="text-xs text-gray-600 mt-2">Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
   );

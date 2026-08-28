@@ -2,10 +2,10 @@
 import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CalendarDays, Clock, Flame, Target, BookOpen, Sparkles,
-  ChevronDown, ChevronUp, AlarmClock, RotateCcw, CheckCircle2,
-  Circle, Brain, Zap, Coffee, Shield, ListChecks, Lightbulb,
-  FileText, BarChart2, Trophy,
+  CalendarDays, Clock, Target, BookOpen, Sparkles,
+  ChevronDown, ChevronUp, RotateCcw, CheckCircle2,
+  Brain, Zap, Coffee, Shield, Lightbulb, AlarmClock,
+  FileText, Trophy,
 } from "lucide-react";
 import { generateRevisionPlan } from "@/lib/api";
 import type { RevisionTask, PlanStats } from "@/lib/api";
@@ -128,7 +128,7 @@ export function RevisionPlanner({ docId }: Props) {
   const [filterType,   setFilterType]   = useState<"all" | "concept" | "quiz" | "buffer" | "rest">("all");
 
   // ── completion tracking ───────────────────────────────────────────────────
-  const { completed, toggleTask, isComplete, overallProgress, dayProgress, resetPlan } =
+  const { completed, toggleTask, isComplete, overallProgress, resetPlan } =
     useRevisionPlan(plan);
 
   // ── derived ───────────────────────────────────────────────────────────────
@@ -163,13 +163,14 @@ export function RevisionPlanner({ docId }: Props) {
     setPlan([]);
     setStats(null);
     try {
-      const topicList  = topics.split(",").map((t) => t.trim()).filter(Boolean);
-      const weakList   = weakTopics.split(",").map((t) => t.trim()).filter(Boolean);
+      // Renamed from topicList to avoid shadowing the topicList state variable
+      const topicsArr = topics.split(",").map((t) => t.trim()).filter(Boolean);
+      const weakList  = weakTopics.split(",").map((t) => t.trim()).filter(Boolean);
       const data = await generateRevisionPlan({
         exam_date:     examDate,
         daily_hours:   dailyHours,
         syllabus_text: syllabusText.trim() || undefined,
-        topics:        topicList.length ? topicList : undefined,
+        topics:        topicsArr.length ? topicsArr : undefined,
         weak_topics:   weakList.length  ? weakList  : undefined,
         doc_id:        docId,
       });
@@ -542,12 +543,10 @@ export function RevisionPlanner({ docId }: Props) {
                               const globalIdx = plan.findIndex(
                                 (x) => x.date === task.date && x.topic === task.topic,
                               );
-                              const taskKey  = makeTaskKey(task, globalIdx);
-                              const done     = isComplete(taskKey);
-                              const sm       = SESSION_META[task.session_type];
-                              const TIcon    = sm.icon;
-                              const emoji    = getTechniqueEmoji(task.technique);
-                              const [expanded, setExpanded] = [false, () => {}]; // sub-expand handled via state below
+                              const taskKey = makeTaskKey(task, globalIdx);
+                              const done    = isComplete(taskKey);
+                              const sm      = SESSION_META[task.session_type];
+                              const emoji   = getTechniqueEmoji(task.technique);
 
                               return (
                                 <TaskRow

@@ -26,9 +26,13 @@ async def lifespan(app: FastAPI):
     # Startup: ensure required directories exist
     for directory in [settings.upload_dir, settings.chroma_persist_dir, settings.faiss_index_dir]:
         Path(directory).mkdir(parents=True, exist_ok=True)
-    logger.info("StudyBuddy API started - model: %s", settings.openai_model)
+    logger.info(
+        "StudyBuddy API started — provider: %s, model: %s",
+        settings.llm_provider,
+        settings.openai_model if settings.llm_provider == "openai" else settings.groq_model,
+    )
     yield
-    logger.info("👋 StudyBuddy API shutting down")
+    logger.info("StudyBuddy API shutting down")
 
 
 app = FastAPI(
@@ -58,14 +62,20 @@ app.add_middleware(
 #   POST /api/ask             — RAG Q&A with standard vs eli5 mode toggle
 #   POST /api/generate-quiz   — canonical quiz generation endpoint
 #   POST /api/generate-plan   — canonical revision planner endpoint
+#   POST /api/explain         — ELI5 / simplified explanation (canonical)
+#   POST /api/doubt/solve     — RAG conversational Q&A (canonical)
 app.include_router(upload.router,   prefix="/api")
 app.include_router(ask.router,      prefix="/api")
 app.include_router(quiz.router,     prefix="/api")
 app.include_router(revision.router, prefix="/api")
+app.include_router(explain.router,  prefix="/api")
+app.include_router(doubt.router,    prefix="/api")
 
-# ── Legacy / unversioned routers (no /api prefix, unchanged behaviour) ────────
+# ── Legacy / unversioned routers (kept for backwards compatibility) ────────────
 #   POST /quiz/generate   — kept for backwards compatibility
 #   POST /revision/plan   — kept for backwards compatibility
+#   POST /explain         — kept for backwards compatibility
+#   POST /doubt/solve     — kept for backwards compatibility
 app.include_router(quiz.router)
 app.include_router(revision.router)
 app.include_router(explain.router)
@@ -89,9 +99,14 @@ async def health():
 async def root():
     return {
         "message": "StudyBuddy API v2 — visit /docs for Swagger UI",
+        "provider": settings.llm_provider,
         "endpoints": {
-            "upload": "POST /api/upload",
-            "ask":    "POST /api/ask",
-            "docs":   "GET  /docs",
+            "upload":     "POST /api/upload",
+            "ask":        "POST /api/ask",
+            "quiz":       "POST /api/generate-quiz",
+            "planner":    "POST /api/generate-plan",
+            "explain":    "POST /api/explain",
+            "doubt":      "POST /api/doubt/solve",
+            "docs":       "GET  /docs",
         },
     }

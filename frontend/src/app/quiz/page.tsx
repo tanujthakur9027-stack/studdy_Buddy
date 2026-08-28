@@ -1,5 +1,5 @@
 "use client";
-import { useState, Suspense } from "react";
+import { Suspense } from "react";
 import { motion } from "framer-motion";
 import { GraduationCap, ArrowLeft, FileText } from "lucide-react";
 import Link from "next/link";
@@ -12,15 +12,16 @@ import { Spinner } from "@/components/ui";
  *
  * URL params:
  *   ?doc_id=<uuid>   — pre-selects a document for context
- *   ?topic=<string>  — pre-fills the topic input
+ *   ?topic=<string>  — reserved for future pre-fill (not yet consumed)
  *
  * This page can also be opened directly without params for
  * a freeform topic-based quiz.
  */
 function QuizPageInner() {
-  const params   = useSearchParams();
-  const docId    = params.get("doc_id")  ?? undefined;
-  const topicParam = params.get("topic") ?? "";
+  const params = useSearchParams();
+  const docId  = params.get("doc_id") ?? undefined;
+  // topicParam reserved for future use — not consumed by QuizGame yet
+  // const topicParam = params.get("topic") ?? "";
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">

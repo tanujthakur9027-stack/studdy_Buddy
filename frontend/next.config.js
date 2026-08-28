@@ -8,15 +8,6 @@ if (process.env.VERCEL && !process.env.NEXT_PUBLIC_API_URL) {
 }
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: "/api/py/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/:path*`,
-      },
-    ];
-  },
-};
+const nextConfig = {};
 
 module.exports = nextConfig;

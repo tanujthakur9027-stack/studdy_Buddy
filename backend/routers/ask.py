@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import AskRequest, AskResponse, SourceChunk
 from services.document_service import retrieve_context
 from services.llm_service import chat_with_history
-from utils.text_utils import truncate_to_tokens
+from utils.text_utils import truncate_to_tokens, strip_json_fences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -138,7 +138,7 @@ async def ask_question(req: AskRequest) -> AskResponse:
         raise HTTPException(status_code=502, detail=f"LLM request failed: {exc}") from exc
 
     # ── 5. Parse response ─────────────────────────────────────────────────────
-    cleaned = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    cleaned = strip_json_fences(raw)
     try:
         data = json.loads(cleaned)
         answer = data.get("answer") or cleaned

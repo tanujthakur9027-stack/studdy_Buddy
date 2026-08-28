@@ -3,9 +3,14 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # ── OpenAI LLM ────────────────────────────────────────────────────────────
+    # ── Primary LLM — OpenAI ─────────────────────────────────────────────────
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+
+    # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
+    # groq package is already installed; set GROQ_API_KEY to enable
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
 
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
@@ -25,6 +30,15 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]
+
+    @property
+    def llm_provider(self) -> str:
+        """Returns 'openai' or 'groq' based on which key is configured."""
+        if self.openai_api_key.strip():
+            return "openai"
+        if self.groq_api_key.strip():
+            return "groq"
+        return "none"
 
 
 @lru_cache

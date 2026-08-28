@@ -7,14 +7,24 @@ services:
     plan: free
 
     envVars:
-      # ── OpenAI API ───────────────────────────────────────────────────────────
-      # Fill this in the Render dashboard — do NOT put your real key here
+      # ── Primary LLM — OpenAI ─────────────────────────────────────────────────
+      # Set this in the Render dashboard → Environment — do NOT commit your real key
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
         value: gpt-4o-mini
 
-      # ── CORS — set to your Vercel URL after deploying frontend ────────────────
+      # ── Fallback LLM — Groq (FREE alternative) ───────────────────────────────
+      # If OPENAI_API_KEY is absent, set GROQ_API_KEY to use Groq instead.
+      # Get a free key at https://console.groq.com/keys
+      # - key: GROQ_API_KEY
+      #   sync: false
+      # - key: GROQ_MODEL
+      #   value: llama-3.3-70b-versatile
+
+      # ── CORS ──────────────────────────────────────────────────────────────────
+      # Production: set to your Vercel deployment URL
+      # Local dev: handled by .env (CORS_ORIGINS=http://localhost:3000)
       - key: CORS_ORIGINS
         value: https://studdy-buddy-tau.vercel.app
 

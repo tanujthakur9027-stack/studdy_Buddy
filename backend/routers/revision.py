@@ -17,8 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -31,6 +30,7 @@ from models.schemas import (
 )
 from services.document_service import retrieve_context
 from services.llm_service import chat
+from utils.text_utils import strip_json_fences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -63,7 +63,7 @@ async def _extract_topics_from_syllabus(syllabus_text: str) -> list[str]:
             temperature=0.3,
             max_tokens=512,
         )
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = strip_json_fences(raw)
         return json.loads(raw).get("topics", [])[:20]
     except Exception as exc:
         logger.warning("Topic extraction from syllabus failed: %s", exc)
@@ -195,7 +195,7 @@ Respond ONLY with valid JSON (no markdown fences):
             temperature=0.55,
             max_tokens=6000,
         )
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = strip_json_fences(raw)
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         logger.error("Revision planner: LLM returned non-JSON: %s", exc)

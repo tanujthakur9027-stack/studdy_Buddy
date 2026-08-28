@@ -7,6 +7,23 @@ import re
 import unicodedata
 
 
+def strip_json_fences(raw: str) -> str:
+    """
+    Strip markdown code-fences from LLM output so json.loads() always gets
+    clean JSON regardless of whether the model wrapped its response in:
+      ```json ... ``` or ``` ... ```
+
+    NOTE: Do NOT use str.lstrip("```json") — that strips individual *characters*
+    from the set {`backtick`, j, s, o, n}, which corrupts valid JSON strings.
+    """
+    raw = raw.strip()
+    # Remove opening fence:  ```json  or  ```
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    # Remove closing fence:  ```
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
 def clean_text(text: str) -> str:
     """
     Normalise extracted text:

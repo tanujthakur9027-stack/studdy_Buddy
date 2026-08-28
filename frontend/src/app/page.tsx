@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, Lightbulb, Zap, CalendarDays, MessageCircle,
-  GraduationCap, ChevronRight, Sparkles, ExternalLink,
+  GraduationCap, ChevronRight, Sparkles, ExternalLink, FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { FileUpload } from "@/components/features/FileUpload";
@@ -12,6 +12,7 @@ import { QuizGame } from "@/components/features/QuizGame";
 import { RevisionPlanner } from "@/components/features/RevisionPlanner";
 import { DoubtSolver } from "@/components/features/DoubtSolver";
 import type { UploadedDocument, AppTab } from "@/types";
+import { clsx } from "clsx";
 
 const TABS: { id: AppTab; label: string; icon: React.ElementType; color: string; desc: string }[] = [
   { id: "upload",  label: "Upload",   icon: Upload,       color: "text-brand-400",   desc: "Syllabus & notes" },
@@ -21,17 +22,71 @@ const TABS: { id: AppTab; label: string; icon: React.ElementType; color: string;
   { id: "doubt",   label: "Ask AI",   icon: MessageCircle,color: "text-cyan-400",    desc: "RAG doubt solver" },
 ];
 
+const SESSION_KEY = "studybuddy_docs";
+
+function loadDocs(): UploadedDocument[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Omit<UploadedDocument, "uploadedAt"> & { uploadedAt: string }>;
+    return parsed.map((d) => ({ ...d, uploadedAt: new Date(d.uploadedAt) }));
+  } catch {
+    return [];
+  }
+}
+
+function saveDocs(docs: UploadedDocument[]) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(docs));
+  } catch {
+    // sessionStorage quota exceeded — silently ignore
+  }
+}
+
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<AppTab>("upload");
-  const [documents, setDocuments] = useState<UploadedDocument[]>([]);
+  const [activeTab,    setActiveTab]    = useState<AppTab>("upload");
+  const [documents,    setDocuments]    = useState<UploadedDocument[]>([]);
+  const [selectedDoc,  setSelectedDoc]  = useState<string | undefined>(undefined);
+  const [hydrated,     setHydrated]     = useState(false);
 
-  const activeDocId = documents[documents.length - 1]?.doc_id;
+  // Restore documents from sessionStorage on mount
+  useEffect(() => {
+    const stored = loadDocs();
+    if (stored.length) {
+      setDocuments(stored);
+      setSelectedDoc(stored[stored.length - 1].doc_id);
+    }
+    setHydrated(true);
+  }, []);
 
-  const handleUploaded = (doc: UploadedDocument) =>
-    setDocuments((prev) => [...prev.filter((d) => d.doc_id !== doc.doc_id), doc]);
+  // Persist documents to sessionStorage whenever they change
+  useEffect(() => {
+    if (hydrated) saveDocs(documents);
+  }, [documents, hydrated]);
 
-  const handleRemove = (docId: string) =>
-    setDocuments((prev) => prev.filter((d) => d.doc_id !== docId));
+  // When a new document is uploaded, auto-select it
+  const handleUploaded = (doc: UploadedDocument) => {
+    setDocuments((prev) => {
+      const next = [...prev.filter((d) => d.doc_id !== doc.doc_id), doc];
+      return next;
+    });
+    setSelectedDoc(doc.doc_id);
+  };
+
+  const handleRemove = (docId: string) => {
+    setDocuments((prev) => {
+      const next = prev.filter((d) => d.doc_id !== docId);
+      // If we removed the selected doc, fall back to the last remaining one
+      if (selectedDoc === docId) {
+        setSelectedDoc(next[next.length - 1]?.doc_id);
+      }
+      return next;
+    });
+  };
+
+  // The active doc ID used by all features
+  const activeDocId = selectedDoc ?? documents[documents.length - 1]?.doc_id;
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
@@ -132,14 +187,29 @@ export default function HomePage() {
             );
           })}
 
-          {/* Active doc list */}
+          {/* Active doc list with selector */}
           {documents.length > 0 && (
             <div className="mt-4 pt-4 border-t border-gray-800">
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest px-4 mb-2">Active Docs</p>
-              {documents.slice(-3).map((doc) => (
-                <div key={doc.doc_id} className="px-4 py-1.5 text-xs text-gray-400 truncate">
-                  📄 {doc.filename}
-                </div>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest px-4 mb-2">
+                {documents.length > 1 ? "Select Document" : "Active Doc"}
+              </p>
+              {documents.slice(-5).map((doc) => (
+                <button
+                  key={doc.doc_id}
+                  onClick={() => setSelectedDoc(doc.doc_id)}
+                  className={clsx(
+                    "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-colors",
+                    selectedDoc === doc.doc_id
+                      ? "bg-gray-800 text-gray-200 border border-gray-700"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-900/60",
+                  )}
+                >
+                  <FileText className={clsx(
+                    "h-3 w-3 shrink-0",
+                    selectedDoc === doc.doc_id ? "text-brand-400" : "text-gray-600",
+                  )} />
+                  <span className="truncate">{doc.filename}</span>
+                </button>
               ))}
             </div>
           )}
@@ -167,6 +237,30 @@ export default function HomePage() {
 
         {/* Content Panel */}
         <main className="flex-1 min-w-0 pb-20 md:pb-0">
+          {/* Document selector banner for mobile / multi-doc */}
+          {documents.length > 1 && activeTab !== "upload" && (
+            <div className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-gray-900 border border-gray-800 overflow-x-auto">
+              <FileText className="h-3.5 w-3.5 text-brand-400 shrink-0" />
+              <p className="text-xs text-gray-500 shrink-0">Context:</p>
+              <div className="flex gap-1.5">
+                {documents.map((doc) => (
+                  <button
+                    key={doc.doc_id}
+                    onClick={() => setSelectedDoc(doc.doc_id)}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg text-xs font-medium border transition-all whitespace-nowrap",
+                      selectedDoc === doc.doc_id
+                        ? "bg-brand-600 border-brand-500 text-white"
+                        : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600",
+                    )}
+                  >
+                    {doc.filename}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -203,8 +297,7 @@ export default function HomePage() {
               {activeTab === "explain" && <ExplainModule docId={activeDocId} />}
               {activeTab === "quiz"    && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div />
+                  <div className="flex items-center justify-end">
                     <Link
                       href={`/quiz${activeDocId ? `?doc_id=${activeDocId}` : ""}`}
                       className="btn-secondary text-xs py-1.5 px-3"
@@ -218,8 +311,7 @@ export default function HomePage() {
               )}
               {activeTab === "planner" && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div />
+                  <div className="flex items-center justify-end">
                     <Link
                       href={`/planner${activeDocId ? `?doc_id=${activeDocId}` : ""}`}
                       className="btn-secondary text-xs py-1.5 px-3"
@@ -231,7 +323,7 @@ export default function HomePage() {
                   <RevisionPlanner docId={activeDocId} />
                 </div>
               )}
-              {activeTab === "doubt"   && <DoubtSolver  docId={activeDocId} />}
+              {activeTab === "doubt" && <DoubtSolver docId={activeDocId} />}
             </motion.div>
           </AnimatePresence>
         </main>

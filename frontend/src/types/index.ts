@@ -1,3 +1,5 @@
+import type { SourceChunk } from "@/lib/api";
+
 export interface UploadedDocument {
   doc_id: string;
   filename: string;
@@ -6,10 +8,13 @@ export interface UploadedDocument {
 }
 
 export interface ChatMessage {
+  id: string;                          // stable ID for reliable removal/keying
   role: "user" | "assistant";
   content: string;
-  sources?: string[];
+  sources?: SourceChunk[];             // rich source chunks (filename + page + snippet)
+  sourceNames?: string[];              // simple filename list (legacy doubt/solve path)
   followUpQuestions?: string[];
+  mode?: "standard" | "eli5";
   timestamp: Date;
 }
 

@@ -1,11 +1,14 @@
 """
 Explain router — ELI5 / simplified explanation endpoint.
 """
+from __future__ import annotations
+
 import json
 from fastapi import APIRouter, HTTPException
 from models.schemas import ExplainRequest, ExplainResponse
 from services.llm_service import chat
 from services.document_service import retrieve_context
+from utils.text_utils import strip_json_fences
 
 router = APIRouter()
 
@@ -51,8 +54,7 @@ Respond ONLY with valid JSON matching this schema (no markdown fences):
 
     try:
         raw = await chat(system=system, user=user_prompt, temperature=0.65, max_tokens=1024)
-        # Strip markdown fences if model wraps response anyway
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        raw = strip_json_fences(raw)
         data = json.loads(raw)
         return ExplainResponse(
             explanation=data.get("explanation", ""),
