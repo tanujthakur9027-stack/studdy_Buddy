@@ -22,7 +22,7 @@ services:
       - key: GROQ_API_KEY
         sync: false          # ← paste your gsk_... key in the Render dashboard
       - key: GROQ_MODEL
-        value: qwen/qwen3.6-27b
+        value: openai/gpt-oss-20b
 
       # ── CORS ──────────────────────────────────────────────────────────────────
       # Set to your Vercel URL AFTER the frontend is deployed (Step 4 in DEPLOY.md)

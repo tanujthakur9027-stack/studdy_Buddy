@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
     # groq package is already installed; set GROQ_API_KEY to enable
     groq_api_key: str = ""
-    groq_model: str = "qwen/qwen3.6-27b"   # confirmed available on this Groq account
+    groq_model: str = "openai/gpt-oss-20b"  # fastest clean-JSON model on this Groq account
 
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"

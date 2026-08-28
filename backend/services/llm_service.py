@@ -3,7 +3,7 @@ LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
 
 Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (qwen/qwen3.6-27b by default).
+  - Else if GROQ_API_KEY is set → use Groq (openai/gpt-oss-20b by default).
   - Neither set → raises RuntimeError with a helpful message.
 """
 from __future__ import annotations
@@ -51,54 +51,39 @@ def get_client() -> tuple[AsyncOpenAI, str]:
     )
 
 
-def _extract_content(message) -> str:
+def _clean_response(raw: str) -> str:
     """
-    Extract the usable text from a Groq/OpenAI chat message.
-
-    Qwen3 on Groq always puts <think>…</think> INSIDE message.content.
-    The actual answer (JSON) appears AFTER the closing </think> tag.
-
-    Strategy — try each in order, return first non-empty result:
-      1. Strip <think>…</think> block → take what's left
-      2. Take everything after the last </think>
-      3. Scan the raw text for the first JSON object / array
-      4. Return raw as-is (let caller handle it)
+    Clean model output before JSON parsing.
+    - Strips <think>…</think> blocks (Qwen3 reasoning models)
+    - Strips unclosed <think>… blocks (token-cutoff edge case)
+    - Takes everything after the last </think> tag
+    - Strips markdown code fences  ```json … ```
     """
-    raw = (message.content or "").strip()
+    text = raw.strip()
 
-    # Also grab reasoning_content if it exists (some API versions)
-    try:
-        reasoning = (message.reasoning_content or "").strip()
-    except AttributeError:
-        reasoning = ""
+    # Remove closed think blocks
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Remove unclosed think blocks (token limit hit mid-think)
+    text = re.sub(r"<think>.*",          "", text, flags=re.DOTALL)
+    text = text.strip()
 
-    full = raw  # primary source
+    # If nothing left, try splitting on </think> and taking what follows
+    if not text and "</think>" in raw:
+        text = raw.split("</think>")[-1].strip()
 
-    # ── Strategy 1: strip closed <think>…</think> blocks ─────────────────────
-    s1 = re.sub(r"<think>.*?</think>", "", full, flags=re.DOTALL).strip()
-    if s1:
-        logger.debug("_extract_content: strategy 1 succeeded (%d chars)", len(s1))
-        return s1
+    # Strip markdown code fences
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$",          "", text)
+    text = text.strip()
 
-    # ── Strategy 2: take everything after the LAST </think> ──────────────────
-    parts = re.split(r"</think>", full, flags=re.DOTALL)
-    if len(parts) > 1:
-        s2 = parts[-1].strip()
-        if s2:
-            logger.debug("_extract_content: strategy 2 succeeded (%d chars)", len(s2))
-            return s2
+    # Last resort: find first JSON object or array in the raw output
+    if not text:
+        m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", raw)
+        if m:
+            logger.warning("_clean_response: used JSON scan fallback")
+            text = m.group(1).strip()
 
-    # ── Strategy 3: find first JSON object or array anywhere in full+reasoning ─
-    combined = full + "\n" + reasoning
-    m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", combined)
-    if m:
-        s3 = m.group(1).strip()
-        logger.warning("_extract_content: strategy 3 (regex JSON scan) (%d chars)", len(s3))
-        return s3
-
-    # ── Strategy 4: fallback — return raw and let caller deal with it ─────────
-    logger.error("_extract_content: all strategies failed. raw=%r", full[:200])
-    return full
+    return text
 
 
 async def chat(
@@ -118,8 +103,10 @@ async def chat(
             {"role": "user",   "content": user},
         ],
     )
-    result = _extract_content(response.choices[0].message)
-    logger.debug("chat() -> %d chars, finish=%s", len(result), response.choices[0].finish_reason)
+    raw = response.choices[0].message.content or ""
+    result = _clean_response(raw)
+    logger.info("chat() model=%s finish=%s raw=%d clean=%d",
+                model or default_model, response.choices[0].finish_reason, len(raw), len(result))
     return result
 
 
@@ -137,6 +124,8 @@ async def chat_with_history(
         max_tokens=max_tokens,
         messages=messages,
     )
-    result = _extract_content(response.choices[0].message)
-    logger.debug("chat_with_history() -> %d chars, finish=%s", len(result), response.choices[0].finish_reason)
+    raw = response.choices[0].message.content or ""
+    result = _clean_response(raw)
+    logger.info("chat_with_history() model=%s finish=%s raw=%d clean=%d",
+                default_model, response.choices[0].finish_reason, len(raw), len(result))
     return result
