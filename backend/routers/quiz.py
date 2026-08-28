@@ -128,19 +128,19 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
             system=_SYSTEM,
             user=user_prompt,
             temperature=0.75,
-            max_tokens=4000,
+            max_tokens=2048,   # Groq enforces ≤4096; keep well under to avoid token errors
         )
         raw = strip_json_fences(raw)
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        logger.error("Quiz generation: LLM returned non-JSON — %s", exc)
+        logger.error("Quiz generation: LLM returned non-JSON — raw=%r — %s", raw[:300], exc)
         raise HTTPException(
             status_code=500,
             detail="Quiz generation failed: LLM returned malformed JSON. Please retry.",
         ) from exc
     except Exception as exc:
-        logger.exception("Quiz generation unexpected error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Quiz generation unexpected error: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Quiz generation error: {exc}") from exc
 
     raw_questions = data.get("questions", [])
     if not raw_questions:
