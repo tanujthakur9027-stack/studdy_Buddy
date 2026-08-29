@@ -258,9 +258,12 @@ async def process_and_index(
     if ext == ".pdf":
         # extract_pdf_pages returns (pages, parser_name) in one pass — no double extraction
         pages, parser_used = extract_pdf_pages(file_bytes, filename)
-    elif ext in (".txt", ".md"):
-        pages = extract_txt(file_bytes, is_markdown=(ext == ".md"))
-        parser_used = "plaintext" if ext == ".txt" else "markdown"
+    elif ext in (".txt", ".bin"):
+        pages = extract_txt(file_bytes, is_markdown=False)
+        parser_used = "plaintext"
+    elif ext == ".md":
+        pages = extract_txt(file_bytes, is_markdown=True)
+        parser_used = "markdown"
     elif ext in (".docx", ".doc"):
         # Docx2txtLoader needs a path on disk — file already saved
         loader = Docx2txtLoader(filepath)
