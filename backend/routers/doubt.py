@@ -4,13 +4,16 @@ Doubt solver router — RAG-powered conversational Q&A.
 from __future__ import annotations
 
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from models.schemas import DoubtRequest, DoubtResponse
 from services.llm_service import chat_with_history
 from services.document_service import retrieve_context
 from utils.text_utils import strip_json_fences
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 SYSTEM_PROMPT = """You are StudyBuddy, a knowledgeable, patient, and encouraging AI tutor.
 Your role is to help students understand concepts clearly using the provided context from their documents.
@@ -24,7 +27,8 @@ Guidelines:
 
 
 @router.post("/doubt/solve", response_model=DoubtResponse, tags=["Doubt Solver"])
-async def solve_doubt(req: DoubtRequest):
+@limiter.limit("20/minute")
+async def solve_doubt(request: Request, req: DoubtRequest):
     """Answer a student's question using RAG over their uploaded documents."""
     # Retrieve relevant context
     context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5)

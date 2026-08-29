@@ -8,9 +8,13 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
 
     # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
-    # groq package is already installed; set GROQ_API_KEY to enable
     groq_api_key: str = ""
-    groq_model: str = "openai/gpt-oss-20b"  # fastest clean-JSON model on this Groq account
+    groq_model: str = "openai/gpt-oss-20b"
+
+    # ── Database ──────────────────────────────────────────────────────────────
+    # Use SQLite for local dev; swap to PostgreSQL URL in production:
+    #   postgresql+asyncpg://user:pass@host/dbname
+    database_url: str = "sqlite+aiosqlite:///./studybuddy.db"
 
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
@@ -20,6 +24,10 @@ class Settings(BaseSettings):
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     cors_origins: str = "http://localhost:3000"
+
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Max LLM-backed requests per minute per IP (free tier default)
+    rate_limit_per_minute: int = 20
 
     # ── Chunk tuning ──────────────────────────────────────────────────────────
     chunk_size: int = 800

@@ -4,13 +4,16 @@ Explain router — ELI5 / simplified explanation endpoint.
 from __future__ import annotations
 
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from models.schemas import ExplainRequest, ExplainResponse
 from services.llm_service import chat
 from services.document_service import retrieve_context
 from utils.text_utils import strip_json_fences
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 LEVEL_PROMPTS = {
     "eli5": (
@@ -30,7 +33,8 @@ LEVEL_PROMPTS = {
 
 
 @router.post("/explain", response_model=ExplainResponse, tags=["Learning"])
-async def explain_topic(req: ExplainRequest):
+@limiter.limit("20/minute")
+async def explain_topic(request: Request, req: ExplainRequest):
     """Return a simplified explanation, analogy, and key points for a topic."""
     system = LEVEL_PROMPTS[req.level]
 

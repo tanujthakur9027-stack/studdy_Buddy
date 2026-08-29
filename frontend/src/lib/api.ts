@@ -24,6 +24,69 @@ export async function uploadDocument(file: File): Promise<{
   return data;
 }
 
+// ── Document Management ───────────────────────────────────────────────────────
+export interface StoredDocument {
+  doc_id: string;
+  filename: string;
+  description: string;
+  pages: number;
+  chunks: number;
+  total_chars: number;
+  total_tokens: number;
+  parser_used: string;
+  uploaded_at: string;
+}
+
+export async function fetchDocuments(): Promise<StoredDocument[]> {
+  const { data } = await api.get("/api/documents");
+  return data;
+}
+
+export async function deleteDocument(docId: string): Promise<void> {
+  await api.delete(`/api/documents/${docId}`);
+}
+
+// ── Quiz History ──────────────────────────────────────────────────────────────
+export interface QuizHistoryEntry {
+  id: string;
+  quiz_id: string;
+  topic: string;
+  difficulty: string;
+  score: number;
+  total: number;
+  percentage: number;
+  grade: string;
+  time_taken: number;
+  completed_at: string;
+}
+
+export async function fetchQuizHistory(limit = 20): Promise<QuizHistoryEntry[]> {
+  const { data } = await api.get(`/api/quiz/history?limit=${limit}`);
+  return data;
+}
+
+// ── Saved Answers ─────────────────────────────────────────────────────────────
+export interface SavedAnswerEntry {
+  id: string;
+  question: string;
+  answer: string;
+  saved_at: string;
+}
+
+export async function fetchSavedAnswers(): Promise<SavedAnswerEntry[]> {
+  const { data } = await api.get("/api/saved-answers");
+  return data;
+}
+
+export async function saveAnswer(question: string, answer: string): Promise<{ id: string; saved_at: string }> {
+  const { data } = await api.post("/api/saved-answers", { question, answer });
+  return data;
+}
+
+export async function deleteSavedAnswer(id: string): Promise<void> {
+  await api.delete(`/api/saved-answers/${id}`);
+}
+
 // ── Explain Like I'm 10 ──────────────────────────────────────────────────────
 export async function explainTopic(params: {
   topic: string;
