@@ -11,6 +11,7 @@ import { ExplainModule } from "@/components/features/ExplainModule";
 import { QuizGame } from "@/components/features/QuizGame";
 import { RevisionPlanner } from "@/components/features/RevisionPlanner";
 import { DoubtSolver } from "@/components/features/DoubtSolver";
+import { fetchDocuments } from "@/lib/api";
 import type { UploadedDocument, AppTab } from "@/types";
 import { clsx } from "clsx";
 
@@ -22,48 +23,33 @@ const TABS: { id: AppTab; label: string; icon: React.ElementType; color: string;
   { id: "doubt",   label: "Ask AI",   icon: MessageCircle,color: "text-cyan-400",    desc: "RAG doubt solver" },
 ];
 
-const SESSION_KEY = "studybuddy_docs";
-
-function loadDocs(): UploadedDocument[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<Omit<UploadedDocument, "uploadedAt"> & { uploadedAt: string }>;
-    return parsed.map((d) => ({ ...d, uploadedAt: new Date(d.uploadedAt) }));
-  } catch {
-    return [];
-  }
-}
-
-function saveDocs(docs: UploadedDocument[]) {
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(docs));
-  } catch {
-    // sessionStorage quota exceeded — silently ignore
-  }
-}
-
 export default function HomePage() {
   const [activeTab,    setActiveTab]    = useState<AppTab>("upload");
   const [documents,    setDocuments]    = useState<UploadedDocument[]>([]);
   const [selectedDoc,  setSelectedDoc]  = useState<string | undefined>(undefined);
-  const [hydrated,     setHydrated]     = useState(false);
 
-  // Restore documents from sessionStorage on mount
+  // Load persisted documents from the backend DB on mount
   useEffect(() => {
-    const stored = loadDocs();
-    if (stored.length) {
-      setDocuments(stored);
-      setSelectedDoc(stored[stored.length - 1].doc_id);
-    }
-    setHydrated(true);
+    fetchDocuments()
+      .then((stored) => {
+        if (stored.length) {
+          const docs: UploadedDocument[] = stored.map((d) => ({
+            doc_id: d.doc_id,
+            filename: d.filename,
+            description: d.description,
+            pages: d.pages,
+            chunks: d.chunks,
+            parser_used: d.parser_used,
+            uploadedAt: new Date(d.uploaded_at),
+          }));
+          setDocuments(docs);
+          setSelectedDoc(docs[docs.length - 1].doc_id);
+        }
+      })
+      .catch(() => {
+        // API not reachable — start with empty state, user can re-upload
+      });
   }, []);
-
-  // Persist documents to sessionStorage whenever they change
-  useEffect(() => {
-    if (hydrated) saveDocs(documents);
-  }, [documents, hydrated]);
 
   // When a new document is uploaded, auto-select it
   const handleUploaded = (doc: UploadedDocument) => {

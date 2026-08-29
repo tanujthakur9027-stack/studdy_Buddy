@@ -2,15 +2,12 @@
 Quiz router
 ===========
 POST /quiz/generate      — legacy path kept for backwards compatibility
-POST /api/generate-quiz  — new canonical path (mounted with /api prefix in main.py)
+POST /api/generate-quiz  — canonical quiz generation endpoint
 POST /quiz/submit        — score answers, produce per-question breakdown + weak topics
+GET  /api/quiz/history   — return past quiz results from DB
 
-Key improvements over the original:
-- Accepts parsed notes context (doc_id) OR free-text topic or BOTH.
-- Each question carries topic_tag and hint fields.
-- Strict 4-option MCQ prompt with difficulty distribution enforcement.
-- Submission returns per-question details, strong/weak topic split, letter grade.
-- Weak-topic analysis is done in the same LLM call as scoring (no second round-trip).
+Quiz sessions are now persisted in the database (replaces the old in-process dict).
+This means /quiz/submit works correctly after server restarts.
 """
 from __future__ import annotations
 
@@ -19,8 +16,12 @@ import logging
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import get_db
+from models.db_models import QuizResult, QuizSession
 from models.schemas import (
     QuizAnswerDetail,
     QuizGenerateRequest,
@@ -35,10 +36,6 @@ from utils.text_utils import strip_json_fences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# In-process quiz store — maps quiz_id → list of QuizQuestion
-# Replace with Redis / DB for multi-worker / production deployments.
-_quiz_store: dict[str, list[QuizQuestion]] = {}
 
 # ── Prompt helpers ────────────────────────────────────────────────────────────
 
@@ -79,7 +76,7 @@ def _grade(pct: float) -> str:
 
 # ── Generate endpoint ─────────────────────────────────────────────────────────
 
-async def _generate_quiz_core(req: QuizGenerateRequest) -> QuizGenerateResponse:
+async def _generate_quiz_core(req: QuizGenerateRequest, db: AsyncSession) -> QuizGenerateResponse:
     """Shared implementation used by both route aliases."""
     subject = req.topic or "the uploaded study material"
     n = req.num_questions
@@ -128,7 +125,7 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
             system=_SYSTEM,
             user=user_prompt,
             temperature=0.75,
-            max_tokens=4096,   # Qwen3 needs room to think + output JSON
+            max_tokens=4096,
         )
         raw = strip_json_fences(raw)
         data = json.loads(raw)
@@ -151,7 +148,6 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
     for q in raw_questions:
         opts = q.get("options", [])
         if len(opts) != 4:
-            # Pad or truncate to exactly 4
             opts = (opts + ["—", "—", "—", "—"])[:4]
         questions.append(QuizQuestion(
             id=str(uuid.uuid4()),
@@ -164,7 +160,19 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
             hint=q.get("hint", ""),
         ))
 
-    _quiz_store[quiz_id] = questions
+    resolved_topic = data.get("topic", subject)
+
+    # ── Persist to DB (replaces in-process dict) ──────────────────────────────
+    session_row = QuizSession(
+        quiz_id=quiz_id,
+        questions_json=json.dumps([q.model_dump() for q in questions]),
+        topic=resolved_topic,
+        difficulty=req.difficulty,
+        timer_seconds=req.timer_seconds,
+    )
+    db.add(session_row)
+    await db.commit()
+
     logger.info(
         "Quiz %s created: %d questions, difficulty=%s, topic=%s",
         quiz_id, len(questions), req.difficulty, subject,
@@ -173,7 +181,7 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
     return QuizGenerateResponse(
         quiz_id=quiz_id,
         questions=questions,
-        topic=data.get("topic", subject),
+        topic=resolved_topic,
         timer_seconds=req.timer_seconds,
         difficulty=req.difficulty,
     )
@@ -185,9 +193,9 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
     summary="Generate a quiz (legacy path)",
     tags=["Quiz"],
 )
-async def generate_quiz(req: QuizGenerateRequest) -> QuizGenerateResponse:
+async def generate_quiz(req: QuizGenerateRequest, db: AsyncSession = Depends(get_db)) -> QuizGenerateResponse:
     """Generate 3-10 MCQs from a topic or document. Legacy path kept for compatibility."""
-    return await _generate_quiz_core(req)
+    return await _generate_quiz_core(req, db)
 
 
 @router.post(
@@ -203,9 +211,9 @@ async def generate_quiz(req: QuizGenerateRequest) -> QuizGenerateResponse:
     ),
     tags=["Quiz"],
 )
-async def generate_quiz_api(req: QuizGenerateRequest) -> QuizGenerateResponse:
+async def generate_quiz_api(req: QuizGenerateRequest, db: AsyncSession = Depends(get_db)) -> QuizGenerateResponse:
     """Canonical endpoint: POST /api/generate-quiz"""
-    return await _generate_quiz_core(req)
+    return await _generate_quiz_core(req, db)
 
 
 # ── Submit / score endpoint ───────────────────────────────────────────────────
@@ -216,20 +224,25 @@ async def generate_quiz_api(req: QuizGenerateRequest) -> QuizGenerateResponse:
     summary="Submit quiz answers and get detailed results",
     tags=["Quiz"],
 )
-async def submit_quiz(req: QuizSubmitRequest) -> QuizSubmitResponse:
+async def submit_quiz(req: QuizSubmitRequest, db: AsyncSession = Depends(get_db)) -> QuizSubmitResponse:
     """
-    Score a completed quiz. Returns:
-    - per-question breakdown (correct/wrong, topic_tag, explanation)
-    - weak and strong topic lists derived from answer pattern
-    - letter grade (S/A/B/C/D)
-    - LLM-generated personalised recommendations
+    Score a completed quiz. Returns per-question breakdown, weak/strong topics,
+    letter grade, and personalised LLM recommendations.
+    Quiz session is loaded from DB — survives server restarts.
     """
-    questions = _quiz_store.get(req.quiz_id)
-    if not questions:
+    # ── Load session from DB ──────────────────────────────────────────────────
+    result = await db.execute(select(QuizSession).where(QuizSession.quiz_id == req.quiz_id))
+    session_row = result.scalar_one_or_none()
+    if not session_row:
         raise HTTPException(
             status_code=404,
-            detail="Quiz session not found. Sessions are in-process only; please generate a new quiz.",
+            detail="Quiz session not found. Please generate a new quiz.",
         )
+
+    try:
+        questions = [QuizQuestion(**q) for q in json.loads(session_row.questions_json)]
+    except Exception:
+        raise HTTPException(status_code=500, detail="Quiz session data is corrupt. Please regenerate.")
 
     # ── Score ─────────────────────────────────────────────────────────────────
     details: list[QuizAnswerDetail] = []
@@ -255,7 +268,7 @@ async def submit_quiz(req: QuizSubmitRequest) -> QuizSubmitResponse:
     pct     = round((score / total) * 100, 1) if total else 0.0
     grade   = _grade(pct)
 
-    # ── Classify topics as weak / strong ──────────────────────────────────────
+    # ── Classify topics ───────────────────────────────────────────────────────
     weak_topics:   list[str] = []
     strong_topics: list[str] = []
     for tag, results in topic_results.items():
@@ -294,6 +307,20 @@ async def submit_quiz(req: QuizSubmitRequest) -> QuizSubmitResponse:
         except Exception as exc:
             logger.warning("Recommendations LLM call failed: %s", exc)
 
+    # ── Persist quiz result to DB ─────────────────────────────────────────────
+    result_row = QuizResult(
+        quiz_id=req.quiz_id,
+        topic=session_row.topic,
+        difficulty=session_row.difficulty,
+        score=score,
+        total=total,
+        percentage=pct,
+        grade=grade,
+        time_taken=req.time_taken,
+    )
+    db.add(result_row)
+    await db.commit()
+
     return QuizSubmitResponse(
         score=score,
         total=total,
@@ -305,3 +332,35 @@ async def submit_quiz(req: QuizSubmitRequest) -> QuizSubmitResponse:
         recommendations=recommendations,
         grade=grade,
     )
+
+
+# ── Quiz history endpoint ─────────────────────────────────────────────────────
+
+@router.get(
+    "/quiz/history",
+    summary="Get past quiz results",
+    tags=["Quiz"],
+)
+async def get_quiz_history(limit: int = 20, db: AsyncSession = Depends(get_db)):
+    """Return the most recent quiz results for the progress dashboard."""
+    result = await db.execute(
+        select(QuizResult)
+        .order_by(QuizResult.completed_at.desc())
+        .limit(min(limit, 50))
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "quiz_id": r.quiz_id,
+            "topic": r.topic,
+            "difficulty": r.difficulty,
+            "score": r.score,
+            "total": r.total,
+            "percentage": r.percentage,
+            "grade": r.grade,
+            "time_taken": r.time_taken,
+            "completed_at": r.completed_at.isoformat(),
+        }
+        for r in rows
+    ]

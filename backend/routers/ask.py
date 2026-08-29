@@ -1,20 +1,14 @@
 """
 /api/ask — RAG-powered question answering with a Standard vs ELI5 mode toggle.
-
-Flow
-----
-1. Retrieve top-k relevant chunks from FAISS (per-doc or global) with ChromaDB fallback.
-2. Build a mode-specific system prompt.
-3. Call the LLM with the context + question (+ optional conversation history).
-4. Parse the structured JSON response → AskResponse.
-5. Return answer, mode_used, rich source attribution, follow-up questions.
 """
 from __future__ import annotations
 
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models.schemas import AskRequest, AskResponse, SourceChunk
 from services.document_service import retrieve_context
@@ -23,6 +17,7 @@ from utils.text_utils import truncate_to_tokens, strip_json_fences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 # ── System prompts ────────────────────────────────────────────────────────────
 
@@ -84,7 +79,8 @@ def _build_context_block(context_text: str) -> str:
     ),
     tags=["Ask"],
 )
-async def ask_question(req: AskRequest) -> AskResponse:
+@limiter.limit("20/minute")
+async def ask_question(request: Request, req: AskRequest) -> AskResponse:
     # ── 1. Retrieve context chunks ────────────────────────────────────────────
     context_docs = retrieve_context(
         query=req.question,

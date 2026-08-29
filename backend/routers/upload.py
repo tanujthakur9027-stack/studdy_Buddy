@@ -10,9 +10,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
+from database import get_db
+from models.db_models import Document
 from models.schemas import UploadResponse
 from services.document_service import process_and_index, save_upload
 
@@ -61,7 +64,7 @@ ALLOWED_EXTENSIONS: set[str] = {
     ),
     tags=["Documents"],
 )
-async def upload_document(file: UploadFile = File(...)):  # noqa: B008
+async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):  # noqa: B008
     # ── Validate MIME type ────────────────────────────────────────────────────
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in ALLOWED_MIME:
@@ -107,14 +110,24 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
     try:
         stats = await process_and_index(file_bytes, filepath, doc_id, filename)
     except ValueError as exc:
-        # Known user-facing errors (encrypted PDF, no text, bad extension)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Ingestion pipeline failed for %s", filename)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ingestion failed: {exc}",
-        ) from exc
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}") from exc
+
+    # ── Persist metadata to DB ────────────────────────────────────────────────
+    doc_row = Document(
+        doc_id=stats.doc_id,
+        filename=stats.filename,
+        description=stats.description,
+        pages=stats.pages,
+        chunks=stats.chunks,
+        total_chars=stats.total_chars,
+        total_tokens=stats.total_tokens,
+        parser_used=stats.parser_used,
+    )
+    db.add(doc_row)
+    await db.commit()
 
     logger.info(
         "Ingested '%s' → doc_id=%s  pages=%d  chunks=%d  tokens=%d  parser=%s",
