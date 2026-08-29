@@ -6,13 +6,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, Play, RotateCcw, ChevronRight, Trophy,
   HelpCircle, Star, Target, Clock, CheckCircle2,
-  XCircle, Lightbulb, Flame,
+  XCircle, Lightbulb, Flame, History, Trash2,
 } from "lucide-react";
 import { generateQuiz, submitQuizResult } from "@/lib/api";
 import type { QuizQuestion, QuizSubmitResponse } from "@/lib/api";
 import { Spinner, ProgressBar, Badge } from "@/components/ui";
 import { QuizTimer } from "@/components/ui/QuizTimer";
 import { useSound } from "@/hooks/useSound";
+import { useQuizHistory } from "@/hooks/useQuizHistory";
 import { ReviewScreen } from "@/components/features/ReviewScreen";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -63,6 +64,8 @@ type Phase = "config" | "countdown" | "playing" | "results";
 
 export function QuizGame({ docId }: Props) {
   const { play } = useSound();
+  const { history, addEntry, clearHistory } = useQuizHistory();
+  const [showHistory, setShowHistory] = useState(false);
 
   // ── Config state ──────────────────────────────────────────────────────────
   const [topic,    setTopic]    = useState("");
@@ -232,6 +235,16 @@ export function QuizGame({ docId }: Props) {
           time_taken: spent,
         });
         setResults(res);
+        // ── Save to history ───────────────────────────────────────────────
+        addEntry({
+          topic: quizTopic || topic || "General",
+          score: res.score,
+          total: res.total,
+          percentage: res.percentage,
+          grade: res.grade,
+          timeTaken: spent,
+          difficulty: diff,
+        });
         setPhase("results");
         play("complete");
       } catch {
@@ -262,13 +275,73 @@ export function QuizGame({ docId }: Props) {
           <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-400">
             <Zap className="h-7 w-7" />
           </div>
-          <div>
+          <div className="flex-1">
             <h2 className="section-heading">Kahoot-Style Quiz</h2>
             <p className="text-sm text-gray-400 mt-1">
               Test your knowledge with timed MCQs, live scoring, and instant explanations.
             </p>
           </div>
+          {history.length > 0 && (
+            <button
+              onClick={() => setShowHistory((s) => !s)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-gray-700 bg-gray-900 text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-all"
+            >
+              <History className="h-3.5 w-3.5" />
+              History ({history.length})
+            </button>
+          )}
         </div>
+
+        {/* History panel */}
+        <AnimatePresence>
+          {showHistory && history.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="glass-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Recent Quizzes</p>
+                  <button
+                    onClick={clearHistory}
+                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3" /> Clear
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {history.map((h) => {
+                    const gradeColor: Record<string, string> = {
+                      S: "text-yellow-400", A: "text-green-400", B: "text-blue-400",
+                      C: "text-orange-400", D: "text-red-400",
+                    };
+                    return (
+                      <div
+                        key={h.id}
+                        className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-800/60 border border-gray-700/50"
+                      >
+                        <span className={clsx("text-lg font-black w-6 text-center shrink-0", gradeColor[h.grade] ?? "text-gray-400")}>
+                          {h.grade}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-200 truncate">{h.topic}</p>
+                          <p className="text-[10px] text-gray-500">
+                            {h.score}/{h.total} · {h.percentage}% · {h.difficulty}
+                          </p>
+                        </div>
+                        <p className="text-[10px] text-gray-600 shrink-0">
+                          {new Date(h.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="glass-card p-6 space-y-6">
           {/* Topic */}

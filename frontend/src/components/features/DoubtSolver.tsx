@@ -3,10 +3,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Send, Bot, User, Lightbulb, ArrowRight,
-  Copy, CheckCheck, FileText,
+  Copy, CheckCheck, FileText, Volume2, VolumeX, RotateCcw,
+  Bookmark, BookmarkCheck, Mic, MicOff, BookMarked, X,
 } from "lucide-react";
 import { askQuestion } from "@/lib/api";
 import { Spinner } from "@/components/ui";
+import { useSpeech, useVoiceInput } from "@/hooks/useSpeech";
+import { useSavedAnswers } from "@/hooks/useSavedAnswers";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/types";
@@ -82,7 +85,16 @@ export function DoubtSolver({ docId }: Props) {
   const [input,     setInput]     = useState("");
   const [loading,   setLoading]   = useState(false);
   const [mode,      setMode]      = useState<"standard" | "eli5">("standard");
+  const [showSaved, setShowSaved] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const { speak, stop, speaking, isSupported: ttsSupported } = useSpeech();
+  const { saved, saveAnswer, removeAnswer, isSaved } = useSavedAnswers();
+
+  const handleVoiceResult = useCallback((transcript: string) => {
+    setInput((prev) => prev ? `${prev} ${transcript}` : transcript);
+  }, []);
+  const { startListening, stopListening, listening, isSupported: voiceSupported } = useVoiceInput(handleVoiceResult);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -133,6 +145,11 @@ export function DoubtSolver({ docId }: Props) {
     setLoading(false);
   }, [loading, messages, docId, mode]);
 
+  // Regenerate: re-ask the last user question
+  const handleRegenerate = useCallback(async (question: string) => {
+    await sendMessage(question);
+  }, [sendMessage]);
+
   return (
     <div className="flex flex-col h-[700px]">
       {/* Header */}
@@ -146,6 +163,22 @@ export function DoubtSolver({ docId }: Props) {
             Ask anything about your uploaded documents — powered by Retrieval-Augmented Generation.
           </p>
         </div>
+        {/* Saved answers button */}
+        {saved.length > 0 && (
+          <button
+            onClick={() => setShowSaved((s) => !s)}
+            title="Saved answers"
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+              showSaved
+                ? "bg-brand-600 border-brand-500 text-white"
+                : "bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600"
+            )}
+          >
+            <BookMarked className="h-3.5 w-3.5" />
+            {saved.length}
+          </button>
+        )}
         {/* Mode toggle */}
         <div className="flex gap-1 shrink-0">
           {(["standard", "eli5"] as const).map((m) => (
@@ -164,6 +197,36 @@ export function DoubtSolver({ docId }: Props) {
           ))}
         </div>
       </div>
+
+      {/* Saved Answers Panel */}
+      <AnimatePresence>
+        {showSaved && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden shrink-0 mb-3"
+          >
+            <div className="glass-card p-4 space-y-2 max-h-52 overflow-y-auto">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Bookmarked Answers</p>
+              {saved.map((s) => (
+                <div key={s.id} className="flex items-start gap-2 p-2.5 rounded-xl bg-gray-800/60 border border-gray-700/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-brand-400 truncate">{s.question}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{s.answer.slice(0, 120)}…</p>
+                  </div>
+                  <button
+                    onClick={() => removeAnswer(s.id)}
+                    className="p-1 rounded-lg text-gray-600 hover:text-red-400 transition-colors shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
@@ -249,9 +312,55 @@ export function DoubtSolver({ docId }: Props) {
                   <SourceChips sources={msg.sources} />
                 )}
 
-                {/* Copy + timestamp row */}
-                <div className={`flex items-center gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                  {msg.role === "assistant" && <CopyButton text={msg.content} />}
+                {/* Action row: copy · read aloud · regenerate · bookmark */}
+                <div className={`flex items-center gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {msg.role === "assistant" && (
+                    <>
+                      <CopyButton text={msg.content} />
+                      {ttsSupported && (
+                        <button
+                          onClick={() => speaking ? stop() : speak(msg.content)}
+                          title={speaking ? "Stop" : "Read aloud"}
+                          className={`p-1 rounded-lg transition-colors ${speaking ? "text-brand-400" : "text-gray-600 hover:text-gray-400 hover:bg-gray-800"}`}
+                        >
+                          {speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                      {/* Regenerate — only on last assistant message */}
+                      {messages[messages.length - 1]?.id === msg.id && (
+                        <button
+                          onClick={() => {
+                            const lastUser = [...messages].reverse().find((m) => m.role === "user");
+                            if (lastUser) handleRegenerate(lastUser.content);
+                          }}
+                          disabled={loading}
+                          title="Regenerate answer"
+                          className="p-1 rounded-lg text-gray-600 hover:text-brand-400 hover:bg-gray-800 transition-colors"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {/* Bookmark */}
+                      <button
+                        onClick={() => {
+                          const lastUser = [...messages].reverse().find((m) => m.role === "user");
+                          if (!lastUser) return;
+                          if (isSaved(lastUser.content)) {
+                            toast("Already bookmarked");
+                          } else {
+                            saveAnswer(lastUser.content, msg.content);
+                            toast.success("Answer bookmarked!");
+                          }
+                        }}
+                        title="Bookmark answer"
+                        className={`p-1 rounded-lg transition-colors ${isSaved([...messages].reverse().find((m) => m.role === "user")?.content ?? "") ? "text-yellow-400" : "text-gray-600 hover:text-yellow-400 hover:bg-gray-800"}`}
+                      >
+                        {isSaved([...messages].reverse().find((m) => m.role === "user")?.content ?? "")
+                          ? <BookmarkCheck className="h-3.5 w-3.5" />
+                          : <Bookmark className="h-3.5 w-3.5" />}
+                      </button>
+                    </>
+                  )}
                   <p className="text-[10px] text-gray-600">
                     {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </p>
@@ -297,16 +406,34 @@ export function DoubtSolver({ docId }: Props) {
 
       {/* Input */}
       <div className="shrink-0 pt-4 border-t border-gray-800">
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage(input))}
-            placeholder="Ask a question about your notes…"
+            placeholder={listening ? "Listening…" : "Ask a question about your notes…"}
             disabled={loading}
             aria-label="Type your question"
-            className="input-field flex-1"
+            className={clsx("input-field flex-1", listening && "border-red-500/50 ring-1 ring-red-500/30")}
           />
+          {/* Voice input button */}
+          {voiceSupported && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => listening ? stopListening() : startListening()}
+              title={listening ? "Stop listening" : "Voice input"}
+              aria-label="Voice input"
+              className={clsx(
+                "px-3 rounded-xl border transition-all",
+                listening
+                  ? "bg-red-500/20 border-red-500/50 text-red-400 animate-pulse"
+                  : "bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200"
+              )}
+            >
+              {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </motion.button>
+          )}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -318,7 +445,7 @@ export function DoubtSolver({ docId }: Props) {
             {loading ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
           </motion.button>
         </div>
-        <p className="text-xs text-gray-600 mt-2">Enter to send · Shift+Enter for new line</p>
+        <p className="text-xs text-gray-600 mt-2">Enter to send · Shift+Enter for new line{voiceSupported ? " · Mic for voice" : ""}</p>
       </div>
     </div>
   );
