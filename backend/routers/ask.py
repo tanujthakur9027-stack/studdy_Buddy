@@ -10,9 +10,13 @@ from fastapi import APIRouter, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+import json
+
+from fastapi.responses import StreamingResponse
+
 from models.schemas import AskRequest, AskResponse, SourceChunk
 from services.document_service import retrieve_context
-from services.llm_service import chat_with_history
+from services.llm_service import chat_with_history, stream_chat_with_history
 from utils.text_utils import truncate_to_tokens, strip_json_fences
 
 logger = logging.getLogger(__name__)
@@ -154,4 +158,88 @@ async def ask_question(request: Request, req: AskRequest) -> AskResponse:
         sources=sources,
         follow_up_questions=follow_ups[:3],
         context_chunks_used=len(context_docs),
+    )
+
+
+# ── Streaming endpoint ────────────────────────────────────────────────────────
+
+@router.post(
+    "/ask/stream",
+    summary="Ask a question (streaming SSE response)",
+    description=(
+        "Same as `/api/ask` but streams the answer token-by-token using Server-Sent Events. "
+        "Each SSE event is one of: `data: <token>`, `data: [SOURCES]<json>`, `data: [DONE]`."
+    ),
+    tags=["Ask"],
+)
+@limiter.limit("20/minute")
+async def ask_question_stream(request: Request, req: AskRequest) -> StreamingResponse:
+    """Stream LLM tokens via SSE. Sources + follow-ups sent as a final event."""
+    # ── 1. Retrieve context (same as non-streaming) ───────────────────────────
+    context_docs = retrieve_context(query=req.question, doc_id=req.doc_id, k=req.k)
+    raw_context = "\n\n---\n\n".join(doc.page_content for doc in context_docs)
+    context_text = truncate_to_tokens(raw_context, max_tokens=3000)
+
+    sources: list[SourceChunk] = []
+    for doc in context_docs:
+        m = doc.metadata
+        sources.append(SourceChunk(
+            filename=m.get("filename", "unknown"),
+            page=int(m.get("page", 0)),
+            chunk_index=int(m.get("chunk_index", 0)),
+            snippet=doc.page_content[:200].replace("\n", " "),
+        ))
+
+    system = _SYSTEM_ELI5 if req.mode == "eli5" else _SYSTEM_STANDARD
+
+    # ── 2. Build history (without JSON schema — free-form streaming) ──────────
+    history: list[dict] = []
+    if req.conversation_history:
+        for turn in req.conversation_history[-6:]:
+            history.append({"role": turn.role, "content": turn.content})
+
+    context_block = _build_context_block(context_text)
+    # For streaming we ask for plain markdown (no JSON wrapper)
+    history.append({"role": "user", "content": (
+        f"{context_block}"
+        f"Student's question: {req.question}\n\n"
+        "Answer in clear Markdown. End with a blank line then three follow-up questions "
+        "prefixed with 'Follow-up:' on separate lines."
+    )})
+
+    # ── 3. Async generator → SSE ──────────────────────────────────────────────
+    async def event_stream():
+        full_text = ""
+        try:
+            async for token in stream_chat_with_history(
+                system=system,
+                history=history,
+                temperature=0.55 if req.mode == "standard" else 0.70,
+                max_tokens=1200,
+            ):
+                full_text += token
+                # Escape newlines for SSE protocol
+                safe = token.replace("\n", "\\n")
+                yield f"data: {safe}\n\n"
+        except Exception as exc:
+            logger.exception("Streaming LLM error")
+            yield f"data: [ERROR] {exc}\n\n"
+            return
+
+        # Final event: sources metadata as JSON
+        meta = {
+            "sources": [s.model_dump() for s in sources],
+            "context_chunks_used": len(context_docs),
+            "mode_used": req.mode,
+        }
+        yield f"data: [SOURCES]{json.dumps(meta)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # Disable nginx buffering
+        },
     )

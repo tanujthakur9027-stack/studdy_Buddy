@@ -6,8 +6,8 @@ import {
   Copy, CheckCheck, FileText, Volume2, VolumeX, RotateCcw,
   Bookmark, BookmarkCheck, Mic, MicOff, BookMarked, X,
 } from "lucide-react";
-import { askQuestion } from "@/lib/api";
 import { Spinner } from "@/components/ui";
+import { streamPost } from "@/lib/streamApi";
 import { useSpeech, useVoiceInput } from "@/hooks/useSpeech";
 import { useSavedAnswers } from "@/hooks/useSavedAnswers";
 import ReactMarkdown from "react-markdown";
@@ -86,7 +86,8 @@ export function DoubtSolver({ docId }: Props) {
   const [loading,   setLoading]   = useState(false);
   const [mode,      setMode]      = useState<"standard" | "eli5">("standard");
   const [showSaved, setShowSaved] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef  = useRef<HTMLDivElement>(null);
+  const abortRef   = useRef<AbortController | null>(null);
 
   const { speak, stop, speaking, isSupported: ttsSupported } = useSpeech();
   const { saved, saveAnswer, removeAnswer, isSaved } = useSavedAnswers();
@@ -100,54 +101,72 @@ export function DoubtSolver({ docId }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = useCallback(async (question: string) => {
+  // Cancel any in-flight stream when unmounting
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  const sendMessage = useCallback((question: string) => {
     if (!question.trim() || loading) return;
 
-    // Use a stable ID so we can reliably remove the message on error
-    const msgId = nextId();
-    const userMsg: ChatMessage = {
-      id: msgId,
-      role: "user",
-      content: question.trim(),
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    // Abort any previous in-flight stream
+    abortRef.current?.abort();
+
+    const userMsgId  = nextId();
+    const assistId   = nextId();
+
+    // Add user bubble immediately
+    const userMsg: ChatMessage = { id: userMsgId, role: "user", content: question.trim(), timestamp: new Date() };
+    // Add a streaming assistant bubble (starts empty)
+    const assistMsg: ChatMessage = { id: assistId, role: "assistant", content: "", timestamp: new Date(), mode };
+
+    setMessages((prev) => [...prev, userMsg, assistMsg]);
     setInput("");
     setLoading(true);
 
     const history = messages.map(({ role, content }) => ({ role, content }));
-    try {
-      const data = await askQuestion({
-        question: question.trim(),
-        doc_id:   docId,
-        mode,
-        k: 5,
-        conversation_history: history,
-      });
-      const assistantMsg: ChatMessage = {
-        id: nextId(),
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources,
-        followUpQuestions: data.follow_up_questions,
-        mode: data.mode_used,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (e: unknown) {
-      toast.error(
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Failed to get answer",
-      );
-      // Remove by stable ID — not by reference equality
-      setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    }
-    setLoading(false);
+
+    abortRef.current = streamPost(
+      "/api/doubt/stream",
+      { question: question.trim(), doc_id: docId ?? null, mode, k: 5, conversation_history: history },
+      {
+        onToken: (token) => {
+          // Append token to the streaming assistant bubble
+          setMessages((prev) =>
+            prev.map((m) => m.id === assistId ? { ...m, content: m.content + token } : m)
+          );
+        },
+        onDone: (meta) => {
+          // Attach source names when stream finishes
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistId
+                ? { ...m, sourceNames: (meta.sourceNames ?? (meta.sources as string[] | undefined) ?? []) }
+                : m
+            )
+          );
+          setLoading(false);
+        },
+        onError: (err) => {
+          if (err.includes("AbortError") || err === "") { setLoading(false); return; }
+          toast.error(err || "Failed to get answer");
+          // Remove the empty assistant bubble on error
+          setMessages((prev) => prev.filter((m) => m.id !== assistId && m.id !== userMsgId));
+          setLoading(false);
+        },
+      }
+    );
   }, [loading, messages, docId, mode]);
 
-  // Regenerate: re-ask the last user question
-  const handleRegenerate = useCallback(async (question: string) => {
-    await sendMessage(question);
+  // Regenerate: cancel current stream and re-ask last question
+  const handleRegenerate = useCallback((question: string) => {
+    abortRef.current?.abort();
+    // Remove last assistant message and re-send
+    setMessages((prev) => {
+      const lastAssist = [...prev].reverse().findIndex((m) => m.role === "assistant");
+      if (lastAssist === -1) return prev;
+      const idx = prev.length - 1 - lastAssist;
+      return prev.slice(0, idx);
+    });
+    sendMessage(question);
   }, [sendMessage]);
 
   return (
@@ -300,7 +319,9 @@ export function DoubtSolver({ docId }: Props) {
                 }`}>
                   {msg.role === "assistant" ? (
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content + (loading && messages[messages.length - 1]?.id === msg.id && msg.content.length > 0 ? " ▍" : "")}
+                      </ReactMarkdown>
                     </div>
                   ) : (
                     <p>{msg.content}</p>
@@ -386,7 +407,8 @@ export function DoubtSolver({ docId }: Props) {
           ))}
         </AnimatePresence>
 
-        {loading && (
+        {/* Show spinner only while waiting for the first token */}
+        {loading && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             className="flex gap-3 items-center"
