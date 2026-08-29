@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -126,3 +126,18 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
+
+
+# ── Shared resources (quiz share links) ──────────────────────────────────────
+
+class SharedResource(Base):
+    """A short-lived share link containing quiz questions or document metadata."""
+    __tablename__ = "shared_resources"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)   # short nanoid-like key
+    resource_type: Mapped[str] = mapped_column(String(20))          # "quiz" | "document"
+    payload_json: Mapped[str] = mapped_column(Text)                 # full JSON payload
+    title: Mapped[str] = mapped_column(String(255), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

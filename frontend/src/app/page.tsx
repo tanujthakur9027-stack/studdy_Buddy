@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, Lightbulb, Zap, CalendarDays, MessageCircle,
-  GraduationCap, ChevronRight, Sparkles, ExternalLink, FileText,
+  GraduationCap, ChevronRight, Sparkles, ExternalLink, FileText, BarChart2,
 } from "lucide-react";
 import Link from "next/link";
 import { FileUpload } from "@/components/features/FileUpload";
@@ -11,16 +11,18 @@ import { ExplainModule } from "@/components/features/ExplainModule";
 import { QuizGame } from "@/components/features/QuizGame";
 import { RevisionPlanner } from "@/components/features/RevisionPlanner";
 import { DoubtSolver } from "@/components/features/DoubtSolver";
+import { ProgressDashboard } from "@/components/features/ProgressDashboard";
 import { fetchDocuments } from "@/lib/api";
 import type { UploadedDocument, AppTab } from "@/types";
 import { clsx } from "clsx";
 
 const TABS: { id: AppTab; label: string; icon: React.ElementType; color: string; desc: string }[] = [
-  { id: "upload",  label: "Upload",   icon: Upload,       color: "text-brand-400",   desc: "Syllabus & notes" },
-  { id: "explain", label: "ELI10",    icon: Lightbulb,    color: "text-yellow-400",  desc: "Simplified learning" },
-  { id: "quiz",    label: "Quiz",     icon: Zap,          color: "text-purple-400",  desc: "Kahoot-style game" },
-  { id: "planner", label: "Planner",  icon: CalendarDays, color: "text-emerald-400", desc: "Revision schedule" },
-  { id: "doubt",   label: "Ask AI",   icon: MessageCircle,color: "text-cyan-400",    desc: "RAG doubt solver" },
+  { id: "upload",   label: "Upload",    icon: Upload,       color: "text-brand-400",   desc: "Syllabus & notes" },
+  { id: "explain",  label: "ELI10",     icon: Lightbulb,    color: "text-yellow-400",  desc: "Simplified learning" },
+  { id: "quiz",     label: "Quiz",      icon: Zap,          color: "text-purple-400",  desc: "Kahoot-style game" },
+  { id: "planner",  label: "Planner",   icon: CalendarDays, color: "text-emerald-400", desc: "Revision schedule" },
+  { id: "doubt",    label: "Ask AI",    icon: MessageCircle,color: "text-cyan-400",    desc: "RAG doubt solver" },
+  { id: "progress", label: "Progress",  icon: BarChart2,    color: "text-brand-400",   desc: "Study analytics" },
 ];
 
 export default function HomePage() {
@@ -309,7 +311,8 @@ export default function HomePage() {
                   <RevisionPlanner docId={activeDocId} />
                 </div>
               )}
-              {activeTab === "doubt" && <DoubtSolver docId={activeDocId} />}
+              {activeTab === "doubt"    && <DoubtSolver docId={activeDocId} />}
+              {activeTab === "progress" && <ProgressDashboard />}
             </motion.div>
           </AnimatePresence>
         </main>

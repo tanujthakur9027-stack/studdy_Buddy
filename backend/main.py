@@ -17,6 +17,8 @@ from database import init_db
 from routers import ask, doubt, explain, quiz, revision, upload
 from routers.chat import router as chat_router
 from routers.documents import router as documents_router
+from routers.share import router as share_router
+from routers.progress import router as progress_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,6 +94,8 @@ app.include_router(explain.router,     prefix="/api")
 app.include_router(doubt.router,       prefix="/api")
 app.include_router(documents_router,   prefix="/api")
 app.include_router(chat_router,        prefix="/api")
+app.include_router(share_router,       prefix="/api")
+app.include_router(progress_router,    prefix="/api")
 
 # ── Legacy / unversioned routers (backwards compatibility) ────────────────────
 app.include_router(quiz.router)
@@ -139,6 +143,9 @@ async def root():
             "saved_answers":  "GET  /api/saved-answers",
             "chats":          "GET  /api/chats",
             "chat_messages":  "GET  /api/chats/{id}/messages",
+            "share_create":   "POST /api/share",
+            "share_resolve":  "GET  /api/share/{id}",
+            "progress":       "GET  /api/progress/summary",
             "docs":           "GET  /docs",
         },
     }

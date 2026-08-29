@@ -107,6 +107,77 @@ export async function deleteSavedAnswer(id: string): Promise<void> {
   await api.delete(`/api/saved-answers/${id}`);
 }
 
+// ── Share Links ───────────────────────────────────────────────────────────────
+export interface ShareOut {
+  id: string;
+  resource_type: string;
+  title: string;
+  created_at: string;
+  expires_at: string | null;
+  share_url: string;
+}
+
+export interface ShareResolved {
+  id: string;
+  resource_type: string;
+  title: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export async function createShareLink(
+  resourceType: "quiz" | "document",
+  payload: Record<string, unknown>,
+  title: string,
+  expiresDays = 30,
+): Promise<ShareOut> {
+  const { data } = await api.post("/api/share", {
+    resource_type: resourceType,
+    payload,
+    title,
+    expires_days: expiresDays,
+  });
+  return data;
+}
+
+export async function resolveShareLink(shareId: string): Promise<ShareResolved> {
+  const { data } = await api.get(`/api/share/${shareId}`);
+  return data;
+}
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+export interface QuizScorePoint {
+  date: string;
+  percentage: number;
+  grade: string;
+  topic: string;
+  score: number;
+  total: number;
+}
+
+export interface TopicStat {
+  topic: string;
+  avg_pct: number;
+  attempts: number;
+}
+
+export interface ProgressSummary {
+  total_quizzes: number;
+  avg_score_pct: number;
+  best_score_pct: number;
+  current_streak_days: number;
+  total_questions_answered: number;
+  score_history: QuizScorePoint[];
+  weak_topics: TopicStat[];
+  strong_topics: TopicStat[];
+}
+
+export async function fetchProgressSummary(): Promise<ProgressSummary> {
+  const { data } = await api.get("/api/progress/summary");
+  return data;
+}
+
 export async function fetchChatSessions(): Promise<ChatSessionEntry[]> {
   const { data } = await api.get("/api/chats");
   return data;
