@@ -1,11 +1,11 @@
 """
-utils/logging.py — Structured JSON logging setup for StudyBuddy.
+utils/log_config.py — Structured JSON logging setup for StudyBuddy.
 
 Produces one JSON line per log record with fields:
   timestamp, level, logger, message, [exc_info], [request_id], [latency_ms]
 
 Usage:
-    from utils.logging import setup_logging
+    from utils.log_config import setup_logging
     setup_logging()          # call once at startup (main.py)
 
 Individual loggers then just use the standard library:

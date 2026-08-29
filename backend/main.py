@@ -25,7 +25,7 @@ from routers.cheatsheet import router as cheatsheet_router
 from routers.documents import router as documents_router
 from routers.progress import router as progress_router
 from routers.share import router as share_router
-from utils.logging import setup_logging
+from utils.log_config import setup_logging
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 setup_logging()
