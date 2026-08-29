@@ -4,10 +4,11 @@ import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud, FileText, FileSpreadsheet, FileImage,
-  Presentation, X, CheckCircle2, AlertCircle,
+  Presentation, X, CheckCircle2, AlertCircle, Sparkles,
 } from "lucide-react";
 import { uploadDocument } from "@/lib/api";
 import { Spinner } from "@/components/ui";
+import { CheatSheet } from "@/components/features/CheatSheet";
 import type { UploadedDocument } from "@/types";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -37,8 +38,9 @@ function FileIcon({ filename, className }: { filename: string; className?: strin
 }
 
 export function FileUpload({ onUploaded, documents, onRemove }: Props) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploading,       setUploading]       = useState(false);
+  const [error,           setError]           = useState<string | null>(null);
+  const [cheatSheetDoc,   setCheatSheetDoc]   = useState<UploadedDocument | null>(null);
 
   // Track preview URLs so we can revoke them when docs are removed (avoid memory leaks)
   const previewUrls = useRef<Map<string, string>>(new Map());
@@ -115,6 +117,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
   });
 
   return (
+    <>
     <div className="space-y-5">
       {/* ── Drop zone ── */}
       <div
@@ -205,17 +208,38 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
                     {doc.chunks} chunks · {doc.pages} {doc.pages === 1 ? "page" : "pages"} · {doc.uploadedAt.toLocaleTimeString()}
                   </p>
                 </div>
-                <button
-                  onClick={() => onRemove(doc.doc_id)}
-                  className="p-1 rounded-lg hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors shrink-0"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setCheatSheetDoc(doc)}
+                    title="Generate cheat sheet"
+                    className="p-1 rounded-lg hover:bg-brand-600/20 text-gray-600 hover:text-brand-400 transition-colors"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => onRemove(doc.doc_id)}
+                    className="p-1 rounded-lg hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       )}
     </div>
+
+    {/* Cheat Sheet modal */}
+    <AnimatePresence>
+      {cheatSheetDoc && (
+        <CheatSheet
+          docId={cheatSheetDoc.doc_id}
+          filename={cheatSheetDoc.filename}
+          onClose={() => setCheatSheetDoc(null)}
+        />
+      )}
+    </AnimatePresence>
+    </>
   );
 }

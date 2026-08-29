@@ -107,6 +107,14 @@ export async function deleteSavedAnswer(id: string): Promise<void> {
   await api.delete(`/api/saved-answers/${id}`);
 }
 
+// ── Cheat Sheet ───────────────────────────────────────────────────────────────
+/** POST /api/cheatsheet — returns an AbortController (streaming SSE).
+ *  Use streamPost from streamApi.ts to consume it; this just provides the type. */
+export interface CheatsheetRequest {
+  doc_id: string;
+  topic?: string;
+}
+
 // ── Share Links ───────────────────────────────────────────────────────────────
 export interface ShareOut {
   id: string;

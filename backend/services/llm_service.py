@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
@@ -96,8 +97,10 @@ async def chat(
     max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
+    used_model = model or default_model
+    t0 = time.monotonic()
     response = await client.chat.completions.create(
-        model=model or default_model,
+        model=used_model,
         temperature=temperature,
         max_tokens=max_tokens,
         messages=[
@@ -105,10 +108,23 @@ async def chat(
             {"role": "user",   "content": user},
         ],
     )
+    latency_ms = int((time.monotonic() - t0) * 1000)
     raw = response.choices[0].message.content or ""
     result = _clean_response(raw)
-    logger.info("chat() model=%s finish=%s raw=%d clean=%d",
-                model or default_model, response.choices[0].finish_reason, len(raw), len(result))
+    usage = response.usage
+    logger.info(
+        "llm_call",
+        extra={
+            "fn": "chat",
+            "model": used_model,
+            "finish": response.choices[0].finish_reason,
+            "prompt_tokens": usage.prompt_tokens if usage else 0,
+            "completion_tokens": usage.completion_tokens if usage else 0,
+            "latency_ms": latency_ms,
+        },
+    )
+    if latency_ms > 10_000:
+        logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, used_model)
     return result
 
 
@@ -119,6 +135,7 @@ async def chat_with_history(
     max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
+    t0 = time.monotonic()
     messages = [{"role": "system", "content": system}] + history
     response = await client.chat.completions.create(
         model=default_model,
@@ -126,10 +143,23 @@ async def chat_with_history(
         max_tokens=max_tokens,
         messages=messages,
     )
+    latency_ms = int((time.monotonic() - t0) * 1000)
     raw = response.choices[0].message.content or ""
     result = _clean_response(raw)
-    logger.info("chat_with_history() model=%s finish=%s raw=%d clean=%d",
-                default_model, response.choices[0].finish_reason, len(raw), len(result))
+    usage = response.usage
+    logger.info(
+        "llm_call",
+        extra={
+            "fn": "chat_with_history",
+            "model": default_model,
+            "finish": response.choices[0].finish_reason,
+            "prompt_tokens": usage.prompt_tokens if usage else 0,
+            "completion_tokens": usage.completion_tokens if usage else 0,
+            "latency_ms": latency_ms,
+        },
+    )
+    if latency_ms > 10_000:
+        logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, default_model)
     return result
 
 
