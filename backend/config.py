@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # Max LLM-backed requests per minute per IP (free tier default)
     rate_limit_per_minute: int = 20
 
+    # ── Observability ─────────────────────────────────────────────────────────
+    # Set SENTRY_DSN to enable Sentry error tracking in production.
+    # Leave empty (default) to disable Sentry — no errors, no traces sent.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1   # 10% of requests traced
+
     # ── Chunk tuning ──────────────────────────────────────────────────────────
     chunk_size: int = 800
     chunk_overlap: int = 120
