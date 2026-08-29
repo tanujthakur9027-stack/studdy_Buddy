@@ -1,12 +1,9 @@
 """
-/api/upload — ingest a PDF or TXT file into the vector stores.
+/api/upload — ingest a document into the vector stores.
 
-Changes vs the original /upload route:
-- Mounted at /api/upload (prefix added in main.py).
-- Passes raw file_bytes directly to process_and_index (no disk read needed for parsing).
-- Returns extended IngestionStats: pages, chars, tokens, parser_used.
+Supported formats: PDF, TXT, MD, DOC, DOCX, PPT, PPTX, XLSX, PNG, JPG, JPEG, WEBP, BIN.
 - Validates content-type AND file extension for defence-in-depth.
-- Rejects encrypted / zero-text PDFs with a clear 422 error.
+- Returns extended IngestionStats including an auto-generated description.
 """
 from __future__ import annotations
 
@@ -23,18 +20,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 
-# Accept both the MIME type the browser sends and common mis-labelled types
+# Accept all MIME types the browser may send for supported formats
 ALLOWED_MIME: set[str] = {
     "application/pdf",
     "text/plain",
     "text/markdown",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    # Some browsers / OS upload PDFs as octet-stream
+    # PowerPoint
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    # Excel
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    # Images
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    # Generic binary (some browsers send this for any file)
     "application/octet-stream",
 }
 
-ALLOWED_EXTENSIONS: set[str] = {".pdf", ".txt", ".md", ".doc", ".docx", ".bin"}
+ALLOWED_EXTENSIONS: set[str] = {
+    ".pdf", ".txt", ".md", ".doc", ".docx", ".bin",
+    ".ppt", ".pptx",
+    ".xlsx", ".xls",
+    ".png", ".jpg", ".jpeg", ".webp",
+}
 
 
 @router.post(
@@ -117,4 +129,5 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
         total_chars=stats.total_chars,
         total_tokens=stats.total_tokens,
         parser_used=stats.parser_used,
+        description=stats.description,
     )

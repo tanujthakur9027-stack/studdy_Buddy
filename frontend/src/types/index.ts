@@ -4,7 +4,11 @@ export interface UploadedDocument {
   doc_id: string;
   filename: string;
   chunks: number;
+  pages: number;
+  parser_used: string;
+  description: string;
   uploadedAt: Date;
+  previewUrl?: string;   // object URL for image thumbnails (images only)
 }
 
 export interface ChatMessage {
