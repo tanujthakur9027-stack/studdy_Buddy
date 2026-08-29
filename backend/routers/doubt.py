@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import json
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from models.schemas import DoubtRequest, DoubtResponse
-from services.llm_service import chat_with_history
+from services.llm_service import chat_with_history, stream_chat_with_history
 from services.document_service import retrieve_context
 from utils.text_utils import strip_json_fences
 
@@ -69,7 +70,56 @@ async def solve_doubt(request: Request, req: DoubtRequest):
             follow_up_questions=data.get("follow_up_questions", []),
         )
     except json.JSONDecodeError:
-        # If model didn't return JSON, just return the raw text
         return DoubtResponse(answer=raw, sources=sources, follow_up_questions=[])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ── Streaming endpoint ─────────────────────────────────────────────────────────
+
+@router.post("/doubt/stream", tags=["Doubt Solver"])
+@limiter.limit("20/minute")
+async def stream_doubt(request: Request, req: DoubtRequest) -> StreamingResponse:
+    """Stream the doubt answer token-by-token via SSE."""
+    context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5)
+    sources_list = list({
+        doc.metadata.get("filename", "document")
+        for doc in context_docs
+        if doc.metadata.get("filename")
+    })
+    context_text = "\n\n---\n\n".join(doc.page_content for doc in context_docs)
+
+    history: list[dict] = []
+    if req.conversation_history:
+        for turn in req.conversation_history[-6:]:
+            history.append({"role": turn.role, "content": turn.content})
+
+    context_block = f"\n\nRelevant context from the student's documents:\n{context_text}\n\n" if context_text else ""
+    history.append({"role": "user", "content": (
+        f"{context_block}Student's question: {req.question}\n\n"
+        "Answer in clear Markdown."
+    )})
+
+    async def event_stream():
+        try:
+            async for token in stream_chat_with_history(
+                system=SYSTEM_PROMPT,
+                history=history,
+                temperature=0.65,
+                max_tokens=1500,
+            ):
+                safe = token.replace("\n", "\\n")
+                yield f"data: {safe}\n\n"
+        except Exception as exc:
+            yield f"data: [ERROR] {exc}\n\n"
+            return
+
+        meta = {"sources": sources_list}
+        yield f"data: [SOURCES]{json.dumps(meta)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

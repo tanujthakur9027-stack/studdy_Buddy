@@ -1,8 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lightbulb, Sparkles, BookOpen, ChevronDown, ChevronUp, Send, Volume2, VolumeX, RotateCcw } from "lucide-react";
-import { explainTopic } from "@/lib/api";
+import {
+  Lightbulb, Sparkles, BookOpen, ChevronDown, ChevronUp,
+  Send, Volume2, VolumeX, RotateCcw,
+} from "lucide-react";
+import { streamPost } from "@/lib/streamApi";
 import { Spinner, Badge } from "@/components/ui";
 import { useSpeech } from "@/hooks/useSpeech";
 import ReactMarkdown from "react-markdown";
@@ -25,25 +28,59 @@ const SAMPLE_TOPICS = [
 ];
 
 export function ExplainModule({ docId }: Props) {
-  const [topic, setTopic] = useState("");
-  const [level, setLevel] = useState<"eli5" | "beginner" | "intermediate">("eli5");
-  const [result, setResult] = useState<{ explanation: string; analogy: string; key_points: string[] } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [showPoints, setShowPoints] = useState(true);
+  const [topic,       setTopic]       = useState("");
+  const [level,       setLevel]       = useState<"eli5" | "beginner" | "intermediate">("eli5");
+  const [streamText,  setStreamText]  = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [showPoints,  setShowPoints]  = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
+
   const { speak, stop, speaking, isSupported: ttsSupported } = useSpeech();
 
-  const handleExplain = async () => {
+  // Cancel stream on unmount
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  const handleExplain = () => {
     if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+
+    // Cancel any in-flight stream
+    abortRef.current?.abort();
+
+    setStreamText("");
     setLoading(true);
-    setResult(null);
-    try {
-      const data = await explainTopic({ topic: topic.trim(), doc_id: docId, level });
-      setResult(data);
-    } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Explanation failed");
-    }
-    setLoading(false);
+
+    abortRef.current = streamPost(
+      "/api/explain/stream",
+      { topic: topic.trim(), doc_id: docId ?? null, level },
+      {
+        onToken: (token) => setStreamText((prev) => prev + token),
+        onDone: () => setLoading(false),
+        onError: (err) => {
+          if (!err.includes("AbortError")) {
+            toast.error(err || "Explanation failed");
+          }
+          setLoading(false);
+        },
+      },
+    );
   };
+
+  // Derive analogy + key_points sections from the streamed Markdown
+  const analogyMatch  = streamText.match(/Think of it like:([\s\S]*?)(?:\n\*\*Key Points|$)/i);
+  const keyPointsMatch = streamText.match(/\*\*Key Points:\*\*([\s\S]*?)$/i);
+  const analogy   = analogyMatch?.[1]?.trim();
+  const keyPoints = keyPointsMatch?.[1]
+    ?.split("\n")
+    .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+    .filter(Boolean);
+
+  // Main explanation: everything before the analogy line (or full text if not yet reached)
+  const explanationEndIdx = streamText.search(/Think of it like:/i);
+  const explanation = explanationEndIdx > 0
+    ? streamText.slice(0, explanationEndIdx).trim()
+    : streamText;
+
+  const hasResult = streamText.length > 0;
 
   return (
     <div className="space-y-6">
@@ -113,7 +150,7 @@ export function ExplainModule({ docId }: Props) {
 
       {/* Result */}
       <AnimatePresence mode="wait">
-        {loading && (
+        {loading && !hasResult && (
           <motion.div
             key="loading"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -124,13 +161,13 @@ export function ExplainModule({ docId }: Props) {
           </motion.div>
         )}
 
-        {result && !loading && (
+        {hasResult && (
           <motion.div
             key="result"
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
-            {/* Main Explanation */}
+            {/* Main Explanation (streaming) */}
             <div className="glass-card p-6">
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <Sparkles className="h-4 w-4 text-brand-400" />
@@ -151,7 +188,7 @@ export function ExplainModule({ docId }: Props) {
                   {/* Read Aloud */}
                   {ttsSupported && (
                     <button
-                      onClick={() => speaking ? stop() : speak(result.explanation)}
+                      onClick={() => speaking ? stop() : speak(streamText)}
                       title={speaking ? "Stop reading" : "Read aloud"}
                       className={`p-1.5 rounded-lg transition-colors ${speaking ? "text-brand-400 bg-brand-500/10" : "text-gray-500 hover:text-brand-400 hover:bg-gray-800"}`}
                     >
@@ -161,12 +198,14 @@ export function ExplainModule({ docId }: Props) {
                 </div>
               </div>
               <div className="prose prose-invert prose-sm max-w-none text-gray-200 leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.explanation}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {explanation + (loading ? " ▍" : "")}
+                </ReactMarkdown>
               </div>
             </div>
 
             {/* Analogy */}
-            {result.analogy && (
+            {analogy && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}
                 className="p-5 rounded-2xl bg-amber-500/8 border border-amber-500/20"
@@ -175,12 +214,14 @@ export function ExplainModule({ docId }: Props) {
                   <span className="text-xl">💡</span>
                   <span className="text-sm font-semibold text-amber-400">Think of it this way…</span>
                 </div>
-                <p className="text-gray-300 text-sm leading-relaxed italic">{result.analogy}</p>
+                <p className="text-gray-300 text-sm leading-relaxed italic">
+                  {analogy}{loading && !keyPoints?.length ? " ▍" : ""}
+                </p>
               </motion.div>
             )}
 
             {/* Key Points */}
-            {result.key_points?.length > 0 && (
+            {keyPoints && keyPoints.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
                 className="glass-card overflow-hidden"
@@ -192,7 +233,7 @@ export function ExplainModule({ docId }: Props) {
                   <div className="flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-green-400" />
                     <span className="text-sm font-semibold text-gray-200">
-                      Key Points ({result.key_points.length})
+                      Key Points ({keyPoints.length})
                     </span>
                   </div>
                   {showPoints ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
@@ -204,12 +245,12 @@ export function ExplainModule({ docId }: Props) {
                       className="overflow-hidden"
                     >
                       <div className="px-5 pb-5 space-y-2 border-t border-gray-800">
-                        {result.key_points.map((pt, i) => (
+                        {keyPoints.map((pt, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-gray-300 pt-2">
                             <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-green-500/15 text-green-400 text-xs flex items-center justify-center font-bold">
                               {i + 1}
                             </span>
-                            {pt}
+                            {pt}{loading && i === keyPoints.length - 1 ? " ▍" : ""}
                           </li>
                         ))}
                       </div>
