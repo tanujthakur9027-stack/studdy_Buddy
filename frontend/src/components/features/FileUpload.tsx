@@ -44,10 +44,11 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
     onDrop,
     accept: {
       "application/pdf":   [".pdf"],
-      "text/plain":        [".txt"],
+      "text/plain":        [".txt", ".bin"],
       "text/markdown":     [".md"],
       "application/msword": [".doc"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "application/octet-stream": [".bin"],
     },
     maxSize: 20 * 1024 * 1024,
     disabled: uploading,
@@ -81,7 +82,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
           <p className="text-base font-semibold text-gray-200">
             {isDragActive ? "Drop files here" : "Drag & drop your notes or syllabus"}
           </p>
-          <p className="text-sm text-gray-500 mt-1">PDF, TXT, MD, DOC, DOCX — up to 20 MB each</p>
+          <p className="text-sm text-gray-500 mt-1">PDF, TXT, MD, DOC, DOCX, BIN — up to 20 MB each</p>
         </div>
         <motion.button
           whileHover={{ scale: 1.03 }}

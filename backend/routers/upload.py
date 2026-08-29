@@ -34,7 +34,7 @@ ALLOWED_MIME: set[str] = {
     "application/octet-stream",
 }
 
-ALLOWED_EXTENSIONS: set[str] = {".pdf", ".txt", ".md", ".doc", ".docx"}
+ALLOWED_EXTENSIONS: set[str] = {".pdf", ".txt", ".md", ".doc", ".docx", ".bin"}
 
 
 @router.post(
