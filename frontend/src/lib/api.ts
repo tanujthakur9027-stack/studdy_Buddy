@@ -1,5 +1,25 @@
 import axios from "axios";
 
+// ── Chat History ──────────────────────────────────────────────────────────────
+export interface ChatSessionEntry {
+  id: string;
+  title: string;
+  doc_id: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface ChatMessageEntry {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources_json: string;   // raw JSON — parse with JSON.parse()
+  mode: string;
+  created_at: string;
+}
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const api = axios.create({
@@ -85,6 +105,43 @@ export async function saveAnswer(question: string, answer: string): Promise<{ id
 
 export async function deleteSavedAnswer(id: string): Promise<void> {
   await api.delete(`/api/saved-answers/${id}`);
+}
+
+export async function fetchChatSessions(): Promise<ChatSessionEntry[]> {
+  const { data } = await api.get("/api/chats");
+  return data;
+}
+
+export async function createChatSession(title = "New Chat", docId?: string): Promise<ChatSessionEntry> {
+  const { data } = await api.post("/api/chats", { title, doc_id: docId ?? null });
+  return data;
+}
+
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  await api.delete(`/api/chats/${sessionId}`);
+}
+
+export async function fetchChatMessages(sessionId: string): Promise<ChatMessageEntry[]> {
+  const { data } = await api.get(`/api/chats/${sessionId}/messages`);
+  return data;
+}
+
+export async function appendChatMessage(
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string,
+  sourcesJson = "[]",
+  mode = "standard",
+): Promise<ChatMessageEntry> {
+  const { data } = await api.post(`/api/chats/${sessionId}/messages`, {
+    role, content, sources_json: sourcesJson, mode,
+  });
+  return data;
+}
+
+export async function renameChatSession(sessionId: string, title: string): Promise<ChatSessionEntry> {
+  const { data } = await api.patch(`/api/chats/${sessionId}/title`, { title });
+  return data;
 }
 
 // ── Explain Like I'm 10 ──────────────────────────────────────────────────────
