@@ -6,9 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, Play, RotateCcw, ChevronRight, Trophy,
   HelpCircle, Star, Target, Clock, CheckCircle2,
-  XCircle, Lightbulb, Flame, History, Trash2,
+  XCircle, Lightbulb, Flame, History, Trash2, Share2, Copy, CheckCheck,
 } from "lucide-react";
-import { generateQuiz, submitQuizResult } from "@/lib/api";
+import { generateQuiz, submitQuizResult, createShareLink } from "@/lib/api";
 import type { QuizQuestion, QuizSubmitResponse } from "@/lib/api";
 import { Spinner, ProgressBar, Badge } from "@/components/ui";
 import { QuizTimer } from "@/components/ui/QuizTimer";
@@ -59,6 +59,69 @@ const GRADE_META: Record<string, { label: string; bg: string; text: string }> = 
 interface Props { docId?: string }
 
 type Phase = "config" | "countdown" | "playing" | "results";
+
+// ── Share Quiz Button ─────────────────────────────────────────────────────────
+
+function ShareQuizButton({
+  questions,
+  topic,
+  results,
+}: {
+  questions: QuizQuestion[];
+  topic: string;
+  results: QuizSubmitResponse;
+}) {
+  const [sharing,  setSharing]  = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copied,   setCopied]   = useState(false);
+
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      const BASE = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+      const res = await createShareLink(
+        "quiz",
+        { questions, topic, score: results.score, total: results.total, grade: results.grade },
+        `Quiz: ${topic || "General"} · ${results.score}/${results.total} (${results.grade})`,
+      );
+      const url = `${BASE}/share/${res.id}`;
+      setShareUrl(url);
+      await navigator.clipboard.writeText(url).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      import("react-hot-toast").then(({ default: toast }) => toast.error("Could not create share link"));
+    }
+    setSharing(false);
+  };
+
+  if (shareUrl) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/10 border border-green-500/25 text-green-400 text-xs flex-1 min-w-[130px]">
+        <CheckCheck className="h-4 w-4 shrink-0" />
+        <span className="truncate">{copied ? "Copied!" : shareUrl}</span>
+        <button
+          onClick={() => navigator.clipboard.writeText(shareUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
+          className="ml-auto shrink-0"
+          title="Copy link"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleShare}
+      disabled={sharing}
+      className="btn-secondary flex-1 justify-center min-w-[130px]"
+    >
+      {sharing ? <><span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /></> : <Share2 className="h-4 w-4" />}
+      Share
+    </button>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -570,13 +633,18 @@ export function QuizGame({ docId }: Props) {
         )}
 
         {/* Actions */}
-        <div className="flex gap-3">
-          <button onClick={handleRestart} className="btn-secondary flex-1 justify-center">
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={handleRestart} className="btn-secondary flex-1 justify-center min-w-[130px]">
             <RotateCcw className="h-4 w-4" /> New Quiz
           </button>
-          <button onClick={() => setReviewMode(true)} className="btn-primary flex-1 justify-center">
+          <button onClick={() => setReviewMode(true)} className="btn-primary flex-1 justify-center min-w-[130px]">
             <HelpCircle className="h-4 w-4" /> Review Answers
           </button>
+          <ShareQuizButton
+            questions={questions}
+            topic={quizTopic}
+            results={results}
+          />
         </div>
       </motion.div>
     );
