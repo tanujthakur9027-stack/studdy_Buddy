@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lightbulb, Sparkles, BookOpen, ChevronDown, ChevronUp, Send } from "lucide-react";
+import { Lightbulb, Sparkles, BookOpen, ChevronDown, ChevronUp, Send, Volume2, VolumeX, RotateCcw } from "lucide-react";
 import { explainTopic } from "@/lib/api";
 import { Spinner, Badge } from "@/components/ui";
+import { useSpeech } from "@/hooks/useSpeech";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import toast from "react-hot-toast";
@@ -29,6 +30,7 @@ export function ExplainModule({ docId }: Props) {
   const [result, setResult] = useState<{ explanation: string; analogy: string; key_points: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPoints, setShowPoints] = useState(true);
+  const { speak, stop, speaking, isSupported: ttsSupported } = useSpeech();
 
   const handleExplain = async () => {
     if (!topic.trim()) { toast.error("Please enter a topic"); return; }
@@ -130,12 +132,33 @@ export function ExplainModule({ docId }: Props) {
           >
             {/* Main Explanation */}
             <div className="glass-card p-6">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <Sparkles className="h-4 w-4 text-brand-400" />
                 <span className="text-xs font-semibold text-brand-400 uppercase tracking-widest">
                   {LEVEL_CONFIG[level].label} Explanation
                 </span>
                 <Badge variant={LEVEL_CONFIG[level].color}>{LEVEL_CONFIG[level].emoji} {level.toUpperCase()}</Badge>
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* Regenerate */}
+                  <button
+                    onClick={handleExplain}
+                    disabled={loading}
+                    title="Regenerate explanation"
+                    className="p-1.5 rounded-lg text-gray-500 hover:text-brand-400 hover:bg-gray-800 transition-colors"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                  {/* Read Aloud */}
+                  {ttsSupported && (
+                    <button
+                      onClick={() => speaking ? stop() : speak(result.explanation)}
+                      title={speaking ? "Stop reading" : "Read aloud"}
+                      className={`p-1.5 rounded-lg transition-colors ${speaking ? "text-brand-400 bg-brand-500/10" : "text-gray-500 hover:text-brand-400 hover:bg-gray-800"}`}
+                    >
+                      {speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="prose prose-invert prose-sm max-w-none text-gray-200 leading-relaxed">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.explanation}</ReactMarkdown>
