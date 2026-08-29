@@ -20,6 +20,17 @@ export interface ChatMessage {
   followUpQuestions?: string[];
   mode?: "standard" | "eli5";
   timestamp: Date;
+  /** DB-persisted message id (set after the API saves it) */
+  dbId?: string;
+}
+
+/** Lightweight session summary shown in the sidebar */
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  doc_id: string | null;
+  updated_at: string;
+  message_count: number;
 }
 
 export type AppTab = "upload" | "explain" | "quiz" | "planner" | "doubt";

@@ -6,6 +6,8 @@ Tables:
   - quiz_sessions: quiz questions stored so submit works after server restart
   - quiz_results : completed quiz scores for history / progress tracking
   - saved_answers: bookmarked Q&A pairs from the Doubt Solver
+  - chat_sessions: named conversation sessions for the Doubt Solver
+  - chat_messages: individual messages inside a chat session
 """
 from __future__ import annotations
 
@@ -88,3 +90,39 @@ class SavedAnswer(Base):
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ── Chat sessions (Doubt Solver conversations) ────────────────────────────────
+
+class ChatSession(Base):
+    """A named conversation session in the Doubt Solver."""
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(255), default="New Chat")
+    doc_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.created_at",
+    )
+
+
+class ChatMessage(Base):
+    """A single user or assistant message inside a ChatSession."""
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))          # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text)
+    sources_json: Mapped[str] = mapped_column(Text, default="[]")   # JSON list[SourceChunk]
+    mode: Mapped[str] = mapped_column(String(16), default="standard")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    session: Mapped["ChatSession"] = relationship(back_populates="messages")

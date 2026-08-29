@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from config import get_settings
 from database import init_db
 from routers import ask, doubt, explain, quiz, revision, upload
+from routers.chat import router as chat_router
 from routers.documents import router as documents_router
 
 logging.basicConfig(
@@ -90,6 +91,7 @@ app.include_router(revision.router,    prefix="/api")
 app.include_router(explain.router,     prefix="/api")
 app.include_router(doubt.router,       prefix="/api")
 app.include_router(documents_router,   prefix="/api")
+app.include_router(chat_router,        prefix="/api")
 
 # ── Legacy / unversioned routers (backwards compatibility) ────────────────────
 app.include_router(quiz.router)
@@ -135,6 +137,8 @@ async def root():
             "doubt":          "POST /api/doubt/solve",
             "documents":      "GET  /api/documents",
             "saved_answers":  "GET  /api/saved-answers",
+            "chats":          "GET  /api/chats",
+            "chat_messages":  "GET  /api/chats/{id}/messages",
             "docs":           "GET  /docs",
         },
     }
