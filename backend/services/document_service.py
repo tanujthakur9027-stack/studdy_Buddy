@@ -2,8 +2,8 @@
 Document ingestion service
 ==========================
 Responsibilities
-- Parse PDF files with pdfplumber (primary) and PyPDF2 (fallback).
-- Parse plain-text files directly.
+- Parse PDF (pdfplumber → PyPDF2 fallback), TXT/MD, DOCX/DOC, PPT/PPTX, XLSX/XLS, images (OCR).
+- Generate a short auto-description from the first ~500 chars of extracted text.
 - Chunk text with LangChain's RecursiveCharacterTextSplitter.
 - Maintain TWO vector stores per document:
     1. ChromaDB  – persisted to disk, survives restarts, used for cross-session search.
@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import textwrap
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -36,8 +37,6 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # ── Singleton embeddings (fastembed ONNX — no PyTorch, no API key required) ───
-# BAAI/bge-small-en-v1.5: 384-dim, ~24 MB model, downloads once on first run.
-# Docker image stays ~200 MB (vs ~900 MB with sentence-transformers + PyTorch).
 _embeddings: Optional[FastEmbedEmbeddings] = None
 
 
@@ -49,10 +48,7 @@ def get_embeddings() -> FastEmbedEmbeddings:
 
 
 # ── In-process FAISS registry  ────────────────────────────────────────────────
-# Maps doc_id → FAISS index for that document (in-memory, per process).
-# ⚠️  IN-MEMORY ONLY — requires --workers 1 (see render.yaml / Dockerfile CMD)
 _faiss_registry: dict[str, FAISS] = {}
-# Global FAISS index that merges ALL documents for cross-doc queries.
 _faiss_global: Optional[FAISS] = None
 
 
@@ -76,16 +72,10 @@ def get_chroma(collection: str = "studybuddy") -> Chroma:
 # ── PDF parsing ───────────────────────────────────────────────────────────────
 
 def _extract_pdf_pdfplumber(file_bytes: bytes) -> list[tuple[int, str]]:
-    """
-    Primary PDF extractor using pdfplumber.
-    Returns list of (page_number, text) tuples (1-indexed).
-    Raises on complete failure.
-    """
     pages: list[tuple[int, str]] = []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
             raw = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
-            # Also pull text from any tables on the page
             tables = page.extract_tables() or []
             table_text = ""
             for table in tables:
@@ -98,10 +88,6 @@ def _extract_pdf_pdfplumber(file_bytes: bytes) -> list[tuple[int, str]]:
 
 
 def _extract_pdf_pypdf2(file_bytes: bytes) -> list[tuple[int, str]]:
-    """
-    Fallback PDF extractor using PyPDF2.
-    Returns list of (page_number, text) tuples (1-indexed).
-    """
     pages: list[tuple[int, str]] = []
     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
     for i, page in enumerate(reader.pages, start=1):
@@ -111,10 +97,6 @@ def _extract_pdf_pypdf2(file_bytes: bytes) -> list[tuple[int, str]]:
 
 
 def extract_pdf_pages(file_bytes: bytes, filename: str) -> tuple[list[tuple[int, str]], str]:
-    """
-    Try pdfplumber first; fall back to PyPDF2 if pdfplumber produces empty output
-    or raises. Returns (pages, parser_name) so the caller gets both in one pass.
-    """
     try:
         pages = _extract_pdf_pdfplumber(file_bytes)
         total_chars = sum(len(t) for _, t in pages)
@@ -131,18 +113,17 @@ def extract_pdf_pages(file_bytes: bytes, filename: str) -> tuple[list[tuple[int,
     return pages, "PyPDF2"
 
 
+# ── Plain-text / Markdown parsing ─────────────────────────────────────────────
+
 def _strip_md_frontmatter(text: str) -> str:
-    """Remove YAML frontmatter (--- ... ---) from markdown content."""
     return re.sub(r"^---\s*\n.*?\n---\s*\n", "", text, flags=re.DOTALL)
 
 
 def extract_txt(file_bytes: bytes, is_markdown: bool = False) -> list[tuple[int, str]]:
-    """Parse plain-text or markdown. Splits on double-newlines to form logical 'pages'."""
     raw = file_bytes.decode("utf-8", errors="replace")
     if is_markdown:
         raw = _strip_md_frontmatter(raw)
     segments = [s.strip() for s in re.split(r"\n{2,}", raw) if s.strip()]
-    # Group segments into pseudo-pages of ~1 500 chars each
     pages: list[tuple[int, str]] = []
     page_num = 1
     current: list[str] = []
@@ -157,6 +138,98 @@ def extract_txt(file_bytes: bytes, is_markdown: bool = False) -> list[tuple[int,
     if current:
         pages.append((page_num, clean_text("\n\n".join(current))))
     return pages
+
+
+# ── PowerPoint parsing ────────────────────────────────────────────────────────
+
+def extract_pptx(file_bytes: bytes) -> list[tuple[int, str]]:
+    """Extract text from each slide of a PPT/PPTX file."""
+    from pptx import Presentation  # lazy import
+
+    prs = Presentation(io.BytesIO(file_bytes))
+    pages: list[tuple[int, str]] = []
+    for i, slide in enumerate(prs.slides, start=1):
+        parts: list[str] = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    line = " ".join(run.text for run in para.runs).strip()
+                    if line:
+                        parts.append(line)
+            # Also pull table cell text
+            if shape.has_table:
+                for row in shape.table.rows:
+                    cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if cells:
+                        parts.append("  |  ".join(cells))
+        text = clean_text("\n".join(parts))
+        if text:
+            pages.append((i, text))
+    return pages
+
+
+# ── Excel parsing ─────────────────────────────────────────────────────────────
+
+def extract_xlsx(file_bytes: bytes) -> list[tuple[int, str]]:
+    """Extract text from all sheets of an XLSX/XLS workbook."""
+    import openpyxl  # lazy import
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    pages: list[tuple[int, str]] = []
+    for sheet_num, sheet in enumerate(wb.worksheets, start=1):
+        rows: list[str] = []
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+            if cells:
+                rows.append("  |  ".join(cells))
+        text = clean_text("\n".join(rows))
+        if text:
+            pages.append((sheet_num, f"[Sheet: {sheet.title}]\n{text}"))
+    wb.close()
+    return pages
+
+
+# ── Image OCR parsing ─────────────────────────────────────────────────────────
+
+def extract_image(file_bytes: bytes) -> list[tuple[int, str]]:
+    """Run Tesseract OCR on an image file and return extracted text as a single page."""
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(io.BytesIO(file_bytes))
+        raw = pytesseract.image_to_string(img)
+        text = clean_text(raw)
+        if text:
+            return [(1, text)]
+    except Exception as exc:
+        logger.warning("OCR extraction failed: %s", exc)
+    return []
+
+
+# ── Description generator ─────────────────────────────────────────────────────
+
+def generate_description(pages: list[tuple[int, str]], filename: str, parser_used: str) -> str:
+    """
+    Build a short human-readable description of the document from the first chunk of text.
+    Format: '<N> pages/slides/rows · <parser> · <first 120 chars of content>…'
+    """
+    total = len(pages)
+    # pick correct unit label
+    ext = Path(filename).suffix.lower()
+    if ext in (".ppt", ".pptx"):
+        unit = "slide" if total == 1 else "slides"
+    elif ext in (".xlsx", ".xls"):
+        unit = "sheet" if total == 1 else "sheets"
+    elif ext in (".png", ".jpg", ".jpeg", ".webp"):
+        unit = "image"
+    else:
+        unit = "page" if total == 1 else "pages"
+
+    # grab the first ~500 chars of combined text
+    combined = " ".join(t for _, t in pages[:3])
+    snippet = textwrap.shorten(combined, width=120, placeholder="…")
+
+    return f"{total} {unit} · parsed via {parser_used} · {snippet}"
 
 
 # ── Chunking ──────────────────────────────────────────────────────────────────
@@ -175,7 +248,6 @@ def pages_to_documents(
     doc_id: str,
     filename: str,
 ) -> list[Document]:
-    """Convert (page_num, text) pairs to LangChain Documents."""
     docs: list[Document] = []
     for page_num, text in pages:
         if not text.strip():
@@ -226,6 +298,7 @@ class IngestionStats:
         total_chars: int,
         total_tokens: int,
         parser_used: str,
+        description: str = "",
     ):
         self.doc_id = doc_id
         self.filename = filename
@@ -234,6 +307,7 @@ class IngestionStats:
         self.total_chars = total_chars
         self.total_tokens = total_tokens
         self.parser_used = parser_used
+        self.description = description
 
 
 async def process_and_index(
@@ -244,9 +318,10 @@ async def process_and_index(
 ) -> IngestionStats:
     """
     Full ingestion pipeline:
-    1. Extract text (PDF: pdfplumber → PyPDF2 fallback; TXT: direct; DOCX: Docx2txtLoader).
-    2. Convert to LangChain Documents, chunk, tag metadata.
-    3. Index into ChromaDB (persistent) AND FAISS (in-memory, per-doc + global).
+    1. Extract text based on file extension.
+    2. Generate a short description from the extracted text.
+    3. Convert to LangChain Documents, chunk, tag metadata.
+    4. Index into ChromaDB (persistent) AND FAISS (in-memory, per-doc + global).
     Returns IngestionStats for the response body.
     """
     global _faiss_global
@@ -256,7 +331,6 @@ async def process_and_index(
 
     # ── 1. Extract ────────────────────────────────────────────────────────────
     if ext == ".pdf":
-        # extract_pdf_pages returns (pages, parser_name) in one pass — no double extraction
         pages, parser_used = extract_pdf_pages(file_bytes, filename)
     elif ext in (".txt", ".bin"):
         pages = extract_txt(file_bytes, is_markdown=False)
@@ -265,36 +339,47 @@ async def process_and_index(
         pages = extract_txt(file_bytes, is_markdown=True)
         parser_used = "markdown"
     elif ext in (".docx", ".doc"):
-        # Docx2txtLoader needs a path on disk — file already saved
         loader = Docx2txtLoader(filepath)
         loaded = loader.load()
         pages = [(i + 1, clean_text(doc.page_content)) for i, doc in enumerate(loaded)]
         parser_used = "python-docx"
+    elif ext in (".pptx", ".ppt"):
+        pages = extract_pptx(file_bytes)
+        parser_used = "python-pptx"
+    elif ext in (".xlsx", ".xls"):
+        pages = extract_xlsx(file_bytes)
+        parser_used = "openpyxl"
+    elif ext in (".png", ".jpg", ".jpeg", ".webp"):
+        pages = extract_image(file_bytes)
+        parser_used = "tesseract-ocr"
     else:
         raise ValueError(f"Unsupported file extension: {ext}")
 
     if not pages or all(not t.strip() for _, t in pages):
         raise ValueError("No extractable text found in the uploaded file.")
 
-    # ── 2. Build Document objects & chunk ─────────────────────────────────────
+    # ── 2. Auto-description ───────────────────────────────────────────────────
+    description = generate_description(pages, filename, parser_used)
+
+    # ── 3. Build Document objects & chunk ─────────────────────────────────────
     raw_docs = pages_to_documents(pages, doc_id, filename)
     chunks = chunk_documents(raw_docs)
 
     total_chars = sum(len(c.page_content) for c in chunks)
     total_tokens = sum(c.metadata.get("token_count", 0) for c in chunks)
 
-    # ── 3a. ChromaDB (disk-persisted) ─────────────────────────────────────────
+    # ── 4a. ChromaDB (disk-persisted) ─────────────────────────────────────────
     Path(settings.chroma_persist_dir).mkdir(parents=True, exist_ok=True)
     chroma = get_chroma()
     chroma.add_documents(chunks)
 
-    # ── 3b. FAISS per-document in-memory index ────────────────────────────────
+    # ── 4b. FAISS per-document in-memory index ────────────────────────────────
     embeddings = get_embeddings()
     doc_faiss = FAISS.from_documents(chunks, embeddings)
     _faiss_registry[doc_id] = doc_faiss
     logger.info("[%s] FAISS per-doc index built (%d chunks)", filename, len(chunks))
 
-    # ── 3c. Merge into global FAISS index ─────────────────────────────────────
+    # ── 4c. Merge into global FAISS index ─────────────────────────────────────
     if _faiss_global is None:
         _faiss_global = FAISS.from_documents(chunks, embeddings)
     else:
@@ -309,6 +394,7 @@ async def process_and_index(
         total_chars=total_chars,
         total_tokens=total_tokens,
         parser_used=parser_used,
+        description=description,
     )
 
 
@@ -327,12 +413,9 @@ def retrieve_context(
     2. If doc_id is given but FAISS index is absent → fall back to global FAISS with metadata filter.
     3. If no doc_id → query global FAISS index.
     4. Final safety net → ChromaDB with optional metadata filter.
-
-    Results from multiple sources are merged and deduplicated by content hash.
     """
     results: list[Document] = []
 
-    # ── FAISS path ────────────────────────────────────────────────────────────
     if doc_id:
         per_doc = _get_faiss_for_doc(doc_id)
         if per_doc is not None:
@@ -354,7 +437,6 @@ def retrieve_context(
             except Exception as exc:
                 logger.warning("FAISS global search failed: %s", exc)
 
-    # ── ChromaDB safety net ───────────────────────────────────────────────────
     if not results:
         try:
             chroma = get_chroma()
@@ -364,7 +446,6 @@ def retrieve_context(
         except Exception as exc:
             logger.error("ChromaDB search also failed: %s", exc)
 
-    # ── Deduplicate by content ────────────────────────────────────────────────
     seen: set[int] = set()
     unique: list[Document] = []
     for doc in results:

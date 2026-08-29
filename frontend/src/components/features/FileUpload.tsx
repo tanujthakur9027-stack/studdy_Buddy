@@ -1,8 +1,11 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
-import { UploadCloud, FileText, X, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  UploadCloud, FileText, FileSpreadsheet, FileImage,
+  Presentation, X, CheckCircle2, AlertCircle,
+} from "lucide-react";
 import { uploadDocument } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import type { UploadedDocument } from "@/types";
@@ -15,9 +18,41 @@ interface Props {
   onRemove: (_docId: string) => void;
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
+
+function isImageFile(filename: string) {
+  return IMAGE_EXTS.has(filename.split(".").pop()?.toLowerCase() ?? "");
+}
+
+/** Returns the right icon component for a filename extension. */
+function FileIcon({ filename, className }: { filename: string; className?: string }) {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (["xlsx", "xls"].includes(ext))
+    return <FileSpreadsheet className={className} />;
+  if (["png", "jpg", "jpeg", "webp"].includes(ext))
+    return <FileImage className={className} />;
+  if (["ppt", "pptx"].includes(ext))
+    return <Presentation className={className} />;
+  return <FileText className={className} />;
+}
+
 export function FileUpload({ onUploaded, documents, onRemove }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Track preview URLs so we can revoke them when docs are removed (avoid memory leaks)
+  const previewUrls = useRef<Map<string, string>>(new Map());
+
+  // Revoke any object URLs for documents that have been removed
+  useEffect(() => {
+    const currentIds = new Set(documents.map((d) => d.doc_id));
+    previewUrls.current.forEach((url, id) => {
+      if (!currentIds.has(id)) {
+        URL.revokeObjectURL(url);
+        previewUrls.current.delete(id);
+      }
+    });
+  }, [documents]);
 
   const onDrop = useCallback(
     async (accepted: File[]) => {
@@ -25,12 +60,20 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
       setError(null);
       setUploading(true);
       for (const file of accepted) {
+        // Create a preview URL for images before uploading
+        const previewUrl = isImageFile(file.name)
+          ? URL.createObjectURL(file)
+          : undefined;
         try {
           const result = await uploadDocument(file);
-          onUploaded({ ...result, uploadedAt: new Date() });
+          if (previewUrl) previewUrls.current.set(result.doc_id, previewUrl);
+          onUploaded({ ...result, uploadedAt: new Date(), previewUrl });
           toast.success(`"${file.name}" uploaded — ${result.chunks} chunks indexed`);
         } catch (e: unknown) {
-          const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Upload failed";
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          const msg =
+            (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+            "Upload failed";
           setError(msg);
           toast.error(msg);
         }
@@ -43,11 +86,23 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "application/pdf":   [".pdf"],
-      "text/plain":        [".txt", ".bin"],
-      "text/markdown":     [".md"],
+      // Documents
+      "application/pdf": [".pdf"],
+      "text/plain": [".txt", ".bin"],
+      "text/markdown": [".md"],
       "application/msword": [".doc"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      // PowerPoint
+      "application/vnd.ms-powerpoint": [".ppt"],
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+      // Excel
+      "application/vnd.ms-excel": [".xls"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+      // Images (OCR)
+      "image/png": [".png"],
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/webp": [".webp"],
+      // Fallback for any mis-labelled file
       "application/octet-stream": [".bin"],
     },
     maxSize: 20 * 1024 * 1024,
@@ -61,6 +116,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
 
   return (
     <div className="space-y-5">
+      {/* ── Drop zone ── */}
       <div
         {...getRootProps()}
         className={clsx(
@@ -82,7 +138,9 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
           <p className="text-base font-semibold text-gray-200">
             {isDragActive ? "Drop files here" : "Drag & drop your notes or syllabus"}
           </p>
-          <p className="text-sm text-gray-500 mt-1">PDF, TXT, MD, DOC, DOCX, BIN — up to 20 MB each</p>
+          <p className="text-sm text-gray-500 mt-1">
+            PDF · TXT · MD · DOC · DOCX · PPT · PPTX · XLSX · PNG · JPG · WEBP — up to 20 MB
+          </p>
         </div>
         <motion.button
           whileHover={{ scale: 1.03 }}
@@ -94,6 +152,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
         </motion.button>
       </div>
 
+      {/* ── Error banner ── */}
       <AnimatePresence>
         {error && (
           <motion.div
@@ -108,6 +167,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
         )}
       </AnimatePresence>
 
+      {/* ── Indexed documents list ── */}
       {documents.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
@@ -120,17 +180,34 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
-                className="flex items-center gap-3 p-3 rounded-xl bg-gray-900 border border-gray-800"
+                className="flex items-start gap-3 p-3 rounded-xl bg-gray-900 border border-gray-800"
               >
-                <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
-                <FileText className="h-4 w-4 text-brand-400 shrink-0" />
+                <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+                {/* Thumbnail for images, icon for everything else */}
+                {doc.previewUrl ? (
+                  <img
+                    src={doc.previewUrl}
+                    alt={doc.filename}
+                    className="h-10 w-10 rounded-lg object-cover shrink-0 border border-gray-700"
+                  />
+                ) : (
+                  <FileIcon filename={doc.filename} className="h-4 w-4 text-brand-400 shrink-0 mt-0.5" />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-200 truncate">{doc.filename}</p>
-                  <p className="text-xs text-gray-500">{doc.chunks} chunks · {doc.uploadedAt.toLocaleTimeString()}</p>
+                  {/* Description line */}
+                  {doc.description && (
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+                      {doc.description}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {doc.chunks} chunks · {doc.pages} {doc.pages === 1 ? "page" : "pages"} · {doc.uploadedAt.toLocaleTimeString()}
+                  </p>
                 </div>
                 <button
                   onClick={() => onRemove(doc.doc_id)}
-                  className="p-1 rounded-lg hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+                  className="p-1 rounded-lg hover:bg-gray-700 text-gray-500 hover:text-gray-300 transition-colors shrink-0"
                 >
                   <X className="h-4 w-4" />
                 </button>

@@ -8,7 +8,14 @@ export const api = axios.create({
 });
 
 // ── Document Upload ──────────────────────────────────────────────────────────
-export async function uploadDocument(file: File): Promise<{ doc_id: string; filename: string; chunks: number }> {
+export async function uploadDocument(file: File): Promise<{
+  doc_id: string;
+  filename: string;
+  chunks: number;
+  pages: number;
+  parser_used: string;
+  description: string;
+}> {
   const form = new FormData();
   form.append("file", file);
   const { data } = await api.post("/api/upload", form, {

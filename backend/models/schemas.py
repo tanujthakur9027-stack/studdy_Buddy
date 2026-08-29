@@ -14,6 +14,7 @@ class UploadResponse(BaseModel):
     total_chars: int = 0
     total_tokens: int = 0
     parser_used: str = ""
+    description: str = ""   # short auto-generated summary shown in the UI
 
 
 # ── /api/ask ──────────────────────────────────────────────────────────────────
