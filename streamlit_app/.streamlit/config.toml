@@ -1,13 +1,13 @@
 [server]
-# Allow files up to 200 MB (matches backend MAX_FILE_SIZE_MB)
 maxUploadSize = 200
 
 [theme]
 base = "dark"
-primaryColor = "#6366f1"
-backgroundColor = "#0f172a"
-secondaryBackgroundColor = "#1e293b"
-textColor = "#f1f5f9"
+primaryColor       = "#6366f1"
+backgroundColor    = "#09090b"
+secondaryBackgroundColor = "#18181b"
+textColor          = "#fafafa"
+font               = "sans serif"
 
 [browser]
 gatherUsageStats = false
