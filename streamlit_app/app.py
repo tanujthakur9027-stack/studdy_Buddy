@@ -160,19 +160,275 @@ def _ensure_backend() -> bool:
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="StudyBuddy AI",
-    page_icon="🎓",
+    page_icon="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# ── Global CSS — Vercel-style SaaS dark theme ─────────────────────────────────
 st.markdown("""
 <style>
-  .block-container { max-width: 960px; padding-top: 1.5rem; }
-  .streamlit-expanderHeader { font-weight: 600; }
-  .source-chip {
-      display: inline-block; background: #1e293b; border: 1px solid #334155;
-      border-radius: 6px; padding: 2px 8px; font-size: 12px; color: #94a3b8; margin: 2px;
-  }
+/* ── Reset & base ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* ── App shell ─────────────────────────────────────────────────────────────── */
+.stApp { background: #09090b; }
+.block-container {
+  max-width: 980px !important;
+  padding: 2rem 2rem 4rem !important;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+  background: #09090b !important;
+  border-right: 1px solid #27272a !important;
+}
+[data-testid="stSidebar"] > div { padding: 1.5rem 1rem; }
+
+/* ── Tab bar — clean pill style ────────────────────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  background: transparent !important;
+  border-bottom: 1px solid #27272a !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  color: #71717a !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 10px 16px !important;
+  margin-bottom: -1px !important;
+  transition: color .15s, border-color .15s !important;
+  white-space: nowrap !important;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+  color: #fafafa !important;
+  border-bottom-color: #6366f1 !important;
+  background: transparent !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+  color: #d4d4d8 !important;
+  background: transparent !important;
+}
+
+/* ── Cards / containers ────────────────────────────────────────────────────── */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+  border-radius: 12px;
+}
+div[data-testid="stForm"] {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 1.5rem !important;
+}
+
+/* ── Expander ──────────────────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
+  border-radius: 10px !important;
+}
+[data-testid="stExpander"] summary {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #d4d4d8 !important;
+}
+.streamlit-expanderHeader { font-weight: 600; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+[data-testid="baseButton-primary"] {
+  background: #6366f1 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 8px 20px !important;
+  transition: background .15s, opacity .15s !important;
+}
+[data-testid="baseButton-primary"]:hover { background: #4f46e5 !important; }
+[data-testid="baseButton-secondary"] {
+  background: #27272a !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 8px !important;
+  color: #d4d4d8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 8px 16px !important;
+}
+[data-testid="baseButton-secondary"]:hover {
+  background: #3f3f46 !important;
+  border-color: #52525b !important;
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────────────── */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-baseweb="select"] {
+  background: #18181b !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 8px !important;
+  color: #fafafa !important;
+  font-size: 14px !important;
+}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99,102,241,.2) !important;
+}
+
+/* ── Chat ──────────────────────────────────────────────────────────────────── */
+[data-testid="stChatMessage"] {
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
+  border-radius: 12px !important;
+  padding: 1rem 1.25rem !important;
+  margin-bottom: .75rem !important;
+}
+
+/* ── Metrics ───────────────────────────────────────────────────────────────── */
+[data-testid="stMetric"] {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: .75rem 1rem;
+}
+[data-testid="stMetricLabel"] { color: #71717a !important; font-size: 12px !important; }
+[data-testid="stMetricValue"] { color: #fafafa !important; font-size: 22px !important; font-weight: 700 !important; }
+
+/* ── Divider ───────────────────────────────────────────────────────────────── */
+hr { border-color: #27272a !important; margin: 1.5rem 0 !important; }
+
+/* ── Source chips ──────────────────────────────────────────────────────────── */
+.src-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #27272a; border: 1px solid #3f3f46;
+  border-radius: 6px; padding: 3px 10px;
+  font-size: 11px; color: #a1a1aa; margin: 2px;
+  font-family: 'Inter', monospace;
+}
+
+/* ── Section headings ──────────────────────────────────────────────────────── */
+.sb-heading {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: #fafafa !important;
+  margin-bottom: .25rem !important;
+  letter-spacing: -.3px;
+}
+.sb-sub {
+  font-size: 13px !important;
+  color: #71717a !important;
+  margin-bottom: 1.5rem !important;
+}
+
+/* ── Sidebar logo area ─────────────────────────────────────────────────────── */
+.sb-logo {
+  display: flex; align-items: center; gap: 10px;
+  padding: .5rem 0 1rem 0; margin-bottom: .5rem;
+}
+.sb-logo-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sb-logo-text { font-size: 16px; font-weight: 700; color: #fafafa; }
+.sb-logo-badge {
+  font-size: 10px; font-weight: 600; color: #a78bfa;
+  background: rgba(167,139,250,.12); border: 1px solid rgba(167,139,250,.3);
+  border-radius: 4px; padding: 1px 6px; margin-left: 2px;
+}
+
+/* ── Status badge ──────────────────────────────────────────────────────────── */
+.status-ok   { color: #22c55e; font-size: 12px; font-weight: 600; }
+.status-warn { color: #f59e0b; font-size: 12px; font-weight: 600; }
+
+/* ── Upload drop zone ──────────────────────────────────────────────────────── */
+[data-testid="stFileUploader"] {
+  background: #18181b !important;
+  border: 1.5px dashed #3f3f46 !important;
+  border-radius: 12px !important;
+  padding: .75rem !important;
+  transition: border-color .2s !important;
+}
+[data-testid="stFileUploader"]:hover {
+  border-color: #6366f1 !important;
+}
+
+/* ── Progress bar ──────────────────────────────────────────────────────────── */
+[data-testid="stProgressBar"] > div > div {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6) !important;
+  border-radius: 99px !important;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+[data-testid="stSpinner"] { color: #6366f1 !important; }
+
+/* ── Selectbox ─────────────────────────────────────────────────────────────── */
+[data-baseweb="select"] > div {
+  background: #18181b !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 8px !important;
+}
+
+/* ── Alert boxes ───────────────────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+  border-radius: 10px !important;
+  border-left-width: 3px !important;
+}
+
+/* ── Slider ────────────────────────────────────────────────────────────────── */
+[data-testid="stSlider"] [data-baseweb="slider"] [data-baseweb="slider-track"] {
+  background: #3f3f46 !important;
+}
+
+/* ── Dataframe ─────────────────────────────────────────────────────────────── */
+[data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
+
+/* ── Radio buttons ─────────────────────────────────────────────────────────── */
+[data-testid="stRadio"] label { font-size: 13px !important; color: #d4d4d8 !important; }
+
+/* ── Sidebar nav label ─────────────────────────────────────────────────────── */
+.sb-nav-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  color: #52525b; text-transform: uppercase; padding: .5rem .25rem .25rem;
+}
+
+/* ── Doc card ──────────────────────────────────────────────────────────────── */
+.doc-card {
+  background: #18181b; border: 1px solid #27272a; border-radius: 10px;
+  padding: .875rem 1rem; margin-bottom: .5rem;
+  transition: border-color .15s;
+}
+.doc-card:hover { border-color: #3f3f46; }
+.doc-name  { font-size: 14px; font-weight: 600; color: #fafafa; }
+.doc-meta  { font-size: 12px; color: #71717a; margin-top: 2px; }
+.doc-desc  { font-size: 12px; color: #a1a1aa; margin-top: 4px; line-height: 1.5; }
+
+/* ── Grade badge ───────────────────────────────────────────────────────────── */
+.grade-s { color: #a78bfa; font-size: 48px; font-weight: 800; }
+.grade-a { color: #22c55e; font-size: 48px; font-weight: 800; }
+.grade-b { color: #3b82f6; font-size: 48px; font-weight: 800; }
+.grade-c { color: #f59e0b; font-size: 48px; font-weight: 800; }
+.grade-d { color: #ef4444; font-size: 48px; font-weight: 800; }
+
+/* ── Flip card ─────────────────────────────────────────────────────────────── */
+.flip-card {
+  background: #18181b; border: 1px solid #27272a; border-radius: 14px;
+  padding: 2rem 1.5rem; min-height: 160px; text-align: center;
+}
+.flip-q  { font-size: 18px; font-weight: 600; color: #d4d4d8; margin-bottom: 1rem; }
+.flip-a  { font-size: 16px; color: #a1a1aa; }
+.flip-hint { font-size: 12px; color: #52525b; margin-top: .75rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -237,57 +493,95 @@ def _invalidate_docs():
 
 def sidebar():
     with st.sidebar:
-        st.markdown("## 🎓 StudyBuddy AI")
-        st.caption("All-in-one AI study assistant")
-        st.divider()
+        # ── Logo ──────────────────────────────────────────────────────────────
+        st.markdown("""
+<div class="sb-logo">
+  <div class="sb-logo-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+         xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 3L2 9l10 6 10-6-10-6z" stroke="white" stroke-width="1.8"
+            stroke-linejoin="round"/>
+      <path d="M2 17l10 6 10-6" stroke="white" stroke-width="1.8"
+            stroke-linejoin="round"/>
+      <path d="M2 13l10 6 10-6" stroke="white" stroke-width="1.8"
+            stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <span class="sb-logo-text">StudyBuddy</span>
+  <span class="sb-logo-badge">AI</span>
+</div>""", unsafe_allow_html=True)
 
-        # Backend health check widget
-        with st.expander("🔌 Backend Status", expanded=False):
+        st.markdown('<div class="sb-nav-label">System</div>', unsafe_allow_html=True)
+
+        # ── Backend status ─────────────────────────────────────────────────
+        with st.expander("Backend Status", expanded=False):
             if st.button("Check health", key="health_btn"):
                 data, err = _get("/health", timeout=10)
                 if err:
-                    st.error(err)
+                    st.error(err, icon=None)
                 else:
-                    icon = "✅" if data.get("status") == "ok" else "⚠️"
-                    st.write(f"{icon} **{data.get('status','?').upper()}**")
-                    st.write(f"Provider : `{data.get('provider','?')}`")
-                    st.write(f"Model    : `{data.get('model','?')}`")
-                    st.write(f"Docs     : `{data.get('indexed_documents',0)}`")
-                    st.write(f"Vectors  : `{data.get('faiss_vectors',0)}`")
+                    ok = data.get("status") == "ok"
+                    cls = "status-ok" if ok else "status-warn"
+                    lbl = "Operational" if ok else "Degraded"
+                    st.markdown(f'<span class="{cls}">&#9679; {lbl}</span>',
+                                unsafe_allow_html=True)
+                    st.markdown(f"""
+<div style="font-size:12px;color:#71717a;line-height:1.8;margin-top:.5rem">
+  Provider &nbsp;<span style="color:#a1a1aa">{data.get('provider','?')}</span><br>
+  Model &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#a1a1aa">{data.get('model','?')}</span><br>
+  Docs &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#a1a1aa">{data.get('indexed_documents',0)}</span><br>
+  Vectors &nbsp;<span style="color:#a1a1aa">{data.get('faiss_vectors',0)}</span>
+</div>""", unsafe_allow_html=True)
 
-        st.divider()
-        st.markdown("### 📄 Active Document")
+        st.markdown('<div class="sb-nav-label" style="margin-top:.75rem">Context</div>',
+                    unsafe_allow_html=True)
+
+        # ── Document selector ──────────────────────────────────────────────
         _load_documents()
-
         docs: list[dict] = st.session_state.get("documents", [])
         if not docs:
-            st.caption("No documents yet — upload one in the Upload tab.")
+            st.markdown("""
+<div style="font-size:12px;color:#52525b;padding:.5rem .25rem;line-height:1.6">
+  No documents indexed yet.<br>Upload one in the <b style="color:#71717a">Upload</b> tab.
+</div>""", unsafe_allow_html=True)
         else:
             names = [d["filename"] for d in docs]
             idx   = st.selectbox(
-                "Select document",
+                "Active document",
                 range(len(names)),
                 format_func=lambda i: names[i],
                 key="active_doc_idx",
+                label_visibility="collapsed",
             )
             st.session_state["active_doc"] = docs[idx]
             active = docs[idx]
-            st.caption(
-                f"Chunks: {active.get('chunks','?')} · "
-                f"Pages: {active.get('pages','?')} · "
-                f"Parser: {active.get('parser_used','?')}"
-            )
+            st.markdown(f"""
+<div style="font-size:11px;color:#52525b;line-height:1.7;padding:.25rem .25rem 0">
+  {active.get('chunks','?')} chunks &nbsp;·&nbsp;
+  {active.get('pages','?')} pages &nbsp;·&nbsp;
+  {active.get('parser_used','?')}
+</div>""", unsafe_allow_html=True)
 
-        st.divider()
-        st.caption("Running on **Streamlit Cloud** · Backend on **localhost:8000**")
+        # ── Footer ─────────────────────────────────────────────────────────
+        st.markdown("""
+<div style="position:fixed;bottom:1.25rem;font-size:11px;color:#3f3f46;line-height:1.6">
+  Streamlit Cloud &nbsp;·&nbsp; FastAPI subprocess<br>
+  <span style="color:#27272a">localhost:8000</span>
+</div>""", unsafe_allow_html=True)
+
+
+# ── Heading helper ────────────────────────────────────────────────────────────
+def _heading(title: str, sub: str) -> None:
+    st.markdown(f'<p class="sb-heading">{title}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="sb-sub">{sub}</p>',     unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB: Upload
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_upload():
-    st.subheader("📤 Upload Documents")
-    st.caption("Upload your syllabus, notes, or any study material. Up to **200 MB** per file.")
+    _heading("Upload Documents",
+             "Upload your syllabus, notes, or any study material. Up to 200 MB per file.")
 
     uploaded = st.file_uploader(
         "Choose file(s)",
@@ -297,53 +591,60 @@ def tab_upload():
         help="PDF · TXT · MD · DOCX · PPT · PPTX · XLSX · PNG · JPG · WEBP — max 200 MB",
     )
 
-    if uploaded and st.button("⬆️ Upload & Index", type="primary"):
+    if uploaded and st.button("Upload & Index", type="primary"):
         for f in uploaded:
-            with st.spinner(f"Uploading **{f.name}** …"):
+            with st.spinner(f"Indexing {f.name} …"):
                 data, err = _api(
                     "POST", "/api/upload", timeout=300,
                     files={"file": (f.name, f.getvalue(), f.type or "application/octet-stream")},
                 )
             if err:
-                st.error(f"❌ {f.name}: {err}")
+                st.error(f"{f.name}: {err}")
             else:
                 st.success(
-                    f"✅ **{data['filename']}** — "
+                    f"{data['filename']} — "
                     f"{data['chunks']} chunks · {data['pages']} pages · "
-                    f"`{data['parser_used']}`"
+                    f"{data['parser_used']}"
                 )
                 if data.get("description"):
-                    st.info(f"📝 {data['description']}")
+                    st.info(data['description'])
         _invalidate_docs()
         st.rerun()
 
     st.divider()
-    st.markdown("### 📚 Indexed Documents")
+    st.markdown('<p style="font-size:13px;font-weight:600;color:#a1a1aa;'
+                'text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">'
+                'Indexed Documents</p>', unsafe_allow_html=True)
     _load_documents()
     docs: list[dict] = st.session_state.get("documents", [])
 
     if not docs:
-        st.info("No documents yet. Upload one above ↑")
+        st.markdown("""
+<div style="background:#18181b;border:1px dashed #27272a;border-radius:10px;
+     padding:1.5rem;text-align:center;color:#52525b;font-size:13px">
+  No documents yet. Upload one above.
+</div>""", unsafe_allow_html=True)
         return
 
     for doc in docs:
-        col1, col2 = st.columns([5, 1])
+        col1, col2 = st.columns([6, 1])
         with col1:
-            with st.expander(f"📄 {doc['filename']}", expanded=False):
+            with st.expander(doc['filename'], expanded=False):
                 if doc.get("description"):
-                    st.write(doc["description"])
+                    st.markdown(f'<p style="font-size:13px;color:#a1a1aa">{doc["description"]}</p>',
+                                unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Chunks",  doc.get("chunks", "?"))
                 c2.metric("Pages",   doc.get("pages",  "?"))
                 c3.metric("Tokens",  doc.get("total_tokens", "?"))
                 c4.metric("Parser",  doc.get("parser_used", "?"))
         with col2:
-            if st.button("🗑️", key=f"del_{doc['doc_id']}", help="Delete document"):
+            if st.button("Delete", key=f"del_{doc['doc_id']}"):
                 _, err = _api("DELETE", f"/api/documents/{doc['doc_id']}", timeout=15)
                 if err:
                     st.error(err)
                 else:
-                    st.success(f"Deleted {doc['filename']}")
+                    st.success(f"Deleted")
                     _invalidate_docs()
                     st.rerun()
 
@@ -352,20 +653,20 @@ def tab_upload():
 # TAB: ELI10 Explain
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_explain():
-    st.subheader("💡 ELI10 — Explain Like I'm 10")
-    st.caption("Simplified, analogy-driven explanations of any concept.")
+    _heading("ELI10 — Explain Like I'm 10",
+             "Simplified, analogy-driven explanations of any concept from your document.")
 
-    topic = st.text_input("Topic / concept",
+    topic = st.text_input("Topic or concept",
                           placeholder="e.g. Photosynthesis, Newton's Laws, Supply & Demand")
     level = st.selectbox("Depth", ["eli5", "beginner", "intermediate"],
                          index=1,
                          format_func=lambda x: {
-                             "eli5": "🧒 Very Simple (ELI5)",
-                             "beginner": "📖 Beginner",
-                             "intermediate": "🎓 Intermediate",
+                             "eli5":         "Very Simple (ELI5)",
+                             "beginner":     "Beginner",
+                             "intermediate": "Intermediate",
                          }[x])
 
-    if st.button("✨ Explain", type="primary") and topic.strip():
+    if st.button("Generate Explanation", type="primary") and topic.strip():
         with st.spinner("Generating explanation …"):
             data, err = _post("/api/explain", json={
                 "topic":  topic.strip(),
@@ -375,22 +676,38 @@ def tab_explain():
         if err:
             st.error(err)
         else:
-            st.markdown("#### 📖 Explanation")
-            st.write(data["explanation"])
+            st.markdown(f"""
+<div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:1.5rem;margin:.75rem 0">
+  <p style="font-size:13px;font-weight:600;color:#6366f1;margin-bottom:.5rem;
+     text-transform:uppercase;letter-spacing:.06em">Explanation</p>
+  <p style="font-size:15px;color:#d4d4d8;line-height:1.7">{data["explanation"]}</p>
+</div>""", unsafe_allow_html=True)
             if data.get("analogy"):
-                st.info(f"🎭 **Analogy:** {data['analogy']}")
+                st.markdown(f"""
+<div style="background:#1c1917;border:1px solid #27272a;border-left:3px solid #f59e0b;
+     border-radius:10px;padding:1rem 1.25rem;margin:.5rem 0">
+  <p style="font-size:12px;font-weight:600;color:#f59e0b;margin-bottom:.35rem">Analogy</p>
+  <p style="font-size:14px;color:#d4d4d8">{data['analogy']}</p>
+</div>""", unsafe_allow_html=True)
             if data.get("key_points"):
-                st.markdown("#### 🔑 Key Points")
-                for pt in data["key_points"]:
-                    st.markdown(f"- {pt}")
+                pts_html = "".join(
+                    f'<li style="color:#d4d4d8;font-size:14px;margin-bottom:.4rem">{p}</li>'
+                    for p in data["key_points"]
+                )
+                st.markdown(f"""
+<div style="background:#18181b;border:1px solid #27272a;border-radius:10px;padding:1rem 1.25rem;margin:.5rem 0">
+  <p style="font-size:12px;font-weight:600;color:#22c55e;margin-bottom:.5rem;
+     text-transform:uppercase;letter-spacing:.06em">Key Points</p>
+  <ul style="margin:0;padding-left:1.25rem">{pts_html}</ul>
+</div>""", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB: Ask AI (RAG Q&A)
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_ask():
-    st.subheader("🤖 Ask AI — RAG Q&A")
-    st.caption("Ask anything about your uploaded document. Answers include source citations.")
+    _heading("Ask AI — RAG Q&A",
+             "Ask anything about your document. Answers include source citations.")
 
     _ss("ask_history", [])
 
@@ -401,15 +718,18 @@ def tab_ask():
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg.get("sources"):
-                with st.expander("📎 Sources", expanded=False):
+                with st.expander("Sources", expanded=False):
                     for src in msg["sources"]:
                         st.markdown(
-                            f'<span class="source-chip">📄 {src["filename"]} p.{src["page"]}</span>'
-                            f' {src.get("snippet","")[:120]}…',
+                            f'<span class="src-chip">'
+                            f'{src["filename"]} &nbsp;p.{src["page"]}'
+                            f'</span> <span style="font-size:12px;color:#71717a">'
+                            f'{src.get("snippet","")[:100]}…</span>',
                             unsafe_allow_html=True,
                         )
             if msg.get("follow_ups"):
-                st.caption("💬 Suggested follow-ups:")
+                st.markdown('<p style="font-size:12px;color:#52525b;margin:.5rem 0 .25rem">Suggested follow-ups</p>',
+                            unsafe_allow_html=True)
                 for fq in msg["follow_ups"]:
                     if st.button(fq, key=f"fq_{hash(fq)}"):
                         st.session_state["_ask_prefill"] = fq
@@ -446,21 +766,24 @@ def tab_ask():
                 follow_ups = data.get("follow_up_questions", [])
                 st.markdown(answer)
                 if sources:
-                    with st.expander("📎 Sources", expanded=False):
-                        for src in sources:
-                            st.markdown(
-                                f'<span class="source-chip">📄 {src["filename"]} p.{src["page"]}</span>'
-                                f' {src.get("snippet","")[:120]}…',
-                                unsafe_allow_html=True,
-                            )
-                if follow_ups:
-                    st.caption("💬 Suggested follow-ups:")
-                    cols = st.columns(min(len(follow_ups), 3))
-                    for i, fq in enumerate(follow_ups[:3]):
-                        with cols[i]:
-                            if st.button(fq, key=f"afq_{i}_{hash(fq)}"):
-                                st.session_state["_ask_prefill"] = fq
-                                st.rerun()
+                        with st.expander("Sources", expanded=False):
+                            for src in sources:
+                                st.markdown(
+                                    f'<span class="src-chip">'
+                                    f'{src["filename"]} &nbsp;p.{src["page"]}'
+                                    f'</span> <span style="font-size:12px;color:#71717a">'
+                                    f'{src.get("snippet","")[:100]}…</span>',
+                                    unsafe_allow_html=True,
+                                )
+                    if follow_ups:
+                        st.markdown('<p style="font-size:12px;color:#52525b;margin:.5rem 0 .25rem">Suggested follow-ups</p>',
+                                    unsafe_allow_html=True)
+                        cols = st.columns(min(len(follow_ups), 3))
+                        for i, fq in enumerate(follow_ups[:3]):
+                            with cols[i]:
+                                if st.button(fq, key=f"afq_{i}_{hash(fq)}"):
+                                    st.session_state["_ask_prefill"] = fq
+                                    st.rerun()
                 st.session_state["ask_history"].append({
                     "role":       "assistant",
                     "content":    answer,
@@ -477,8 +800,7 @@ def tab_ask():
 # TAB: Quiz
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_quiz():
-    st.subheader("⚡ Quiz Game")
-    st.caption("Generate a timed quiz from your document.")
+    _heading("Quiz", "Generate a timed multiple-choice quiz from your document.")
 
     _ss("quiz_data",     None)
     _ss("quiz_answers",  {})
@@ -533,15 +855,26 @@ def tab_quiz():
         if res.get("recommendations"):
             st.info("💡 " + " · ".join(res["recommendations"]))
 
-        with st.expander("📋 Detailed Review", expanded=True):
+        with st.expander("Detailed Review", expanded=True):
             for d in res.get("details", []):
-                icon2 = "✅" if d["is_correct"] else "❌"
-                st.markdown(f"**{icon2} {d['question']}**")
+                correct = d["is_correct"]
+                color   = "#22c55e" if correct else "#ef4444"
+                label   = "Correct" if correct else "Incorrect"
+                st.markdown(
+                    f'<p style="font-size:14px;font-weight:600;color:{color}'
+                    f';margin-bottom:.25rem">[{label}] {d["question"]}</p>',
+                    unsafe_allow_html=True,
+                )
                 st.caption(f"Your answer: {d['user_index']} · Correct: {d['correct_index']}")
-                st.info(f"💬 {d.get('explanation','')}")
+                if d.get("explanation"):
+                    st.markdown(
+                        f'<p style="font-size:13px;color:#a1a1aa;'
+                        f'margin:.25rem 0 .75rem">{d["explanation"]}</p>',
+                        unsafe_allow_html=True,
+                    )
                 st.divider()
 
-        if st.button("🔄 New Quiz"):
+        if st.button("New Quiz"):
             st.session_state.update({"quiz_data": None, "quiz_answers": {}, "quiz_result": None})
             st.rerun()
         return
@@ -582,7 +915,7 @@ def tab_quiz():
             st.session_state["quiz_result"] = data
             st.rerun()
 
-    if st.button("🗑️ Discard Quiz"):
+    if st.button("Discard Quiz"):
         st.session_state.update({"quiz_data": None, "quiz_answers": {}})
         st.rerun()
 
@@ -591,8 +924,8 @@ def tab_quiz():
 # TAB: Revision Planner
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_planner():
-    st.subheader("📅 Revision Planner")
-    st.caption("Personalised day-by-day revision schedule up to your exam date.")
+    _heading("Revision Planner",
+             "Personalised day-by-day study schedule generated from your exam date.")
 
     _ss("plan_data", None)
 
@@ -602,7 +935,7 @@ def tab_planner():
             daily_hours = st.slider("Daily study hours", 0.5, 8.0, 2.0, step=0.5)
             syllabus    = st.text_area("Syllabus / topics (optional)", height=100,
                                        placeholder="Chapter 1: Kinematics\nChapter 2: Dynamics…")
-            submitted   = st.form_submit_button("📅 Generate Plan", type="primary")
+            submitted   = st.form_submit_button("Generate Plan", type="primary")
 
         if submitted:
             with st.spinner("Building revision plan …"):
@@ -631,30 +964,46 @@ def tab_planner():
     if resp.get("summary"):
         st.info(resp["summary"])
     if resp.get("tips"):
-        with st.expander("💡 Study Tips", expanded=False):
+        with st.expander("Study Tips", expanded=False):
             for tip in resp["tips"]:
                 st.markdown(f"- {tip}")
 
     st.divider()
-    st.markdown("### 🗓️ Schedule")
-    SESS = {"concept": "📖", "quiz": "⚡", "buffer": "🔁", "rest": "😴"}
-    PRIO = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    st.markdown('<p style="font-size:13px;font-weight:600;color:#a1a1aa;'
+                'text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem">'
+                'Day-by-Day Schedule</p>', unsafe_allow_html=True)
+    SESS_COLOR = {"concept": "#6366f1", "quiz": "#f59e0b", "buffer": "#3b82f6", "rest": "#52525b"}
+    SESS_LABEL = {"concept": "Study", "quiz": "Quiz", "buffer": "Buffer", "rest": "Rest"}
+    PRIO_COLOR = {"high": "#ef4444", "medium": "#f59e0b", "low": "#22c55e"}
 
     for task in resp.get("plan", []):
-        icon     = SESS.get(task.get("session_type", ""), "📅")
-        priority = PRIO.get(task.get("priority",     ""), "⚪")
-        label    = f"{icon} **{task.get('day_label', task.get('date',''))}** {priority} — {task.get('topic','')}"
-        with st.expander(label, expanded=False):
+        stype   = task.get("session_type", "")
+        sc      = SESS_COLOR.get(stype, "#71717a")
+        sl      = SESS_LABEL.get(stype, stype.capitalize())
+        pc      = PRIO_COLOR.get(task.get("priority",""), "#52525b")
+        day_lbl = task.get('day_label', task.get('date',''))
+        label   = (f'<span style="background:{sc}22;color:{sc};border:1px solid {sc}44;'
+                   f'border-radius:4px;font-size:10px;font-weight:600;padding:1px 7px;'
+                   f'margin-right:6px">{sl}</span>'
+                   f'<b>{day_lbl}</b> &nbsp;'
+                   f'<span style="color:#71717a">{task.get("topic","")}</span>')
+        with st.expander(f"{sl} · {day_lbl} · {task.get('topic','')}", expanded=False):
+            st.markdown(label, unsafe_allow_html=True)
             if task.get("subtopics"):
-                st.markdown("**Subtopics:** " + ", ".join(task["subtopics"]))
+                st.markdown(
+                    '<p style="font-size:12px;color:#a1a1aa;margin:.5rem 0 .25rem">Subtopics</p>'
+                    + ", ".join(f'<span style="color:#d4d4d8">{s}</span>'
+                                for s in task["subtopics"]),
+                    unsafe_allow_html=True,
+                )
             cols = st.columns(3)
-            cols[0].write(f"⏱️ {task.get('duration_mins',0)} mins")
-            cols[1].write(f"🛠️ {task.get('technique','—')}")
-            cols[2].write(f"📌 {task.get('priority','—')}")
+            cols[0].metric("Duration", f"{task.get('duration_mins',0)} min")
+            cols[1].metric("Technique", task.get('technique','—'))
+            cols[2].metric("Priority",  task.get('priority','—'))
             if task.get("notes"):
                 st.caption(task["notes"])
 
-    if st.button("🔄 New Plan"):
+    if st.button("New Plan"):
         st.session_state["plan_data"] = None
         st.rerun()
 
@@ -663,8 +1012,7 @@ def tab_planner():
 # TAB: Flashcards
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_flashcards():
-    st.subheader("🃏 Flashcards")
-    st.caption("AI-generated flip cards for spaced-repetition practice.")
+    _heading("Flashcards", "AI-generated flip cards for spaced-repetition practice.")
 
     _ss("fc_cards",   None)
     _ss("fc_index",   0)
@@ -674,7 +1022,7 @@ def tab_flashcards():
         with st.form("fc_form"):
             topic  = st.text_input("Topic (optional)")
             num    = st.slider("Number of cards", 3, 20, 8)
-            submit = st.form_submit_button("🃏 Generate Cards", type="primary")
+            submit = st.form_submit_button("Generate Cards", type="primary")
 
         if submit:
             with st.spinner("Generating flashcards …"):
@@ -702,26 +1050,25 @@ def tab_flashcards():
     back    = card.get("back",  card.get("answer",   ""))
 
     st.progress((idx + 1) / len(cards), text=f"Card {idx+1} / {len(cards)}")
-    with st.container(border=True):
-        if not flipped:
-            st.markdown(f"### ❓ {front}")
-            st.caption("Click **Flip** to reveal the answer")
-        else:
-            st.markdown(f"### ❓ {front}")
-            st.success(f"✅ {back}")
+    st.markdown(f"""
+<div class="flip-card">
+  <p class="flip-q">{front}</p>
+  {'<p class="flip-a">' + back + '</p>' if flipped
+   else '<p class="flip-hint">Click Flip to reveal the answer</p>'}
+</div>""", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
-    if c1.button("⬅️ Prev",    disabled=idx == 0):
+    if c1.button("Prev",    disabled=idx == 0):
         st.session_state.update({"fc_index": idx-1, "fc_flipped": False}); st.rerun()
-    if c2.button("🔄 Flip"):
+    if c2.button("Flip"):
         st.session_state["fc_flipped"] = not flipped; st.rerun()
-    if c3.button("➡️ Next",    disabled=idx >= len(cards)-1):
+    if c3.button("Next",    disabled=idx >= len(cards)-1):
         st.session_state.update({"fc_index": idx+1, "fc_flipped": False}); st.rerun()
-    if c4.button("🔀 Shuffle"):
+    if c4.button("Shuffle"):
         random.shuffle(cards)
         st.session_state.update({"fc_cards": cards, "fc_index": 0, "fc_flipped": False}); st.rerun()
 
-    if st.button("🗑️ New Deck"):
+    if st.button("New Deck"):
         st.session_state.update({"fc_cards": None, "fc_index": 0, "fc_flipped": False})
         st.rerun()
 
@@ -730,14 +1077,14 @@ def tab_flashcards():
 # TAB: Feynman Mode
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_feynman():
-    st.subheader("🧠 Feynman Technique")
-    st.caption("Explain a concept in your own words — get scored on understanding, gaps, and strengths.")
+    _heading("Feynman Technique",
+             "Explain a concept in your own words — the AI scores your understanding and surfaces gaps.")
 
     with st.form("feynman_form"):
         concept     = st.text_input("Concept to explain", placeholder="e.g. Photosynthesis")
         explanation = st.text_area("Your explanation", height=200,
                                    placeholder="Explain the concept as if teaching a 10-year-old …")
-        submitted   = st.form_submit_button("🔬 Evaluate", type="primary")
+        submitted   = st.form_submit_button("Evaluate", type="primary")
 
     if submitted and concept.strip() and explanation.strip():
         with st.spinner("Evaluating your explanation …"):
@@ -750,33 +1097,71 @@ def tab_feynman():
             st.error(err)
             return
 
-        score = data.get("score", 0)
-        grade = data.get("grade", "?")
-        icon  = {"S": "🏆", "A": "🥇", "B": "🥈", "C": "🥉", "D": "😬"}.get(grade, "📊")
+        score  = data.get("score", 0)
+        grade  = data.get("grade", "?")
+        gcls   = {"S":"grade-s","A":"grade-a","B":"grade-b","C":"grade-c","D":"grade-d"}.get(grade,"grade-b")
+        gcolor = {"S":"#a78bfa","A":"#22c55e","B":"#3b82f6","C":"#f59e0b","D":"#ef4444"}.get(grade,"#6366f1")
 
-        st.markdown(f"## {icon} Grade: **{grade}** — {score}/100")
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1rem">'
+            f'<span class="{gcls}">{grade}</span>'
+            f'<div><p style="font-size:24px;font-weight:700;color:#fafafa;margin:0">'
+            f'{score}/100</p>'
+            f'<p style="font-size:13px;color:#71717a;margin:0">Feynman Score</p></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
         st.progress(score / 100)
 
         col1, col2 = st.columns(2)
         with col1:
             if data.get("strengths"):
-                st.success("✅ **Strengths**")
-                for s in data["strengths"]:
-                    st.markdown(f"- {s}")
+                s_html = "".join(
+                    f'<li style="color:#d4d4d8;font-size:13px;margin-bottom:.3rem">{s}</li>'
+                    for s in data["strengths"]
+                )
+                st.markdown(
+                    f'<div style="background:#18181b;border:1px solid #27272a;'
+                    f'border-left:3px solid #22c55e;border-radius:10px;padding:1rem 1.25rem">'
+                    f'<p style="font-size:11px;font-weight:600;color:#22c55e;'
+                    f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">Strengths</p>'
+                    f'<ul style="margin:0;padding-left:1.1rem">{s_html}</ul></div>',
+                    unsafe_allow_html=True,
+                )
         with col2:
             if data.get("gaps"):
-                st.error("⚠️ **Gaps to fill**")
-                for g in data["gaps"]:
-                    st.markdown(f"- {g}")
+                g_html = "".join(
+                    f'<li style="color:#d4d4d8;font-size:13px;margin-bottom:.3rem">{g}</li>'
+                    for g in data["gaps"]
+                )
+                st.markdown(
+                    f'<div style="background:#18181b;border:1px solid #27272a;'
+                    f'border-left:3px solid #ef4444;border-radius:10px;padding:1rem 1.25rem">'
+                    f'<p style="font-size:11px;font-weight:600;color:#ef4444;'
+                    f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">Gaps to Fill</p>'
+                    f'<ul style="margin:0;padding-left:1.1rem">{g_html}</ul></div>',
+                    unsafe_allow_html=True,
+                )
 
         if data.get("coaching_tip"):
-            st.info(f"💡 **Coaching tip:** {data['coaching_tip']}")
+            st.markdown(
+                f'<div style="background:#1c1917;border:1px solid #27272a;'
+                f'border-left:3px solid #f59e0b;border-radius:10px;'
+                f'padding:.875rem 1.25rem;margin-top:.75rem">'
+                f'<p style="font-size:11px;font-weight:600;color:#f59e0b;'
+                f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Coaching Tip</p>'
+                f'<p style="font-size:14px;color:#d4d4d8">{data["coaching_tip"]}</p></div>',
+                unsafe_allow_html=True,
+            )
 
         if data.get("qa_pairs"):
-            with st.expander("📝 Q&A Pairs to study", expanded=False):
+            with st.expander("Q&A Pairs to study", expanded=False):
                 for pair in data["qa_pairs"]:
-                    st.markdown(f"**Q:** {pair['question']}")
-                    st.markdown(f"**A:** {pair['answer']}")
+                    st.markdown(
+                        f'<p style="font-size:13px;font-weight:600;color:#d4d4d8">Q: {pair["question"]}</p>'
+                        f'<p style="font-size:13px;color:#a1a1aa;margin-bottom:.75rem">A: {pair["answer"]}</p>',
+                        unsafe_allow_html=True,
+                    )
                     st.divider()
 
 
@@ -784,8 +1169,7 @@ def tab_feynman():
 # TAB: Cheat Sheet
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_cheatsheet():
-    st.subheader("📋 Cheat Sheet Generator")
-    st.caption("One-page summary of your document, formatted as Markdown.")
+    _heading("Cheat Sheet", "One-page key-concept summary of your document.")
 
     doc_id = _active_doc_id()
     if not doc_id:
@@ -794,7 +1178,7 @@ def tab_cheatsheet():
 
     topic = st.text_input("Focus topic (optional)", placeholder="e.g. Formulas, Key Definitions")
 
-    if st.button("📋 Generate Cheat Sheet", type="primary"):
+    if st.button("Generate Cheat Sheet", type="primary"):
         with st.spinner("Generating cheat sheet …"):
             data, err = _post("/api/cheatsheet", json={
                 "doc_id": doc_id,
@@ -818,7 +1202,7 @@ def tab_cheatsheet():
 # TAB: Progress Dashboard
 # ─────────────────────────────────────────────────────────────────────────────
 def tab_progress():
-    st.subheader("📊 Progress Dashboard")
+    _heading("Progress Dashboard", "Your study analytics — quizzes, Feynman sessions, streaks.")
 
     with st.spinner("Loading progress …"):
         data, err = _get("/api/progress/summary", timeout=30)
@@ -836,7 +1220,9 @@ def tab_progress():
 
     if data.get("score_history"):
         st.divider()
-        st.markdown("### 📈 Score History")
+        st.markdown('<p style="font-size:13px;font-weight:600;color:#a1a1aa;'
+                    'text-transform:uppercase;letter-spacing:.06em">Score History</p>',
+                    unsafe_allow_html=True)
         rows = [
             {"Date": h["date"], "Topic": h["topic"],
              "Score": f"{h['score']}/{h['total']}", "Grade": h["grade"]}
@@ -847,18 +1233,24 @@ def tab_progress():
     col1, col2 = st.columns(2)
     with col1:
         if data.get("weak_topics"):
-            st.markdown("### 📉 Weak Topics")
+            st.markdown('<p style="font-size:12px;font-weight:600;color:#ef4444;'
+                        'text-transform:uppercase;letter-spacing:.06em;margin:.75rem 0 .5rem">'
+                        'Weak Topics</p>', unsafe_allow_html=True)
             for t in data["weak_topics"]:
                 st.progress(t["avg_pct"] / 100, text=f"{t['topic']} ({t['avg_pct']:.0f}%)")
     with col2:
         if data.get("strong_topics"):
-            st.markdown("### 📈 Strong Topics")
+            st.markdown('<p style="font-size:12px;font-weight:600;color:#22c55e;'
+                        'text-transform:uppercase;letter-spacing:.06em;margin:.75rem 0 .5rem">'
+                        'Strong Topics</p>', unsafe_allow_html=True)
             for t in data["strong_topics"]:
                 st.progress(t["avg_pct"] / 100, text=f"{t['topic']} ({t['avg_pct']:.0f}%)")
 
     if data.get("feynman_history"):
         st.divider()
-        st.markdown("### 🧠 Feynman History")
+        st.markdown('<p style="font-size:13px;font-weight:600;color:#a1a1aa;'
+                    'text-transform:uppercase;letter-spacing:.06em">Feynman History</p>',
+                    unsafe_allow_html=True)
         rows = [
             {"Date": h["date"], "Concept": h["concept"],
              "Score": h["score"], "Grade": h["grade"]}
@@ -880,15 +1272,15 @@ def main():
 
     # ── Step 3: tabs ──────────────────────────────────────────────────────────
     tabs = st.tabs([
-        "📤 Upload",
-        "💡 ELI10",
-        "🤖 Ask AI",
-        "⚡ Quiz",
-        "📅 Planner",
-        "🃏 Flashcards",
-        "🧠 Feynman",
-        "📋 Cheat Sheet",
-        "📊 Progress",
+        "Upload",
+        "ELI10",
+        "Ask AI",
+        "Quiz",
+        "Planner",
+        "Flashcards",
+        "Feynman",
+        "Cheat Sheet",
+        "Progress",
     ])
 
     with tabs[0]: tab_upload()
