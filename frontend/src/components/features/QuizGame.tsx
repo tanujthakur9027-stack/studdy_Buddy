@@ -90,7 +90,7 @@ function ShareQuizButton({
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch {
-      import("react-hot-toast").then(({ default: toast }) => toast.error("Could not create share link"));
+      import("react-hot-toast").then(({ default: hotToast }) => hotToast.error("Could not create share link"));
     }
     setSharing(false);
   };
@@ -315,7 +315,8 @@ export function QuizGame({ docId }: Props) {
       }
       setLoading(false);
     }
-  }, [questions, current, answers, timerSec, quizId, stopTimer, startTimer, play]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions, current, answers, timerSec, quizId, stopTimer, startTimer, play, addEntry, diff, quizTopic, topic]);
 
   const handleRestart = () => {
     setPhase("config");

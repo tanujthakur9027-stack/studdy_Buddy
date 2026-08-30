@@ -95,10 +95,10 @@ function SessionSidebar({
 }: {
   sessions: ChatSessionSummary[];
   activeId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (_id: string) => void;
   onNew: () => void;
-  onDelete: (id: string) => void;
-  onRename: (id: string, title: string) => void;
+  onDelete: (_id: string) => void;
+  onRename: (_id: string, _title: string) => void;
   loading: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);

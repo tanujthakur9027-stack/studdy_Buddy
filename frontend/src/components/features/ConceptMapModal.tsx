@@ -1,7 +1,7 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Network, Sparkles, Printer, X, RotateCcw, Loader2, Download } from "lucide-react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Network, Sparkles, X, RotateCcw, Loader2, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 

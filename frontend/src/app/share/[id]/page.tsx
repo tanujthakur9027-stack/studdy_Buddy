@@ -154,7 +154,7 @@ export default function SharePage() {
 
   // ── Results ───────────────────────────────────────────────────────────────────
   if (status === "results") {
-    const correct = questions.filter((q) => answers[q.id] === q.correct_index).length;
+    const correct = questions.filter((sq) => answers[sq.id] === sq.correct_index).length;
     const pct     = Math.round((correct / questions.length) * 100);
     const grade   = gradeFor(pct);
     const gm      = GRADE_META[grade];
@@ -173,17 +173,17 @@ export default function SharePage() {
           </div>
 
           <div className="space-y-3">
-            {questions.map((q, i) => {
-              const userIdx = answers[q.id] ?? -1;
-              const ok = userIdx === q.correct_index;
+            {questions.map((sq, i) => {
+              const userIdx = answers[sq.id] ?? -1;
+              const ok = userIdx === sq.correct_index;
               return (
-                <div key={q.id} className={clsx("glass-card p-4 border", ok ? "border-green-700/40" : "border-red-700/40")}>
-                  <p className="text-sm font-semibold text-white mb-2">{i + 1}. {q.question}</p>
+                <div key={sq.id} className={clsx("glass-card p-4 border", ok ? "border-green-700/40" : "border-red-700/40")}>
+                  <p className="text-sm font-semibold text-white mb-2">{i + 1}. {sq.question}</p>
                   <p className={clsx("text-xs font-medium", ok ? "text-green-400" : "text-red-400")}>
-                    {ok ? "✓ Correct" : `✗ Your answer: ${userIdx >= 0 ? q.options[userIdx] : "No answer"}`}
+                    {ok ? "✓ Correct" : `✗ Your answer: ${userIdx >= 0 ? sq.options[userIdx] : "No answer"}`}
                   </p>
-                  {!ok && <p className="text-xs text-green-400 mt-0.5">Correct: {q.options[q.correct_index]}</p>}
-                  {q.explanation && <p className="text-xs text-gray-500 mt-1 italic">{q.explanation}</p>}
+                  {!ok && <p className="text-xs text-green-400 mt-0.5">Correct: {sq.options[sq.correct_index]}</p>}
+                  {sq.explanation && <p className="text-xs text-gray-500 mt-1 italic">{sq.explanation}</p>}
                 </div>
               );
             })}
@@ -212,7 +212,7 @@ export default function SharePage() {
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-900 border border-gray-700">
             <Trophy className="h-3.5 w-3.5 text-yellow-400" />
             <span className="text-sm font-black text-yellow-400">
-              {questions.filter((q) => answers[q.id] === q.correct_index).length}
+              {questions.filter((sq) => answers[sq.id] === sq.correct_index).length}
             </span>
           </div>
         </div>

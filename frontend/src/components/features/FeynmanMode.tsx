@@ -2,7 +2,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Brain, Send, CheckCircle2, XCircle, Lightbulb,
+  Brain, CheckCircle2, XCircle, Lightbulb,
   ChevronDown, ChevronUp, RotateCcw, Sparkles, BookOpen,
 } from "lucide-react";
 import { evaluateFeynman } from "@/lib/api";
