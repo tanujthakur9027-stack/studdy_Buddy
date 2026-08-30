@@ -1,7 +1,10 @@
 # 🚀 StudyBuddy — Deployment Guide
 
-Deploy the full stack for free in ~15 minutes:  
-**GitHub → Render (backend) → Vercel (frontend)**
+Deploy the full stack for free:  
+**GitHub → Render (FastAPI backend) → Streamlit Cloud (frontend)**
+
+> **Why Streamlit Cloud instead of Vercel/Render-frontend?**  
+> Streamlit Cloud is purpose-built for Python apps, has no cold-start memory limits for file uploads, and natively supports the 200 MB upload size we need. Vercel limits request bodies to 4.5 MB and Render's free tier sleeps, causing upload timeouts.
 
 ---
 
@@ -12,42 +15,29 @@ Before starting, make sure you have:
 - [ ] **Groq API key** — free at [console.groq.com](https://console.groq.com) (sign up → API Keys → Create)
 - [ ] **GitHub account** — [github.com](https://github.com)
 - [ ] **Render account** — free at [render.com](https://render.com) (sign up with GitHub)
-- [ ] **Vercel account** — free at [vercel.com](https://vercel.com) (sign up with GitHub)
+- [ ] **Streamlit Cloud account** — free at [share.streamlit.io](https://share.streamlit.io) (sign up with GitHub)
 - [ ] **Git installed** — check with `git --version` in your terminal
 
 ---
 
 ## Step 1 — Push Code to GitHub
 
-Open a terminal, navigate to your project folder, and run these commands one by one:
+Open a terminal, navigate to your project folder, and run:
 
 ```bash
-# 1. Go to the project root
 cd "C:\Users\Tanuj kumar singh\Desktop\Studdy_Buddy"
-
-# 2. Initialise a git repository
-git init
-
-# 3. Stage all files
 git add .
-
-# 4. Create the first commit
-git commit -m "initial commit: AI Study Buddy full stack"
-
-# 5. Set the default branch name to main
-git branch -M main
+git commit -m "add streamlit frontend + 200 MB upload limit"
+git push
 ```
 
-Now create the GitHub repo:
-
-1. Go to **https://github.com/new**
-2. Repository name: `studdy-buddy` (or any name you like)
-3. Set it to **Public** (required for free Render + Vercel)
-4. **Do NOT** tick "Add README" or "Add .gitignore" — the repo must be empty
-5. Click **Create repository**
-6. Copy the two lines GitHub shows under *"…or push an existing repository"*:
+If this is your first push:
 
 ```bash
+git init
+git add .
+git commit -m "initial commit: StudyBuddy full stack"
+git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/studdy-buddy.git
 git push -u origin main
 ```
@@ -64,24 +54,22 @@ git push -u origin main
 2. Click **New** → **Blueprint**
 3. Connect your GitHub account if prompted
 4. Select the `studdy-buddy` repository
-5. Render will detect `render.yaml` automatically → click **Apply**
+5. Render detects `render.yaml` automatically → click **Apply**
 
-### 2b — Set your Groq API key
+### 2b — Set your API keys
 
-After the blueprint is created, Render will show a list of environment variables.  
-Find `GROQ_API_KEY` — it will say *"value required"*:
+After the blueprint is created, Render shows environment variables.  
+Set the following in **Environment** tab:
 
-1. Click the pencil icon next to `GROQ_API_KEY`
-2. Paste your Groq key (starts with `gsk_...`)
-3. Click **Save**
-
-> **Where to find your Groq key:**  
-> Go to [console.groq.com](https://console.groq.com) → API Keys → click your key to copy it.
+| Variable | Value |
+|---|---|
+| `GROQ_API_KEY` | `gsk_...` (from console.groq.com) |
+| `MAX_FILE_SIZE_MB` | `200` |
+| `CORS_ORIGINS` | `https://your-streamlit-app.streamlit.app` *(fill in after Step 3)* |
 
 ### 2c — Wait for the deploy
 
-The first build takes **5–10 minutes** (it installs Python deps and downloads the HuggingFace model).  
-You'll see a log stream. When it says **"Live"** with a green dot, the backend is running.
+First build takes **5–10 minutes**. When the status dot turns green, the backend is live.
 
 ### 2d — Copy your backend URL
 
@@ -89,53 +77,49 @@ At the top of the service page you'll see a URL like:
 ```
 https://studdy-buddy-api.onrender.com
 ```
-**Copy this URL** — you'll need it in Step 3.
+**Copy this URL** — you need it in Step 3.
 
-### 2e — Verify the backend is working
+### 2e — Verify the backend
 
-Open this URL in your browser:
+Open in your browser:
 ```
 https://studdy-buddy-api.onrender.com/health
 ```
-
-You should see:
+Expected:
 ```json
-{ "status": "ok", "model": "llama-3.3-70b-versatile", "indexed_documents": 0, "faiss_vectors": 0 }
-```
-
-Also check the Swagger docs at:
-```
-https://studdy-buddy-api.onrender.com/docs
+{ "status": "ok", "provider": "groq", "indexed_documents": 0, "faiss_vectors": 0 }
 ```
 
 ---
 
-## Step 3 — Deploy Frontend on Vercel
+## Step 3 — Deploy Frontend on Streamlit Cloud
 
-### 3a — Import the project
+### 3a — Import your GitHub repo
 
-1. Go to **https://vercel.com/new**
-2. Click **Import Git Repository**
+1. Go to **https://share.streamlit.io**
+2. Click **New app**
 3. Select your `studdy-buddy` repository
-4. Under **Root Directory** → click **Edit** → type `frontend` → click **Continue**
+4. **Branch:** `main`
+5. **Main file path:** `streamlit_app/app.py`
+6. Click **Advanced settings …**
 
-### 3b — Set the environment variable
+### 3b — Add your secret
 
-Before clicking Deploy, scroll down to **Environment Variables** and add:
+In the **Secrets** box, paste:
 
-| Name | Value |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://studdy-buddy-api.onrender.com` |
+```toml
+BACKEND_URL = "https://studdy-buddy-api.onrender.com"
+```
 
-*(Paste your exact Render URL from Step 2d)*
+*(Replace with your exact Render URL from Step 2d)*
 
 ### 3c — Deploy
 
-Click **Deploy**. The build takes ~2 minutes.
+Click **Deploy!** — the build takes ~2 minutes.
 
-When done, Vercel gives you a URL like:
+When done, Streamlit gives you a URL like:
 ```
-https://studdy-buddy-tanuj.vercel.app
+https://studdy-buddy-tanuj.streamlit.app
 ```
 
 **Copy this URL** — you need it for Step 4.
@@ -144,127 +128,118 @@ https://studdy-buddy-tanuj.vercel.app
 
 ## Step 4 — Update CORS on Render
 
-The backend needs to allow requests from your Vercel frontend URL.
+The backend must allow requests from your Streamlit URL.
 
-1. Go to your Render service dashboard → **Environment** tab
-2. Find `CORS_ORIGINS`
-3. Change the value to your **exact Vercel URL** (no trailing slash):
+1. Go to your Render service → **Environment** tab
+2. Set `CORS_ORIGINS` to your Streamlit URL (no trailing slash):
    ```
-   https://studdy-buddy-tanuj.vercel.app
+   https://studdy-buddy-tanuj.streamlit.app
    ```
-4. Click **Save Changes** → Render automatically redeploys (takes ~2 min)
+3. Click **Save Changes** → Render redeploys in ~2 minutes.
 
 ---
 
 ## Step 5 — Smoke Test ✅
 
-Open your Vercel URL and test each feature:
+Open your Streamlit URL and test each tab:
 
 | Test | Expected result |
 |---|---|
-| Page loads | Dark UI with sidebar — Upload, Explain, Quiz, Planner, Doubt tabs visible |
-| **Upload** — drag a PDF | Progress bar appears → "Ingested X chunks" success message |
-| **Explain** — type "Newton's Laws" → ELI5 | Explanation + analogy + key points returned in <10s |
-| **Quiz** — Generate Quiz (5 questions) | Countdown ring appears, 4 colour-coded options shown |
-| **Planner** — set exam date 2 weeks away | Day-by-day calendar generated with session types |
-| **Doubt** — ask "What is this document about?" | Answer with source citation returned |
+| Page loads | Dark sidebar + 9 tabs visible |
+| **Upload** — drag a PDF ≤ 200 MB | "✅ filename indexed — N chunks" |
+| **ELI10** — type "Newton's Laws" | Explanation + analogy + key points |
+| **Quiz** — Generate 5 questions | Radio buttons, submit, grade shown |
+| **Planner** — set exam date | Day-by-day schedule with session types |
+| **Ask AI** — "What is this about?" | Answer with source citations |
+| **Feynman** — explain any concept | Score 0–100 with gaps & strengths |
+| **Flashcards** — generate deck | Flip cards with front/back |
+| **Cheat Sheet** — generate | Markdown summary with download button |
 
 ---
 
 ## Step 6 — Troubleshooting
 
+### "Cannot reach backend" error in Streamlit
+- Check the `BACKEND_URL` secret in Streamlit Cloud App Settings → Secrets
+- Make sure it has **no trailing slash** and starts with `https://`
+- Use the **🔌 Backend Status** expander in the sidebar → **Check health** button
+
+### "CORS error" / 403 on API calls
+- `CORS_ORIGINS` on Render must **exactly match** your Streamlit URL (no trailing slash)
+- After updating env vars, wait for Render to finish redeploying (~2 min)
+
+### Upload returns 413 (File Too Large)
+- Set `MAX_FILE_SIZE_MB=200` in Render environment variables
+- `streamlit_app/.streamlit/config.toml` already sets `maxUploadSize = 200`
+- Both limits must be in sync
+
 ### "First request is slow" (30–60 seconds)
-This is normal. The Render **free tier sleeps** after 15 minutes of inactivity.  
-The first request wakes it up. Subsequent requests are fast.  
-To prevent this for demos: upgrade to Render's **Starter plan ($7/mo)**.
-
-### "CORS error" in browser console
-- Make sure `CORS_ORIGINS` on Render **exactly matches** your Vercel URL (no trailing slash)
-- After updating env vars, wait for Render to finish redeploying
-
-### "NEXT_PUBLIC_API_URL is not set" build error on Vercel
-- Go to Vercel → Project Settings → Environment Variables
-- Add `NEXT_PUBLIC_API_URL` = your Render URL
-- Go to Deployments → click the latest → **Redeploy**
-
-### "groq.AuthenticationError" in Render logs
-- Your `GROQ_API_KEY` is wrong or empty
-- Go to Render → Environment → check the key starts with `gsk_`
-- If the key has spaces or quotes, remove them
+- Render free tier **sleeps** after 15 minutes of inactivity
+- Use the **Check health** button to wake it up before uploading
+- Upgrade to Render Starter ($7/mo) to prevent sleeping
 
 ### Quiz / Ask returns "No context found"
-- FAISS is in-memory. If Render redeployed (e.g. after an env var change), all FAISS
-  indexes are reset. Simply **re-upload your document** — ChromaDB is persistent.
-
-### "Module not found: sentence_transformers" in Render build log
-- The Docker build should have pre-installed it. Check Render logs for pip errors.
-- If it fails, try redeploying from the Render dashboard.
+- FAISS is in-memory — re-upload your document after each Render redeploy
+- ChromaDB is persistent on the Render disk
 
 ---
 
 ## Environment Variables Reference
 
-### Backend (set in Render dashboard)
+### Backend (set in Render dashboard → Environment tab)
 
 | Variable | Description | Example |
 |---|---|---|
 | `GROQ_API_KEY` | Your Groq secret key (**required**) | `gsk_abc123...` |
-| `GROQ_MODEL` | Groq model to use | `llama-3.3-70b-versatile` |
-| `CORS_ORIGINS` | Your Vercel frontend URL | `https://your-app.vercel.app` |
+| `GROQ_MODEL` | Groq model to use | `openai/gpt-oss-20b` |
+| `CORS_ORIGINS` | Your Streamlit frontend URL | `https://your-app.streamlit.app` |
 | `CHROMA_PERSIST_DIR` | ChromaDB storage path | `/data/chroma_db` |
 | `UPLOAD_DIR` | Uploaded files path | `/data/uploads` |
-| `MAX_FILE_SIZE_MB` | Max upload size | `20` |
+| `MAX_FILE_SIZE_MB` | Max upload size in MB | `200` |
 
-### Frontend (set in Vercel dashboard)
+### Frontend (set in Streamlit Cloud → App Settings → Secrets)
 
-| Variable | Description | Example |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | Your Render backend URL (**required**) | `https://studdy-buddy-api.onrender.com` |
+```toml
+BACKEND_URL = "https://your-render-backend.onrender.com"
+```
 
 ---
 
-## Local Development (run without deploying)
+## Local Development
 
 ### Backend
 
 ```bash
 cd backend
-
-# Create virtual environment (first time only)
 python -m venv .venv
-.venv\Scripts\activate        # Windows PowerShell
+.venv\Scripts\activate          # Windows PowerShell
 
-# Install dependencies (first time only)
 pip install -r requirements.txt
 
-# Copy env file and add your Groq key
+# Copy env and add your key
 copy .env.example .env
-# Open backend\.env in any editor and set:
-#   GROQ_API_KEY=gsk_...your-key...
+# Edit backend\.env — set GROQ_API_KEY=gsk_...
 
-# Start the API
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API runs at **http://localhost:8000**  
-Swagger UI at **http://localhost:8000/docs**
+API: **http://localhost:8000**  
+Swagger UI: **http://localhost:8000/docs**
 
-### Frontend
+### Streamlit Frontend
 
 ```bash
-cd frontend
+cd streamlit_app
+pip install -r requirements.txt
 
-# Install dependencies (first time only)
-npm install
+# Create secrets file
+copy .streamlit\secrets.toml.example .streamlit\secrets.toml
+# Edit secrets.toml — set BACKEND_URL=http://localhost:8000
 
-# Copy env file (default value is correct for local dev)
-copy .env.example .env.local
-
-# Start dev server
-npm run dev
+streamlit run app.py
 ```
 
-App runs at **http://localhost:3000**
+App: **http://localhost:8501**
 
 ---
 
@@ -274,22 +249,21 @@ App runs at **http://localhost:3000**
 Your Browser
      │
      ▼
- Vercel (free)                       ← https://your-app.vercel.app
- Next.js 14 — App Router
- Tailwind + Framer Motion + Lucide
+Streamlit Cloud (free)               ← https://your-app.streamlit.app
+streamlit_app/app.py  (pure Python)
      │
-     │  NEXT_PUBLIC_API_URL (axios)
+     │  BACKEND_URL (requests)
      ▼
- Render (free, Docker)               ← https://studdy-buddy-api.onrender.com
- FastAPI — uvicorn --workers 1
+Render (free, Docker)                ← https://studdy-buddy-api.onrender.com
+FastAPI — uvicorn
      │
-     ├── /data/chroma_db  ──────────── Render Disk (1 GB, persistent)
-     ├── /data/uploads    ──────────── Render Disk
+     ├── /data/chroma_db  ─────────── Render Disk (1 GB, persistent)
+     ├── /data/uploads    ─────────── Render Disk  (200 MB file limit)
      │
-     ├── HuggingFace all-MiniLM-L6-v2  (local embeddings, no API key)
-     └── Groq API  ─────────────────── llama-3.3-70b-versatile
+     ├── fastembed BAAI/bge-small-en-v1.5  (local embeddings)
+     └── Groq API  ────────────────── openai/gpt-oss-20b (free)
 ```
 
 ---
 
-*Need help? Open an issue on GitHub or check the Render and Vercel status pages.*
+*Need help? Open an issue on GitHub or check the [Render](https://status.render.com) and [Streamlit](https://www.streamlitstatus.com) status pages.*

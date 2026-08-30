@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_db"
     faiss_index_dir: str = "./faiss_indexes"
     upload_dir: str = "./uploads"
-    max_file_size_mb: int = 20
+    max_file_size_mb: int = 200
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     cors_origins: str = "http://localhost:3000,https://studdy-buddy-gray.vercel.app"

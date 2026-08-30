@@ -38,3 +38,6 @@ Thumbs.db
 .idea/
 
 backend/studybuddy.db
+
+# Streamlit secrets (real file — only the .example is committed)
+streamlit_app/.streamlit/secrets.toml
