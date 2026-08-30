@@ -7,7 +7,7 @@ Switch to PostgreSQL in production by setting DATABASE_URL in .env:
 """
 from __future__ import annotations
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -18,16 +18,18 @@ settings = get_settings()
 _is_sqlite = "sqlite" in settings.database_url
 
 # Create async engine — echo=False in prod; set echo=True to debug SQL
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    # For SQLite: allow shared connection across threads (needed for async)
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
-    # Pool tuning: keep connections warm, don't spin up a new one per request
-    pool_size=5 if not _is_sqlite else None,
-    max_overflow=10 if not _is_sqlite else None,
-    pool_pre_ping=True,
-)
+# SQLite uses NullPool (one connection, no pooling) — pool_size/max_overflow must NOT be passed.
+# PostgreSQL gets a proper connection pool.
+_engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {},
+    "pool_pre_ping": True,
+}
+if not _is_sqlite:
+    _engine_kwargs["pool_size"] = 5
+    _engine_kwargs["max_overflow"] = 10
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
