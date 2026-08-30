@@ -31,12 +31,15 @@ services:
         value: https://studdy-buddy-gray.vercel.app
 
       # ── Storage paths (inside the container) ─────────────────────────────────
+      # /tmp is always writable on Render's ephemeral container filesystem.
+      # (Render free tier has no persistent disk — uploads reset on redeploy,
+      #  but the service stays alive between requests.)
       - key: CHROMA_PERSIST_DIR
-        value: ./chroma_db
+        value: /tmp/chroma_db
       - key: UPLOAD_DIR
-        value: ./uploads
+        value: /tmp/uploads
       - key: FAISS_INDEX_DIR
-        value: ./faiss_indexes
+        value: /tmp/faiss_indexes
 
       # ── Tuning ────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB

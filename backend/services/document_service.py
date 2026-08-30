@@ -12,6 +12,7 @@ Responsibilities
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import re
@@ -309,14 +310,16 @@ class IngestionStats:
         self.description = description
 
 
-async def process_and_index(
+def _sync_process_and_index(
     file_bytes: bytes,
     filepath: str,
     doc_id: str,
     filename: str,
 ) -> IngestionStats:
     """
-    Full ingestion pipeline:
+    Synchronous ingestion pipeline — runs in a thread via asyncio.to_thread()
+    so it never blocks the async event loop.
+
     1. Extract text based on file extension.
     2. Generate a short description from the extracted text.
     3. Convert to LangChain Documents, chunk, tag metadata.
@@ -394,6 +397,21 @@ async def process_and_index(
         total_tokens=total_tokens,
         parser_used=parser_used,
         description=description,
+    )
+
+
+async def process_and_index(
+    file_bytes: bytes,
+    filepath: str,
+    doc_id: str,
+    filename: str,
+) -> IngestionStats:
+    """
+    Async wrapper — offloads all blocking CPU/IO work to a thread pool
+    so the FastAPI event loop stays responsive during ingestion.
+    """
+    return await asyncio.to_thread(
+        _sync_process_and_index, file_bytes, filepath, doc_id, filename
     )
 
 
