@@ -175,7 +175,7 @@ export function Flashcards({ docId }: Props) {
           </div>
           <div className="flex-1">
             <h2 className="section-heading">Flashcards</h2>
-            <p className="text-sm text-gray-400 mt-1">AI generates flip-cards from your notes. Mark each card as "Know it" or "Review it" — review cards come back until you nail them.</p>
+            <p className="text-sm text-gray-400 mt-1">AI generates flip-cards from your notes. Mark each card as &quot;Know it&quot; or &quot;Review it&quot; — review cards come back until you nail them.</p>
           </div>
           {sessions.length > 0 && (
             <button onClick={() => setShowHistory((v) => !v)}
