@@ -72,7 +72,7 @@ def _start_backend() -> None:
         **os.environ,
         # LLM
         "GROQ_API_KEY":        groq_key,
-        "GROQ_MODEL":          os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b"),
+        "GROQ_MODEL":          os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
         # Override any OpenAI key from secrets too
         "OPENAI_API_KEY":      os.environ.get("OPENAI_API_KEY",
                                     st.secrets.get("OPENAI_API_KEY", "") if hasattr(st, "secrets") else ""),
@@ -1216,6 +1216,44 @@ def tab_feynman():
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB: Cheat Sheet
 # ─────────────────────────────────────────────────────────────────────────────
+def _stream_cheatsheet(doc_id: str, topic: str) -> tuple[str, str | None]:
+    """
+    Consume the SSE stream from /api/cheatsheet and return (full_text, error).
+    The endpoint sends:  data: <token>\\n\\n  …  data: [DONE]\\n\\n
+    """
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/api/cheatsheet",
+            json={"doc_id": doc_id, "topic": topic or ""},
+            stream=True,
+            timeout=TIMEOUT_LONG,
+        )
+        if not resp.ok:
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except Exception:
+                detail = resp.text[:200]
+            return "", f"HTTP {resp.status_code}: {detail}"
+
+        parts: list[str] = []
+        for raw_line in resp.iter_lines(decode_unicode=True):
+            if not raw_line.startswith("data: "):
+                continue
+            payload = raw_line[6:]  # strip "data: "
+            if payload == "[DONE]":
+                break
+            if payload.startswith("[ERROR]"):
+                return "", payload[7:].strip()
+            # unescape newlines the backend encodes as \\n
+            parts.append(payload.replace("\\n", "\n"))
+
+        return "".join(parts), None
+    except requests.exceptions.Timeout:
+        return "", "Request timed out — try again."
+    except Exception as exc:
+        return "", str(exc)
+
+
 def tab_cheatsheet():
     _heading("Cheat Sheet", "One-page key-concept summary of your document.")
 
@@ -1228,14 +1266,10 @@ def tab_cheatsheet():
 
     if st.button("Generate Cheat Sheet", type="primary"):
         with st.spinner("Generating cheat sheet …"):
-            data, err = _post("/api/cheatsheet", json={
-                "doc_id": doc_id,
-                "topic":  topic.strip() or None,
-            })
+            content, err = _stream_cheatsheet(doc_id, topic.strip())
         if err:
             st.error(err)
-        else:
-            content = data.get("content", data.get("cheatsheet", str(data)))
+        elif content:
             st.markdown("---")
             st.markdown(content)
             st.download_button(
@@ -1244,6 +1278,8 @@ def tab_cheatsheet():
                 file_name="cheatsheet.md",
                 mime="text/markdown",
             )
+        else:
+            st.warning("No content was generated. Try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
