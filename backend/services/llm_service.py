@@ -54,6 +54,13 @@ def get_client() -> tuple[AsyncOpenAI, str]:
     )
 
 
+def _groq_model_rotation() -> list[str]:
+    """Return [primary] + fallbacks — all Groq models to try in order."""
+    primary = settings.groq_model
+    fallbacks = [m for m in settings.groq_fallback_models_list if m != primary]
+    return [primary] + fallbacks
+
+
 def _clean_response(raw: str) -> str:
     """
     Clean model output before JSON parsing.
@@ -97,42 +104,59 @@ async def chat(
     max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
-    used_model = model or default_model
-    t0 = time.monotonic()
-    try:
-        response = await client.chat.completions.create(
-            model=used_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user",   "content": user},
-            ],
+
+    # Build the model list to try: explicit override → rotation list → single model
+    if model:
+        models_to_try = [model]
+    elif settings.llm_provider == "groq":
+        models_to_try = _groq_model_rotation()
+    else:
+        models_to_try = [default_model]
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user",   "content": user},
+    ]
+
+    last_exc: Exception | None = None
+    for used_model in models_to_try:
+        t0 = time.monotonic()
+        try:
+            response = await client.chat.completions.create(
+                model=used_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        except RateLimitError as exc:
+            logger.warning("rate_limit_hit model=%s, trying next: %s", used_model, exc)
+            last_exc = exc
+            continue  # rotate to next model
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        raw = response.choices[0].message.content or ""
+        result = _clean_response(raw)
+        usage = response.usage
+        logger.info(
+            "llm_call",
+            extra={
+                "fn": "chat",
+                "model": used_model,
+                "finish": response.choices[0].finish_reason,
+                "prompt_tokens": usage.prompt_tokens if usage else 0,
+                "completion_tokens": usage.completion_tokens if usage else 0,
+                "latency_ms": latency_ms,
+            },
         )
-    except RateLimitError as exc:
-        logger.warning("rate_limit_hit model=%s: %s", used_model, exc)
-        raise RuntimeError(
-            f"Rate limit reached for model '{used_model}'. "
-            "Please wait a few minutes and try again, or set GROQ_MODEL to a different model."
-        ) from exc
-    latency_ms = int((time.monotonic() - t0) * 1000)
-    raw = response.choices[0].message.content or ""
-    result = _clean_response(raw)
-    usage = response.usage
-    logger.info(
-        "llm_call",
-        extra={
-            "fn": "chat",
-            "model": used_model,
-            "finish": response.choices[0].finish_reason,
-            "prompt_tokens": usage.prompt_tokens if usage else 0,
-            "completion_tokens": usage.completion_tokens if usage else 0,
-            "latency_ms": latency_ms,
-        },
-    )
-    if latency_ms > 10_000:
-        logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, used_model)
-    return result
+        if latency_ms > 10_000:
+            logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, used_model)
+        return result
+
+    # All models exhausted — raise a clear error
+    tried = ", ".join(models_to_try)
+    raise RuntimeError(
+        f"All Groq models rate-limited ({tried}). "
+        "Please wait a few minutes and try again."
+    ) from last_exc
 
 
 async def chat_with_history(
@@ -142,32 +166,46 @@ async def chat_with_history(
     max_tokens: int = 4096,
 ) -> str:
     client, default_model = get_client()
-    t0 = time.monotonic()
+    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
     messages = [{"role": "system", "content": system}] + history
-    response = await client.chat.completions.create(
-        model=default_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        messages=messages,
-    )
-    latency_ms = int((time.monotonic() - t0) * 1000)
-    raw = response.choices[0].message.content or ""
-    result = _clean_response(raw)
-    usage = response.usage
-    logger.info(
-        "llm_call",
-        extra={
-            "fn": "chat_with_history",
-            "model": default_model,
-            "finish": response.choices[0].finish_reason,
-            "prompt_tokens": usage.prompt_tokens if usage else 0,
-            "completion_tokens": usage.completion_tokens if usage else 0,
-            "latency_ms": latency_ms,
-        },
-    )
-    if latency_ms > 10_000:
-        logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, default_model)
-    return result
+
+    last_exc: Exception | None = None
+    for used_model in models_to_try:
+        t0 = time.monotonic()
+        try:
+            response = await client.chat.completions.create(
+                model=used_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        except RateLimitError as exc:
+            logger.warning("rate_limit_hit model=%s, trying next: %s", used_model, exc)
+            last_exc = exc
+            continue
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        raw = response.choices[0].message.content or ""
+        result = _clean_response(raw)
+        usage = response.usage
+        logger.info(
+            "llm_call",
+            extra={
+                "fn": "chat_with_history",
+                "model": used_model,
+                "finish": response.choices[0].finish_reason,
+                "prompt_tokens": usage.prompt_tokens if usage else 0,
+                "completion_tokens": usage.completion_tokens if usage else 0,
+                "latency_ms": latency_ms,
+            },
+        )
+        if latency_ms > 10_000:
+            logger.warning("llm_slow_call latency_ms=%d model=%s", latency_ms, used_model)
+        return result
+
+    tried = ", ".join(models_to_try)
+    raise RuntimeError(
+        f"All Groq models rate-limited ({tried}). Please wait a few minutes and try again."
+    ) from last_exc
 
 
 async def stream_chat_with_history(
@@ -182,18 +220,31 @@ async def stream_chat_with_history(
     Caller is responsible for assembling the full response.
     """
     client, default_model = get_client()
+    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
     messages = [{"role": "system", "content": system}] + history
-    stream = await client.chat.completions.create(
-        model=default_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        messages=messages,
-        stream=True,
+
+    for used_model in models_to_try:
+        try:
+            stream = await client.chat.completions.create(
+                model=used_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                messages=messages,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            return  # success — stop after first working model
+        except RateLimitError as exc:
+            logger.warning("rate_limit_hit stream model=%s, trying next: %s", used_model, exc)
+            continue
+
+    tried = ", ".join(models_to_try)
+    raise RuntimeError(
+        f"All Groq models rate-limited ({tried}). Please wait a few minutes and try again."
     )
-    async for chunk in stream:
-        delta = chunk.choices[0].delta.content if chunk.choices else None
-        if delta:
-            yield delta
 
 
 async def stream_chat(
@@ -204,25 +255,31 @@ async def stream_chat(
 ) -> AsyncIterator[str]:
     """Streaming variant of chat() for single-turn requests."""
     client, default_model = get_client()
+    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
     messages = [
         {"role": "system", "content": system},
         {"role": "user",   "content": user},
     ]
-    try:
-        stream = await client.chat.completions.create(
-            model=default_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            messages=messages,
-            stream=True,
-        )
-    except RateLimitError as exc:
-        logger.warning("rate_limit_hit model=%s: %s", default_model, exc)
-        raise RuntimeError(
-            f"Rate limit reached for model '{default_model}'. "
-            "Please wait a few minutes and try again, or set GROQ_MODEL to a different model."
-        ) from exc
-    async for chunk in stream:
-        delta = chunk.choices[0].delta.content if chunk.choices else None
-        if delta:
-            yield delta
+
+    for used_model in models_to_try:
+        try:
+            stream = await client.chat.completions.create(
+                model=used_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                messages=messages,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            return  # success
+        except RateLimitError as exc:
+            logger.warning("rate_limit_hit stream model=%s, trying next: %s", used_model, exc)
+            continue
+
+    tried = ", ".join(models_to_try)
+    raise RuntimeError(
+        f"All Groq models rate-limited ({tried}). Please wait a few minutes and try again."
+    )
