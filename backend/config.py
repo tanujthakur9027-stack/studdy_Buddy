@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "groq/compound-mini"
 
+    # ── Groq model rotation (tried in order when the primary is rate-limited) ─
+    # All models confirmed present on this Groq account (queried 2025-07-01).
+    # groq/compound-mini → groq/compound → openai/gpt-oss-20b → openai/gpt-oss-120b
+    groq_fallback_models: str = "groq/compound,openai/gpt-oss-20b,openai/gpt-oss-120b"
+
     # ── Database ──────────────────────────────────────────────────────────────
     # Use SQLite for local dev; swap to PostgreSQL URL in production:
     #   postgresql+asyncpg://user:pass@host/dbname
@@ -44,6 +49,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]
+
+    @property
+    def groq_fallback_models_list(self) -> list[str]:
+        return [m.strip() for m in self.groq_fallback_models.split(",") if m.strip()]
 
     @property
     def llm_provider(self) -> str:
