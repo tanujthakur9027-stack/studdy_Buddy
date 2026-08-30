@@ -33,7 +33,7 @@ export interface ChatSessionSummary {
   message_count: number;
 }
 
-export type AppTab = "upload" | "explain" | "quiz" | "planner" | "doubt" | "progress";
+export type AppTab = "upload" | "explain" | "quiz" | "planner" | "doubt" | "feynman" | "flashcards" | "progress";
 
 export interface QuizState {
   currentIndex: number;

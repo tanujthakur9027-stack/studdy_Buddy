@@ -4,11 +4,12 @@ import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud, FileText, FileSpreadsheet, FileImage,
-  Presentation, X, CheckCircle2, AlertCircle, Sparkles,
+  Presentation, X, CheckCircle2, AlertCircle, Sparkles, Network,
 } from "lucide-react";
 import { uploadDocument } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 import { CheatSheet } from "@/components/features/CheatSheet";
+import { ConceptMapModal } from "@/components/features/ConceptMapModal";
 import type { UploadedDocument } from "@/types";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -41,6 +42,7 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
   const [uploading,       setUploading]       = useState(false);
   const [error,           setError]           = useState<string | null>(null);
   const [cheatSheetDoc,   setCheatSheetDoc]   = useState<UploadedDocument | null>(null);
+  const [conceptMapDoc,   setConceptMapDoc]   = useState<UploadedDocument | null>(null);
 
   // Track preview URLs so we can revoke them when docs are removed (avoid memory leaks)
   const previewUrls = useRef<Map<string, string>>(new Map());
@@ -210,6 +212,13 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
+                    onClick={() => setConceptMapDoc(doc)}
+                    title="Generate concept map"
+                    className="p-1 rounded-lg hover:bg-purple-600/20 text-gray-600 hover:text-purple-400 transition-colors"
+                  >
+                    <Network className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => setCheatSheetDoc(doc)}
                     title="Generate cheat sheet"
                     className="p-1 rounded-lg hover:bg-brand-600/20 text-gray-600 hover:text-brand-400 transition-colors"
@@ -237,6 +246,17 @@ export function FileUpload({ onUploaded, documents, onRemove }: Props) {
           docId={cheatSheetDoc.doc_id}
           filename={cheatSheetDoc.filename}
           onClose={() => setCheatSheetDoc(null)}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Concept Map modal */}
+    <AnimatePresence>
+      {conceptMapDoc && (
+        <ConceptMapModal
+          docId={conceptMapDoc.doc_id}
+          filename={conceptMapDoc.filename}
+          onClose={() => setConceptMapDoc(null)}
         />
       )}
     </AnimatePresence>

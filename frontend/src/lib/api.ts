@@ -107,6 +107,30 @@ export async function deleteSavedAnswer(id: string): Promise<void> {
   await api.delete(`/api/saved-answers/${id}`);
 }
 
+// ── Feynman Mode ─────────────────────────────────────────────────────────────
+export interface QAPair {
+  question: string;
+  answer: string;
+}
+
+export interface FeynmanResponse {
+  score: number;
+  grade: string;
+  strengths: string[];
+  gaps: string[];
+  qa_pairs: QAPair[];
+  coaching_tip: string;
+}
+
+export async function evaluateFeynman(params: {
+  concept: string;
+  explanation: string;
+  doc_id?: string | null;
+}): Promise<FeynmanResponse> {
+  const { data } = await api.post("/api/feynman/evaluate", params);
+  return data;
+}
+
 // ── Cheat Sheet ───────────────────────────────────────────────────────────────
 /** POST /api/cheatsheet — returns an AbortController (streaming SSE).
  *  Use streamPost from streamApi.ts to consume it; this just provides the type. */
@@ -170,6 +194,23 @@ export interface TopicStat {
   attempts: number;
 }
 
+export interface DailyActivity {
+  date: string;   // YYYY-MM-DD
+  count: number;
+}
+
+export interface FlashcardStats {
+  total_sessions: number;
+  total_cards: number;
+}
+
+export interface FeynmanHistoryPoint {
+  date: string;
+  score: number;
+  concept: string;
+  grade: string;
+}
+
 export interface ProgressSummary {
   total_quizzes: number;
   avg_score_pct: number;
@@ -179,6 +220,9 @@ export interface ProgressSummary {
   score_history: QuizScorePoint[];
   weak_topics: TopicStat[];
   strong_topics: TopicStat[];
+  daily_activity: DailyActivity[];
+  flashcard_stats: FlashcardStats;
+  feynman_history: FeynmanHistoryPoint[];
 }
 
 export async function fetchProgressSummary(): Promise<ProgressSummary> {

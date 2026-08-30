@@ -22,7 +22,10 @@ from database import init_db
 from routers import ask, doubt, explain, quiz, revision, upload
 from routers.chat import router as chat_router
 from routers.cheatsheet import router as cheatsheet_router
+from routers.concept_map import router as concept_map_router
 from routers.documents import router as documents_router
+from routers.feynman import router as feynman_router
+from routers.flashcards import router as flashcards_router
 from routers.progress import router as progress_router
 from routers.share import router as share_router
 from utils.log_config import setup_logging
@@ -149,6 +152,9 @@ app.include_router(chat_router,        prefix="/api")
 app.include_router(share_router,       prefix="/api")
 app.include_router(progress_router,    prefix="/api")
 app.include_router(cheatsheet_router,  prefix="/api")
+app.include_router(feynman_router,     prefix="/api")
+app.include_router(concept_map_router, prefix="/api")
+app.include_router(flashcards_router,  prefix="/api")
 
 # ── Legacy / unversioned routers (backwards compatibility) ────────────────────
 app.include_router(quiz.router)

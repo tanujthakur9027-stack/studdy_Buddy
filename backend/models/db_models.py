@@ -128,6 +128,55 @@ class ChatMessage(Base):
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
 
 
+# ── Flashcard sessions + cards ───────────────────────────────────────────────
+
+class FlashcardSession(Base):
+    """A generated flashcard deck for a document."""
+    __tablename__ = "flashcard_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(String(36), index=True)
+    topic: Mapped[str] = mapped_column(String(255), default="General")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    cards: Mapped[list["Flashcard"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="Flashcard.id",
+    )
+
+
+class Flashcard(Base):
+    """A single flip-card in a FlashcardSession."""
+    __tablename__ = "flashcards"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("flashcard_sessions.id", ondelete="CASCADE"), index=True
+    )
+    front: Mapped[str] = mapped_column(Text)
+    back: Mapped[str] = mapped_column(Text)
+    topic_tag: Mapped[str] = mapped_column(String(100), default="")
+
+    session: Mapped["FlashcardSession"] = relationship(back_populates="cards")
+
+
+# ── Feynman evaluation results ───────────────────────────────────────────────
+
+class FeynmanResult(Base):
+    """Stores each Feynman Mode evaluation so progress can be tracked over time."""
+    __tablename__ = "feynman_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    concept: Mapped[str] = mapped_column(String(255), default="")
+    explanation_length: Mapped[int] = mapped_column(Integer, default=0)
+    score: Mapped[int] = mapped_column(Integer)          # 0–100
+    grade: Mapped[str] = mapped_column(String(2))        # S/A/B/C/D
+    gap_count: Mapped[int] = mapped_column(Integer, default=0)
+    doc_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 # ── Shared resources (quiz share links) ──────────────────────────────────────
 
 class SharedResource(Base):
