@@ -19,11 +19,11 @@ export interface StreamMeta {
 
 export interface StreamCallbacks {
   /** Called with each decoded token string */
-  onToken: (token: string) => void;
+  onToken: (_token: string) => void;
   /** Called once when the stream finishes, with optional metadata */
-  onDone?: (meta: StreamMeta) => void;
+  onDone?: (_meta: StreamMeta) => void;
   /** Called if there's an error mid-stream */
-  onError?: (msg: string) => void;
+  onError?: (_msg: string) => void;
 }
 
 /**

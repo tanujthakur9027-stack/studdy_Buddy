@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { fetchProgressSummary } from "@/lib/api";
 import type { ProgressSummary, TopicStat, DailyActivity, FeynmanHistoryPoint } from "@/lib/api";
-import { Spinner, Badge, ProgressBar } from "@/components/ui";
+import { Spinner, ProgressBar } from "@/components/ui";
 
 const GRADE_COLOR: Record<string, string> = {
   S: "text-yellow-400",
@@ -71,8 +71,6 @@ function ScoreHistoryChart({ history }: { history: ProgressSummary["score_histor
   if (!history.length) return null;
   const reversed = [...history].reverse();
   const max = Math.max(...reversed.map((h) => h.percentage), 100);
-  const W = 100 / reversed.length;
-
   return (
     <div className="glass-card p-5 space-y-3">
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Layers, Sparkles, RotateCcw, ChevronLeft, ChevronRight,
+  Layers, Sparkles, RotateCcw,
   CheckCircle2, RefreshCw, Trophy, History, X,
 } from "lucide-react";
 import { api } from "@/lib/api";

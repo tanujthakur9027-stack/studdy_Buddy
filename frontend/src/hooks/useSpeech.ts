@@ -60,7 +60,7 @@ interface ISpeechRecognition extends EventTarget {
   onstart: (() => void) | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
-  onresult: ((e: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null;
+  onresult: ((_e: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null;
 }
 
 interface ISpeechRecognitionCtor {
@@ -68,7 +68,7 @@ interface ISpeechRecognitionCtor {
 }
 
 /** Wraps browser SpeechRecognition for voice-to-text input. */
-export function useVoiceInput(onResult: (transcript: string) => void) {
+export function useVoiceInput(onResult: (_transcript: string) => void) {
   const [listening, setListening] = useState(false);
   const recRef = useRef<ISpeechRecognition | null>(null);
 
@@ -87,9 +87,9 @@ export function useVoiceInput(onResult: (transcript: string) => void) {
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onstart = () => setListening(true);
-    rec.onresult = (e) => {
-      const transcript = e.results[0]?.[0]?.transcript ?? "";
-      if (transcript) onResult(transcript);
+    rec.onresult = (_e) => {
+      const t = _e.results[0]?.[0]?.transcript ?? "";
+      if (t) onResult(t);
     };
     rec.onerror = () => setListening(false);
     rec.onend = () => setListening(false);
