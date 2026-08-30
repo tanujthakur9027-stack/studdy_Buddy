@@ -13,6 +13,21 @@
 
 ---
 
+## 🔗 Live Application Links
+
+| | Link | Description |
+|-|------|-------------|
+| 🌐 | **[https://studdy-buddy-gray.vercel.app](https://studdy-buddy-gray.vercel.app)** | **Frontend — open the app here** |
+| ⚙️ | **[https://studdy-buddy-api.onrender.com/docs](https://studdy-buddy-api.onrender.com/docs)** | **Backend API — Swagger UI** |
+| 📡 | **[https://studdy-buddy-api.onrender.com/health](https://studdy-buddy-api.onrender.com/health)** | Backend health check |
+| 💻 | **[https://github.com/tanujthakur9027-stack/studdy_Buddy](https://github.com/tanujthakur9027-stack/studdy_Buddy)** | Source code (this repo) |
+
+> **⚠️ Note:** The backend runs on Render's **free tier** — it sleeps after 15 minutes of
+> inactivity. If the app feels slow on first load, wait **30–60 seconds** for the server to
+> wake up, then refresh. Subsequent requests are fast.
+
+---
+
 ## 👥 Team
 
 | Name | Role |
