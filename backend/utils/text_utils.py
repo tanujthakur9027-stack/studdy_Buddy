@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Optional
 
 # ── tiktoken singleton ────────────────────────────────────────────────────────
 # Encoding initialisation is ~30 ms the first time; cache it at module load so
