@@ -99,11 +99,22 @@ async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depen
     if len(file_bytes) == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
 
+    # ── Ensure upload directory exists and is writable ────────────────────────
+    upload_dir = Path(settings.upload_dir)
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.exception("Cannot create upload directory %s", upload_dir)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload directory unavailable ({upload_dir}): {exc}",
+        ) from exc
+
     # ── Save to disk ──────────────────────────────────────────────────────────
     try:
         filepath, doc_id = await save_upload(file_bytes, filename)
     except Exception as exc:
-        logger.exception("Failed to save upload")
+        logger.exception("Failed to save upload to %s", upload_dir)
         raise HTTPException(status_code=500, detail=f"Could not save file: {exc}") from exc
 
     # ── Parse + Index ─────────────────────────────────────────────────────────
@@ -113,7 +124,10 @@ async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depen
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Ingestion pipeline failed for %s", filename)
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ingestion failed: {exc}. Check Render logs for the full traceback.",
+        ) from exc
 
     # ── Persist metadata to DB ────────────────────────────────────────────────
     doc_row = Document(
