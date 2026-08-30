@@ -54,8 +54,21 @@ export function streamPost(
     }
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "Unknown error");
-      callbacks.onError?.(`HTTP ${response.status}: ${text}`);
+      let msg = "Unknown error";
+      try {
+        const text = await response.text();
+        // Try to extract a human-readable message from JSON error bodies
+        if (text) {
+          try {
+            const parsed = JSON.parse(text);
+            msg = parsed?.detail ?? parsed?.message ?? parsed?.error?.message ?? text;
+          } catch {
+            // Not JSON — use raw text but truncate to avoid giant tracebacks
+            msg = text.slice(0, 200);
+          }
+        }
+      } catch { /* ignore read errors */ }
+      callbacks.onError?.(`HTTP ${response.status}: ${msg}`);
       return;
     }
 

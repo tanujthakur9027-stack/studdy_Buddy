@@ -125,14 +125,21 @@ async def get_progress_summary(db: AsyncSession = Depends(get_db)):
 
     # --- Daily activity (last 90 days: quiz + feynman events) ---
     cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    # SQLite stores datetimes as naive strings; make cutoff naive for comparison
+    cutoff_naive = cutoff.replace(tzinfo=None)
     activity_map: dict[str, int] = {}
     for r in all_results:
-        if r.completed_at >= cutoff:
-            day = r.completed_at.date().isoformat()
+        ts = r.completed_at
+        # Normalise: strip tzinfo if present so comparison is always naive vs naive
+        ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
+        if ts_naive >= cutoff_naive:
+            day = ts_naive.date().isoformat()
             activity_map[day] = activity_map.get(day, 0) + 1
     for r in feynman_rows:
-        if r.created_at >= cutoff:
-            day = r.created_at.date().isoformat()
+        ts = r.created_at
+        ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
+        if ts_naive >= cutoff_naive:
+            day = ts_naive.date().isoformat()
             activity_map[day] = activity_map.get(day, 0) + 1
     daily_activity = [
         DailyActivity(date=d, count=c)
@@ -154,7 +161,13 @@ async def get_progress_summary(db: AsyncSession = Depends(get_db)):
     avg_pct     = round(sum(percentages) / len(percentages), 1)
     best_pct    = round(max(percentages), 1)
     total_q     = sum(r.total for r in all_results)
-    streak      = _compute_streak([r.completed_at for r in all_results])
+    # Pass tz-aware datetimes to _compute_streak; make naive ones UTC-aware first
+    streak_dates = [
+        r.completed_at if r.completed_at.tzinfo is not None
+        else r.completed_at.replace(tzinfo=timezone.utc)
+        for r in all_results
+    ]
+    streak      = _compute_streak(streak_dates)
 
     # --- Score history (last 10) ---
     history = [
