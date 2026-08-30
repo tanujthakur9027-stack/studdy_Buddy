@@ -3,7 +3,7 @@ LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
 
 Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (openai/gpt-oss-20b by default).
+  - Else if GROQ_API_KEY is set → use Groq (llama-3.1-8b-instant by default).
   - Neither set → raises RuntimeError with a helpful message.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import re
 import time
 from collections.abc import AsyncIterator
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -99,15 +99,22 @@ async def chat(
     client, default_model = get_client()
     used_model = model or default_model
     t0 = time.monotonic()
-    response = await client.chat.completions.create(
-        model=used_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=used_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+        )
+    except RateLimitError as exc:
+        logger.warning("rate_limit_hit model=%s: %s", used_model, exc)
+        raise RuntimeError(
+            f"Rate limit reached for model '{used_model}'. "
+            "Please wait a few minutes and try again, or set GROQ_MODEL to a different model."
+        ) from exc
     latency_ms = int((time.monotonic() - t0) * 1000)
     raw = response.choices[0].message.content or ""
     result = _clean_response(raw)
@@ -201,13 +208,20 @@ async def stream_chat(
         {"role": "system", "content": system},
         {"role": "user",   "content": user},
     ]
-    stream = await client.chat.completions.create(
-        model=default_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        messages=messages,
-        stream=True,
-    )
+    try:
+        stream = await client.chat.completions.create(
+            model=default_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=messages,
+            stream=True,
+        )
+    except RateLimitError as exc:
+        logger.warning("rate_limit_hit model=%s: %s", default_model, exc)
+        raise RuntimeError(
+            f"Rate limit reached for model '{default_model}'. "
+            "Please wait a few minutes and try again, or set GROQ_MODEL to a different model."
+        ) from exc
     async for chunk in stream:
         delta = chunk.choices[0].delta.content if chunk.choices else None
         if delta:

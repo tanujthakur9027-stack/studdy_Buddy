@@ -18,9 +18,7 @@
 
 | | Link | Description |
 |-|------|-------------|
-| 🌐 | **[https://studdy-buddy-gray.vercel.app](https://studdy-buddy-gray.vercel.app)** | **Frontend — open the app here** |
-| ⚙️ | **[https://studdy-buddy-api.onrender.com/docs](https://studdy-buddy-api.onrender.com/docs)** | **Backend API — Swagger UI** |
-| 📡 | **[https://studdy-buddy-api.onrender.com/health](https://studdy-buddy-api.onrender.com/health)** | Backend health check |
+| 🌐 | **[https://studdybuddy-zenmnfbuwdcdqqqj5kpn5g.streamlit.app/](https://studdybuddy-zenmnfbuwdcdqqqj5kpn5g.streamlit.app/)** | **Frontend — open the app here** |
 | 💻 | **[https://github.com/tanujthakur9027-stack/studdy_Buddy](https://github.com/tanujthakur9027-stack/studdy_Buddy)** | Source code (this repo) |
 
 > **⚠️ Note:** The backend runs on Render's **free tier** — it sleeps after 15 minutes of
@@ -108,7 +106,7 @@ FastAPI v4  (Python 3.11 · Docker · Render)
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | API Framework | FastAPI 0.111 | Async REST + SSE streaming + Swagger UI |
-| LLM | OpenAI `gpt-4o-mini` · Groq `openai/gpt-oss-20b` | Answer generation (streaming) |
+| LLM | OpenAI `gpt-4o-mini` · Groq `llama-3.1-8b-instant` | Answer generation (streaming) |
 | Embeddings | fastembed `BAAI/bge-small-en-v1.5` (local ONNX) | Vectors — no API key required |
 | Vector DB | FAISS (in-memory) + ChromaDB (persistent) | Semantic search & RAG retrieval |
 | Database | SQLAlchemy async + SQLite WAL / PostgreSQL | Persistent storage |
@@ -235,7 +233,7 @@ npm run dev
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GROQ_API_KEY` | **yes** (free) | — | Groq key — [console.groq.com](https://console.groq.com) |
-| `GROQ_MODEL` | no | `openai/gpt-oss-20b` | Groq model ID |
+| `GROQ_MODEL` | no | `llama-3.1-8b-instant` | Groq model ID |
 | `OPENAI_API_KEY` | optional | — | OpenAI key — takes priority over Groq when set |
 | `OPENAI_MODEL` | no | `gpt-4o-mini` | OpenAI model name |
 | `DATABASE_URL` | no | `sqlite+aiosqlite:///./studybuddy.db` | SQLite (dev) or `postgresql+asyncpg://…` (prod) |
@@ -398,7 +396,7 @@ studdy_Buddy/
 
 | Provider | Model | Notes |
 |----------|-------|-------|
-| [Groq](https://groq.com) | `openai/gpt-oss-20b` | **Free** — ultra-fast inference, used as default fallback |
+| [Groq](https://groq.com) | `llama-3.1-8b-instant` | **Free** — ultra-fast inference, used as default fallback |
 | [OpenAI](https://openai.com) | `gpt-4o-mini` | Optional primary provider — set `OPENAI_API_KEY` |
 
 ### Infrastructure
