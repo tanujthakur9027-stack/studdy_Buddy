@@ -98,7 +98,7 @@ export function Flashcards({ docId }: Props) {
     if (!docId) { toast.error("Upload a document first!"); return; }
     setLoading(true);
     try {
-      const res = await api.post("/api/flashcards/generate", { doc_id: docId, topic: topic.trim(), num_cards: 15 });
+      const res = await api.post("/api/flashcards/generate", { doc_id: docId, topic: topic.trim(), num_cards: 15 }, { timeout: 120_000 });
       const generated: FlashCard[] = res.data.cards;
       setCards(generated);
       startDeck(generated);
