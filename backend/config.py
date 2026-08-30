@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 20
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,https://studdy-buddy-gray.vercel.app"
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
     # Max LLM-backed requests per minute per IP (free tier default)
