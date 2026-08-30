@@ -60,7 +60,7 @@ Respond ONLY with valid JSON matching this schema (no markdown fences):
 }}"""
 
     try:
-        raw = await chat(system=system, user=user_prompt, temperature=0.65, max_tokens=800)
+        raw = await chat(system=system, user=user_prompt, temperature=0.65, max_tokens=4096)
         cleaned = strip_json_fences(raw)
         log.info("explain raw len=%d cleaned len=%d preview=%r", len(raw), len(cleaned), cleaned[:120])
         data = json.loads(cleaned)

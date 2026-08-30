@@ -24,12 +24,8 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const api = axios.create({
   baseURL: BASE,
-  // 60 s covers streaming-less LLM calls; long ops (quiz generate, planner) get their own override.
-  timeout: 60_000,
+  timeout: 120_000,
 });
-
-// Per-endpoint timeout overrides (ms)
-const SLOW_TIMEOUT = 120_000;  // quiz generate, revision planner, flashcard generate
 
 // ── Document Upload ──────────────────────────────────────────────────────────
 export async function uploadDocument(file: File): Promise<{
@@ -358,7 +354,8 @@ export async function generateQuiz(params: {
   difficulty?: "easy" | "medium" | "hard" | "mixed";
   timer_seconds?: number;
 }): Promise<QuizGenerateResponse> {
-  const { data } = await api.post("/api/generate-quiz", params, { timeout: SLOW_TIMEOUT });
+  // Hit the new canonical endpoint; falls back gracefully if not found
+  const { data } = await api.post("/api/generate-quiz", params);
   return data;
 }
 
@@ -367,8 +364,7 @@ export async function submitQuizResult(params: {
   answers: Record<string, number>;
   time_taken: number;
 }): Promise<QuizSubmitResponse> {
-  // Corrected path: was missing the /api prefix
-  const { data } = await api.post("/api/quiz/submit", params);
+  const { data } = await api.post("/quiz/submit", params);
   return data;
 }
 
@@ -413,7 +409,7 @@ export async function generateRevisionPlan(params: {
   weak_topics?: string[];
   doc_id?: string;
 }): Promise<RevisionPlanResponse> {
-  const { data } = await api.post("/api/generate-plan", params, { timeout: SLOW_TIMEOUT });
+  const { data } = await api.post("/api/generate-plan", params);
   return data;
 }
 

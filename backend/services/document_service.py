@@ -51,10 +51,6 @@ def get_embeddings() -> FastEmbedEmbeddings:
 _faiss_registry: dict[str, FAISS] = {}
 _faiss_global: Optional[FAISS] = None
 
-# ── ChromaDB singleton ────────────────────────────────────────────────────────
-_chroma_client: Optional[Chroma] = None
-
-
 def _get_faiss_for_doc(doc_id: str) -> Optional[FAISS]:
     return _faiss_registry.get(doc_id)
 
@@ -63,17 +59,13 @@ def _get_faiss_global() -> Optional[FAISS]:
     return _faiss_global
 
 
-# ── ChromaDB (persisted, singleton) ──────────────────────────────────────────
+# ── ChromaDB (persisted) ─────────────────────────────────────────────────────
 def get_chroma(collection: str = "studybuddy") -> Chroma:
-    """Return a cached Chroma client; creating one takes ~50–100 ms."""
-    global _chroma_client
-    if _chroma_client is None:
-        _chroma_client = Chroma(
-            collection_name=collection,
-            embedding_function=get_embeddings(),
-            persist_directory=settings.chroma_persist_dir,
-        )
-    return _chroma_client
+    return Chroma(
+        collection_name=collection,
+        embedding_function=get_embeddings(),
+        persist_directory=settings.chroma_persist_dir,
+    )
 
 
 # ── PDF parsing ───────────────────────────────────────────────────────────────
