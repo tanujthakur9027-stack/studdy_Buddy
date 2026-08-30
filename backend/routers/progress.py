@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db_models import QuizResult
+from models.db_models import QuizResult, FlashcardSession, Flashcard, FeynmanResult
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -38,15 +38,35 @@ class TopicStat(BaseModel):
     attempts: int
 
 
+class DailyActivity(BaseModel):
+    date: str           # YYYY-MM-DD
+    count: int          # number of study events that day
+
+
+class FlashcardStats(BaseModel):
+    total_sessions: int
+    total_cards: int
+
+
+class FeynmanHistoryPoint(BaseModel):
+    date: str           # ISO date string
+    score: int
+    concept: str
+    grade: str
+
+
 class ProgressSummary(BaseModel):
     total_quizzes: int
     avg_score_pct: float
     best_score_pct: float
     current_streak_days: int
     total_questions_answered: int
-    score_history: list[QuizScorePoint]   # last 10, newest first
-    weak_topics: list[TopicStat]          # bottom-3 avg score
-    strong_topics: list[TopicStat]        # top-3 avg score
+    score_history: list[QuizScorePoint]         # last 10, newest first
+    weak_topics: list[TopicStat]                # bottom-3 avg score
+    strong_topics: list[TopicStat]              # top-3 avg score
+    daily_activity: list[DailyActivity]         # last 90 days
+    flashcard_stats: FlashcardStats
+    feynman_history: list[FeynmanHistoryPoint]  # last 10, newest first
 
 
 # ── Helper: compute study streak ─────────────────────────────────────────────
@@ -78,11 +98,55 @@ async def get_progress_summary(db: AsyncSession = Depends(get_db)):
     )
     all_results = result.scalars().all()
 
+    # --- Flashcard stats ---
+    fc_count_result = await db.execute(select(func.count()).select_from(FlashcardSession))
+    fc_total_sessions = fc_count_result.scalar() or 0
+    fc_cards_result = await db.execute(select(func.count()).select_from(Flashcard))
+    fc_total_cards = fc_cards_result.scalar() or 0
+    flashcard_stats = FlashcardStats(
+        total_sessions=fc_total_sessions,
+        total_cards=fc_total_cards,
+    )
+
+    # --- Feynman history (last 10) ---
+    feynman_result = await db.execute(
+        select(FeynmanResult).order_by(FeynmanResult.created_at.desc()).limit(10)
+    )
+    feynman_rows = feynman_result.scalars().all()
+    feynman_history = [
+        FeynmanHistoryPoint(
+            date=r.created_at.isoformat(),
+            score=r.score,
+            concept=r.concept,
+            grade=r.grade,
+        )
+        for r in feynman_rows
+    ]
+
+    # --- Daily activity (last 90 days: quiz + feynman events) ---
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    activity_map: dict[str, int] = {}
+    for r in all_results:
+        if r.completed_at >= cutoff:
+            day = r.completed_at.date().isoformat()
+            activity_map[day] = activity_map.get(day, 0) + 1
+    for r in feynman_rows:
+        if r.created_at >= cutoff:
+            day = r.created_at.date().isoformat()
+            activity_map[day] = activity_map.get(day, 0) + 1
+    daily_activity = [
+        DailyActivity(date=d, count=c)
+        for d, c in sorted(activity_map.items())
+    ]
+
     if not all_results:
         return ProgressSummary(
             total_quizzes=0, avg_score_pct=0, best_score_pct=0,
             current_streak_days=0, total_questions_answered=0,
             score_history=[], weak_topics=[], strong_topics=[],
+            daily_activity=daily_activity,
+            flashcard_stats=flashcard_stats,
+            feynman_history=feynman_history,
         )
 
     # --- Core stats ---
@@ -133,4 +197,7 @@ async def get_progress_summary(db: AsyncSession = Depends(get_db)):
         score_history=history,
         weak_topics=weak_topics,
         strong_topics=strong_topics,
+        daily_activity=daily_activity,
+        flashcard_stats=flashcard_stats,
+        feynman_history=feynman_history,
     )

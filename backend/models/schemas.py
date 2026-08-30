@@ -192,6 +192,30 @@ class RevisionPlanResponse(BaseModel):
 
 
 # ── Doubt Solver ─────────────────────────────────────────────────────────────
+# ── Feynman Mode ──────────────────────────────────────────────────────────────
+
+class QAPair(BaseModel):
+    question: str
+    answer: str
+
+
+class FeynmanRequest(BaseModel):
+    concept: str = Field(default="this topic", description="The concept being explained")
+    explanation: str = Field(..., min_length=10, description="Student's explanation in their own words")
+    doc_id: Optional[str] = None
+
+
+class FeynmanResponse(BaseModel):
+    score: int                       # 0–100
+    grade: str                       # S/A/B/C/D
+    strengths: list[str]             # what the student got right
+    gaps: list[str]                  # knowledge gaps to fill
+    qa_pairs: list[QAPair]           # Q&A generated from the explanation
+    coaching_tip: str                # one actionable improvement hint
+
+
+# ── Chat ─────────────────────────────────────────────────────────────────────
+
 class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str
