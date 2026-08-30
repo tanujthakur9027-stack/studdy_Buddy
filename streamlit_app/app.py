@@ -72,7 +72,7 @@ def _start_backend() -> None:
         **os.environ,
         # LLM
         "GROQ_API_KEY":        groq_key,
-        "GROQ_MODEL":          os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
+        "GROQ_MODEL":          os.environ.get("GROQ_MODEL", "groq/compound-mini"),
         # Override any OpenAI key from secrets too
         "OPENAI_API_KEY":      os.environ.get("OPENAI_API_KEY",
                                     st.secrets.get("OPENAI_API_KEY", "") if hasattr(st, "secrets") else ""),

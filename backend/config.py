@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "groq/compound-mini"
 
     # ── Database ──────────────────────────────────────────────────────────────
     # Use SQLite for local dev; swap to PostgreSQL URL in production:
