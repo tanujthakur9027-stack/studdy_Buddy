@@ -28,7 +28,7 @@ services:
       # Set to your Vercel URL AFTER the frontend is deployed (Step 4 in DEPLOY.md)
       # Multiple origins: comma-separated  e.g. https://a.vercel.app,https://b.vercel.app
       - key: CORS_ORIGINS
-        value: https://studdy-buddy-gray.vercel.app
+        value: "*"
 
       # ── Storage paths (inside the container) ─────────────────────────────────
       # /tmp is always writable on Render's ephemeral container filesystem.
@@ -43,7 +43,7 @@ services:
 
       # ── Tuning ────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB
-        value: 20
+        value: 200
       - key: CHUNK_SIZE
         value: 800
       - key: CHUNK_OVERLAP

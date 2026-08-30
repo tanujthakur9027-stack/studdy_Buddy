@@ -1,2 +1,63 @@
+# ── Web framework (FastAPI backend — spawned as subprocess) ───────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.1
+python-multipart>=0.0.9
+
+# ── Streamlit frontend ────────────────────────────────────────────────────────
 streamlit>=1.35.0
 requests>=2.32.0
+
+# ── Config / settings ─────────────────────────────────────────────────────────
+pydantic>=2.7.4
+pydantic-settings>=2.3.4
+python-dotenv>=1.0.1
+
+# ── LLM — OpenAI (primary) ───────────────────────────────────────────────────
+openai>=1.35.0
+
+# ── LLM — Groq (free fallback) ───────────────────────────────────────────────
+groq>=0.9.0
+
+# ── LangChain stack ───────────────────────────────────────────────────────────
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-text-splitters>=0.3.0
+
+# ── Embeddings (ONNX, no PyTorch) ────────────────────────────────────────────
+fastembed>=0.3.6
+
+# ── Vector stores ─────────────────────────────────────────────────────────────
+chromadb>=0.5.3
+langchain-chroma>=0.1.0
+numpy>=2.0.0
+faiss-cpu>=1.8.0
+
+# ── PDF parsers ───────────────────────────────────────────────────────────────
+pdfplumber>=0.11.0
+PyPDF2>=3.0.1
+pypdf>=4.2.0
+
+# ── Document loaders ──────────────────────────────────────────────────────────
+python-docx>=1.1.2
+docx2txt>=0.8
+python-pptx>=0.6.23
+openpyxl>=3.1.2
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# ── Database (SQLite async) ───────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+aiosqlite>=0.20.0
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+slowapi>=0.1.9
+
+# ── Observability ─────────────────────────────────────────────────────────────
+python-json-logger>=2.0.7
+sentry-sdk[fastapi]>=2.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+httpx>=0.27.0
+aiofiles>=23.2.1
+tiktoken>=0.7.0
