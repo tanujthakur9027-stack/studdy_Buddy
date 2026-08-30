@@ -484,3 +484,68 @@ def list_indexed_docs() -> list[dict]:
             vectors = 0
         result.append({"doc_id": doc_id, "vectors": vectors})
     return result
+
+
+def populate_faiss_from_chroma() -> int:
+    """
+    Rebuild all in-process FAISS indexes from ChromaDB on startup.
+
+    Called once during the FastAPI lifespan so that vector search works
+    at full speed from the very first request — even after a worker restart
+    or a Streamlit Cloud rerun — without requiring re-uploads.
+
+    Returns the total number of vectors loaded.
+    """
+    global _faiss_global
+
+    try:
+        chroma = get_chroma()
+        # Fetch all stored documents from ChromaDB
+        collection = chroma._collection
+        raw = collection.get(include=["documents", "metadatas", "embeddings"])
+    except Exception as exc:
+        logger.warning("populate_faiss_from_chroma: ChromaDB unavailable — %s", exc)
+        return 0
+
+    ids        = raw.get("ids", [])
+    texts      = raw.get("documents", [])
+    metadatas  = raw.get("metadatas", []) or [{}] * len(ids)
+    embeddings_raw = raw.get("embeddings")  # list of vectors or None
+
+    if not ids:
+        logger.info("populate_faiss_from_chroma: ChromaDB is empty — nothing to rebuild")
+        return 0
+
+    # Group by doc_id
+    from collections import defaultdict
+    groups: dict[str, list[tuple[str, str, dict]]] = defaultdict(list)
+    for i, (text, meta) in enumerate(zip(texts, metadatas)):
+        doc_id = (meta or {}).get("doc_id", "__unknown__")
+        groups[doc_id].append((ids[i], text, meta or {}))
+
+    emb_model  = get_embeddings()
+    total      = 0
+
+    for doc_id, items in groups.items():
+        try:
+            docs = [
+                Document(page_content=text, metadata=meta)
+                for _, text, meta in items
+            ]
+            doc_faiss = FAISS.from_documents(docs, emb_model)
+            _faiss_registry[doc_id] = doc_faiss
+            total += doc_faiss.index.ntotal
+
+            # Merge into global index
+            if _faiss_global is None:
+                _faiss_global = FAISS.from_documents(docs, emb_model)
+            else:
+                _faiss_global.merge_from(doc_faiss)
+        except Exception as exc:
+            logger.warning("populate_faiss_from_chroma: failed to rebuild doc %s — %s", doc_id, exc)
+
+    logger.info(
+        "populate_faiss_from_chroma: rebuilt %d doc indexes, %d total vectors",
+        len(groups), total,
+    )
+    return total

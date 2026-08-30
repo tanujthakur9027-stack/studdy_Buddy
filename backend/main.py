@@ -1,6 +1,7 @@
 """
 StudyBuddy FastAPI Application
 """
+import asyncio
 import logging
 import time
 import uuid
@@ -28,6 +29,7 @@ from routers.feynman import router as feynman_router
 from routers.flashcards import router as flashcards_router
 from routers.progress import router as progress_router
 from routers.share import router as share_router
+from services.document_service import populate_faiss_from_chroma
 from utils.log_config import setup_logging
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -64,6 +66,13 @@ async def lifespan(app: FastAPI):
     for directory in [settings.upload_dir, settings.chroma_persist_dir, settings.faiss_index_dir]:
         Path(directory).mkdir(parents=True, exist_ok=True)
     await init_db()
+    # Rebuild FAISS indexes from persisted ChromaDB so vector search works
+    # immediately after a worker restart without requiring re-uploads.
+    try:
+        vectors = await asyncio.to_thread(populate_faiss_from_chroma)
+        logger.info("faiss_rebuild_complete", extra={"vectors": vectors})
+    except Exception as exc:
+        logger.warning("faiss_rebuild_skipped", extra={"reason": str(exc)})
     logger.info(
         "startup",
         extra={

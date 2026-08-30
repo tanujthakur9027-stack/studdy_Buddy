@@ -41,3 +41,6 @@ backend/studybuddy.db
 
 # Streamlit secrets (real file — only the .example is committed)
 streamlit_app/.streamlit/secrets.toml
+
+# Runtime data (created automatically — resets on redeploy)
+data/
