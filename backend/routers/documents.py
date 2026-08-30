@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,9 +21,6 @@ from models.db_models import Document, SavedAnswer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-_CACHE_10S  = {"Cache-Control": "public, max-age=10, stale-while-revalidate=30"}
-_CACHE_30S  = {"Cache-Control": "public, max-age=30, stale-while-revalidate=60"}
 
 
 # ── Documents ─────────────────────────────────────────────────────────────────
@@ -36,7 +32,7 @@ async def list_documents(db: AsyncSession = Depends(get_db)):
         select(Document).order_by(Document.uploaded_at.desc())
     )
     docs = result.scalars().all()
-    data = [
+    return [
         {
             "doc_id": d.doc_id,
             "filename": d.filename,
@@ -50,7 +46,6 @@ async def list_documents(db: AsyncSession = Depends(get_db)):
         }
         for d in docs
     ]
-    return JSONResponse(content=data, headers=_CACHE_10S)
 
 
 @router.delete("/documents/{doc_id}", tags=["Documents"])
@@ -79,7 +74,7 @@ async def list_saved_answers(db: AsyncSession = Depends(get_db)):
         select(SavedAnswer).order_by(SavedAnswer.saved_at.desc())
     )
     rows = result.scalars().all()
-    data = [
+    return [
         {
             "id": r.id,
             "question": r.question,
@@ -88,7 +83,6 @@ async def list_saved_answers(db: AsyncSession = Depends(get_db)):
         }
         for r in rows
     ]
-    return JSONResponse(content=data, headers=_CACHE_30S)
 
 
 @router.post("/saved-answers", status_code=201, tags=["Saved Answers"])

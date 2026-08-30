@@ -343,14 +343,13 @@ async def submit_quiz(req: QuizSubmitRequest, db: AsyncSession = Depends(get_db)
 )
 async def get_quiz_history(limit: int = 20, db: AsyncSession = Depends(get_db)):
     """Return the most recent quiz results for the progress dashboard."""
-    from fastapi.responses import JSONResponse
     result = await db.execute(
         select(QuizResult)
         .order_by(QuizResult.completed_at.desc())
         .limit(min(limit, 50))
     )
     rows = result.scalars().all()
-    data = [
+    return [
         {
             "id": r.id,
             "quiz_id": r.quiz_id,
@@ -365,4 +364,3 @@ async def get_quiz_history(limit: int = 20, db: AsyncSession = Depends(get_db)):
         }
         for r in rows
     ]
-    return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=15, stale-while-revalidate=30"})

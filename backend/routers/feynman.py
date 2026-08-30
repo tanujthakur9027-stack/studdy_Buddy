@@ -82,7 +82,7 @@ async def evaluate_feynman(
             system=_SYSTEM,
             user=user_prompt,
             temperature=0.4,
-            max_tokens=900,
+            max_tokens=1200,
         )
         cleaned = strip_json_fences(raw)
         data = json.loads(cleaned)

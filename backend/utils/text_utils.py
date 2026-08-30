@@ -6,21 +6,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# ── tiktoken singleton ────────────────────────────────────────────────────────
-# Encoding initialisation is ~30 ms the first time; cache it at module load so
-# every subsequent call to count_tokens / truncate_to_tokens is instant.
-_tiktoken_enc = None
-
-def _get_enc():
-    global _tiktoken_enc
-    if _tiktoken_enc is None:
-        try:
-            import tiktoken
-            _tiktoken_enc = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            pass
-    return _tiktoken_enc
-
 
 def strip_json_fences(raw: str) -> str:
     """
@@ -75,22 +60,26 @@ def count_tokens(text: str) -> int:
     Approximate token count using tiktoken (cl100k_base, used by GPT-4 / gpt-4o-mini).
     Falls back to a word-based heuristic if tiktoken is unavailable.
     """
-    enc = _get_enc()
-    if enc is not None:
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text))
-    # Rough heuristic: ~0.75 tokens per word
-    return max(1, int(len(text.split()) * 0.75))
+    except Exception:
+        # Rough heuristic: ~0.75 tokens per word
+        return max(1, int(len(text.split()) * 0.75))
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate *text* so it fits within *max_tokens*, preserving whole words."""
-    enc = _get_enc()
-    if enc is not None:
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
         tokens = enc.encode(text)
         if len(tokens) <= max_tokens:
             return text
         return enc.decode(tokens[:max_tokens])
-    # Fallback: split by words
-    words = text.split()
-    limit = int(max_tokens / 0.75)
-    return " ".join(words[:limit])
+    except Exception:
+        # Fallback: split by words
+        words = text.split()
+        limit = int(max_tokens / 0.75)
+        return " ".join(words[:limit])
