@@ -811,24 +811,27 @@ def tab_ask():
                 follow_ups = data.get("follow_up_questions", [])
                 st.markdown(answer)
                 if sources:
-                        with st.expander("Sources", expanded=False):
-                            for src in sources:
-                                st.markdown(
-                                    f'<span class="src-chip">'
-                                    f'{src["filename"]} &nbsp;p.{src["page"]}'
-                                    f'</span> <span style="font-size:12px;color:#71717a">'
-                                    f'{src.get("snippet","")[:100]}…</span>',
-                                    unsafe_allow_html=True,
-                                )
-                    if follow_ups:
-                        st.markdown('<p style="font-size:12px;color:#52525b;margin:.5rem 0 .25rem">Suggested follow-ups</p>',
-                                    unsafe_allow_html=True)
-                        cols = st.columns(min(len(follow_ups), 3))
-                        for i, fq in enumerate(follow_ups[:3]):
-                            with cols[i]:
-                                if st.button(fq, key=f"afq_{i}_{hash(fq)}"):
-                                    st.session_state["_ask_prefill"] = fq
-                                    st.rerun()
+                    with st.expander("Sources", expanded=False):
+                        for src in sources:
+                            st.markdown(
+                                f'<span class="src-chip">'
+                                f'{src["filename"]} &nbsp;p.{src["page"]}'
+                                f'</span> <span style="font-size:12px;color:#71717a">'
+                                f'{src.get("snippet","")[:100]}…</span>',
+                                unsafe_allow_html=True,
+                            )
+                if follow_ups:
+                    st.markdown(
+                        '<p style="font-size:12px;color:#52525b;margin:.5rem 0 .25rem">'
+                        'Suggested follow-ups</p>',
+                        unsafe_allow_html=True,
+                    )
+                    cols = st.columns(min(len(follow_ups), 3))
+                    for i, fq in enumerate(follow_ups[:3]):
+                        with cols[i]:
+                            if st.button(fq, key=f"afq_{i}_{hash(fq)}"):
+                                st.session_state["_ask_prefill"] = fq
+                                st.rerun()
                 st.session_state["ask_history"].append({
                     "role":       "assistant",
                     "content":    answer,
