@@ -187,7 +187,20 @@ html, body, [class*="css"] {
   background: #09090b !important;
   border-right: 1px solid #27272a !important;
 }
-[data-testid="stSidebar"] > div { padding: 1.5rem 1rem; }
+[data-testid="stSidebar"] > div {
+  padding: 1.5rem 1rem !important;
+  overflow: visible !important;
+}
+/* Prevent Streamlit markdown wrappers from clipping inline HTML */
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] div[class*="markdown"] {
+  overflow: visible !important;
+}
+/* Ensure all sidebar element containers don't clip */
+[data-testid="stSidebar"] [data-testid="element-container"] {
+  overflow: visible !important;
+}
 
 /* ── Tab bar — clean pill style ────────────────────────────────────────────── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -332,20 +345,49 @@ hr { border-color: #27272a !important; margin: 1.5rem 0 !important; }
 
 /* ── Sidebar logo area ─────────────────────────────────────────────────────── */
 .sb-logo {
-  display: flex; align-items: center; gap: 10px;
-  padding: .5rem 0 1rem 0; margin-bottom: .5rem;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: .75rem 0 1.25rem 0 !important;
+  margin-bottom: .25rem !important;
+  overflow: visible !important;
 }
 .sb-logo-icon {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  border-radius: 9px !important;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
 }
-.sb-logo-text { font-size: 16px; font-weight: 700; color: #fafafa; }
+.sb-logo-icon svg {
+  display: block !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+}
+.sb-logo-text {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #fafafa !important;
+  white-space: nowrap !important;
+}
 .sb-logo-badge {
-  font-size: 10px; font-weight: 600; color: #a78bfa;
-  background: rgba(167,139,250,.12); border: 1px solid rgba(167,139,250,.3);
-  border-radius: 4px; padding: 1px 6px; margin-left: 2px;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  color: #a78bfa !important;
+  background: rgba(167,139,250,.12) !important;
+  border: 1px solid rgba(167,139,250,.3) !important;
+  border-radius: 4px !important;
+  padding: 1px 6px !important;
+  margin-left: 4px !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
 }
 
 /* ── Status badge ──────────────────────────────────────────────────────────── */
@@ -497,14 +539,17 @@ def sidebar():
         st.markdown("""
 <div class="sb-logo">
   <div class="sb-logo-icon">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-         xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 3L2 9l10 6 10-6-10-6z" stroke="white" stroke-width="1.8"
-            stroke-linejoin="round"/>
-      <path d="M2 17l10 6 10-6" stroke="white" stroke-width="1.8"
-            stroke-linejoin="round"/>
-      <path d="M2 13l10 6 10-6" stroke="white" stroke-width="1.8"
-            stroke-linejoin="round"/>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"
+         xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0">
+      <path d="M10 2L2 7l8 5 8-5-8-5z"
+            stroke="rgba(255,255,255,0.95)" stroke-width="1.6"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M2 13l8 5 8-5"
+            stroke="rgba(255,255,255,0.95)" stroke-width="1.6"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M2 10l8 5 8-5"
+            stroke="rgba(255,255,255,0.7)" stroke-width="1.6"
+            stroke-linejoin="round" stroke-linecap="round"/>
     </svg>
   </div>
   <span class="sb-logo-text">StudyBuddy</span>
