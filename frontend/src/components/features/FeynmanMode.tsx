@@ -278,7 +278,7 @@ export function FeynmanMode({ docId }: Props) {
             <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/8 border border-amber-500/20">
               <Lightbulb className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-amber-400 mb-0.5">Coach's Tip</p>
+                <p className="text-xs font-semibold text-amber-400 mb-0.5">Coach&apos;s Tip</p>
                 <p className="text-sm text-gray-300 leading-relaxed">{result.coaching_tip}</p>
               </div>
             </div>
