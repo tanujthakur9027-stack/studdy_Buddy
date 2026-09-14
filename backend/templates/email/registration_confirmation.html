@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Welcome to Study Buddy</title>
+<style>
+  body { margin:0; padding:0; background:#0f0f1a; font-family:'Segoe UI',Arial,sans-serif; color:#e0e0e0; }
+  .wrapper { max-width:600px; margin:40px auto; background:#1a1a2e; border-radius:16px; overflow:hidden; border:1px solid #2a2a40; }
+  .header { background:linear-gradient(135deg,#6366f1,#8b5cf6); padding:40px 32px; text-align:center; }
+  .header h1 { margin:0; font-size:28px; color:#fff; letter-spacing:-0.5px; }
+  .header p { margin:8px 0 0; color:rgba(255,255,255,0.8); font-size:14px; }
+  .body { padding:32px; }
+  .card { background:#12122a; border:1px solid #2a2a40; border-radius:12px; padding:24px; margin:20px 0; }
+  .card h3 { margin:0 0 16px; color:#a5b4fc; font-size:14px; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #2a2a40; }
+  .row:last-child { border-bottom:none; }
+  .row .label { color:#888; font-size:14px; }
+  .row .value { color:#e0e0e0; font-size:14px; font-weight:500; text-align:right; }
+  .btn { display:inline-block; margin:24px 0 0; padding:14px 32px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:15px; }
+  .footer { padding:24px 32px; text-align:center; border-top:1px solid #2a2a40; }
+  .footer p { margin:4px 0; color:#555; font-size:12px; }
+  .badge { display:inline-block; background:#6366f1; color:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="badge">🎓 Study Buddy</div>
+    <h1>Welcome, {{ student_name }}!</h1>
+    <p>Your registration has been confirmed.</p>
+  </div>
+  <div class="body">
+    <p style="color:#c0c0d0;line-height:1.7;">
+      Congratulations! Your Study Buddy account has been successfully created.
+      You can now log in and access all your study tools, assignments, timetable, and more.
+    </p>
+    <div class="card">
+      <h3>Your Account Details</h3>
+      <div class="row"><span class="label">Full Name</span><span class="value">{{ student_name }}</span></div>
+      <div class="row"><span class="label">Email</span><span class="value">{{ email }}</span></div>
+      {% if student_id %}<div class="row"><span class="label">Student ID</span><span class="value">{{ student_id }}</span></div>{% endif %}
+      {% if course %}<div class="row"><span class="label">Course</span><span class="value">{{ course }}</span></div>{% endif %}
+      {% if semester %}<div class="row"><span class="label">Semester</span><span class="value">{{ semester }}</span></div>{% endif %}
+      <div class="row"><span class="label">Registered On</span><span class="value">{{ registered_at }}</span></div>
+    </div>
+    <p style="color:#888;font-size:13px;line-height:1.6;">
+      Keep your login credentials safe. If you did not register on Study Buddy, please ignore this email.
+    </p>
+    {% if app_url %}
+    <div style="text-align:center;">
+      <a href="{{ app_url }}/login" class="btn">Go to Study Buddy →</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    <p>Study Buddy — Your AI-powered learning companion</p>
+    <p>This is an automated message. Please do not reply.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -12,6 +12,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -21,6 +22,7 @@ from slowapi.util import get_remote_address
 from config import get_settings
 from database import init_db
 from routers import ask, doubt, explain, quiz, revision, upload
+from routers.auth import router as auth_router
 from routers.chat import router as chat_router
 from routers.cheatsheet import router as cheatsheet_router
 from routers.concept_map import router as concept_map_router
@@ -29,6 +31,22 @@ from routers.feynman import router as feynman_router
 from routers.flashcards import router as flashcards_router
 from routers.progress import router as progress_router
 from routers.share import router as share_router
+from routers.notifications import router as notifications_router
+from routers.admin_students import router as admin_students_router
+from routers.student_profile import router as student_profile_router
+from routers.admin_classes import router as admin_classes_router
+from routers.admin_classes import student_router as student_classes_router
+from routers.admin_assignments import router as admin_assignments_router
+from routers.admin_submissions import router as admin_submissions_router
+from routers.student_assignments import router as student_assignments_router
+from routers.admin_marks import router as admin_marks_router
+from routers.student_marks import router as student_marks_router
+from routers.admin_timetable import router as admin_timetable_router
+from routers.student_timetable import router as student_timetable_router
+from routers.connections import router as connections_router
+from routers.notes import router as notes_router
+from routers.announcements import router as announcements_router
+from routers.announcements import admin_router as admin_announcements_router
 from services.document_service import populate_faiss_from_chroma
 from utils.log_config import setup_logging
 
@@ -65,6 +83,9 @@ async def lifespan(app: FastAPI):
     # Startup
     for directory in [settings.upload_dir, settings.chroma_persist_dir, settings.faiss_index_dir]:
         Path(directory).mkdir(parents=True, exist_ok=True)
+    # Create upload sub-directories
+    for folder in ["assignments", "submissions", "notes", "photos"]:
+        Path(settings.upload_dir, folder).mkdir(parents=True, exist_ok=True)
     await init_db()
     # Rebuild FAISS indexes from persisted ChromaDB so vector search works
     # immediately after a worker restart without requiring re-uploads.
@@ -149,21 +170,46 @@ async def request_instrumentation(request: Request, call_next):
     return response
 
 
+# ── Static file serving for uploads ──────────────────────────────────────────
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+
 # ── /api/* routers ────────────────────────────────────────────────────────────
-app.include_router(upload.router,      prefix="/api")
-app.include_router(ask.router,         prefix="/api")
-app.include_router(quiz.router,        prefix="/api")
-app.include_router(revision.router,    prefix="/api")
-app.include_router(explain.router,     prefix="/api")
-app.include_router(doubt.router,       prefix="/api")
-app.include_router(documents_router,   prefix="/api")
-app.include_router(chat_router,        prefix="/api")
-app.include_router(share_router,       prefix="/api")
-app.include_router(progress_router,    prefix="/api")
-app.include_router(cheatsheet_router,  prefix="/api")
-app.include_router(feynman_router,     prefix="/api")
-app.include_router(concept_map_router, prefix="/api")
-app.include_router(flashcards_router,  prefix="/api")
+# Auth
+app.include_router(auth_router,               prefix="/api")
+# Existing AI tools
+app.include_router(upload.router,             prefix="/api")
+app.include_router(ask.router,                prefix="/api")
+app.include_router(quiz.router,               prefix="/api")
+app.include_router(revision.router,           prefix="/api")
+app.include_router(explain.router,            prefix="/api")
+app.include_router(doubt.router,              prefix="/api")
+app.include_router(documents_router,          prefix="/api")
+app.include_router(chat_router,               prefix="/api")
+app.include_router(share_router,              prefix="/api")
+app.include_router(progress_router,           prefix="/api")
+app.include_router(cheatsheet_router,         prefix="/api")
+app.include_router(feynman_router,            prefix="/api")
+app.include_router(concept_map_router,        prefix="/api")
+app.include_router(flashcards_router,         prefix="/api")
+# New: Notifications
+app.include_router(notifications_router,      prefix="/api")
+# New: Admin management
+app.include_router(admin_students_router,     prefix="/api")
+app.include_router(admin_classes_router,      prefix="/api")
+app.include_router(admin_assignments_router,  prefix="/api")
+app.include_router(admin_submissions_router,  prefix="/api")
+app.include_router(admin_marks_router,        prefix="/api")
+app.include_router(admin_timetable_router,    prefix="/api")
+app.include_router(admin_announcements_router, prefix="/api")
+# New: Student features
+app.include_router(student_profile_router,    prefix="/api")
+app.include_router(student_classes_router,    prefix="/api")
+app.include_router(student_assignments_router, prefix="/api")
+app.include_router(student_marks_router,      prefix="/api")
+app.include_router(student_timetable_router,  prefix="/api")
+app.include_router(connections_router,        prefix="/api")
+app.include_router(notes_router,              prefix="/api")
+app.include_router(announcements_router,      prefix="/api")
 
 # ── Legacy / unversioned routers (backwards compatibility) ────────────────────
 app.include_router(quiz.router)

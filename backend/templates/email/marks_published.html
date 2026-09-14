@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Marks Published — Study Buddy</title>
+<style>
+  body { margin:0; padding:0; background:#0f0f1a; font-family:'Segoe UI',Arial,sans-serif; color:#e0e0e0; }
+  .wrapper { max-width:600px; margin:40px auto; background:#1a1a2e; border-radius:16px; overflow:hidden; border:1px solid #2a2a40; }
+  .header { background:linear-gradient(135deg,#10b981,#06b6d4); padding:40px 32px; text-align:center; }
+  .header h1 { margin:0; font-size:26px; color:#fff; }
+  .header p { margin:8px 0 0; color:rgba(255,255,255,0.85); font-size:14px; }
+  .body { padding:32px; }
+  .card { background:#12122a; border:1px solid #2a2a40; border-radius:12px; padding:24px; margin:20px 0; }
+  .card h3 { margin:0 0 16px; color:#34d399; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #2a2a40; }
+  .row:last-child { border-bottom:none; }
+  .row .label { color:#888; font-size:14px; }
+  .row .value { color:#e0e0e0; font-size:14px; font-weight:500; }
+  .highlight { background:linear-gradient(135deg,#064e3b,#065f46); border:1px solid #10b981; border-radius:12px; padding:24px; text-align:center; margin:20px 0; }
+  .highlight .score { font-size:42px; font-weight:700; color:#34d399; }
+  .highlight .label { font-size:13px; color:#6ee7b7; margin-top:4px; }
+  .btn { display:inline-block; margin:24px 0 0; padding:14px 32px; background:linear-gradient(135deg,#10b981,#06b6d4); color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:15px; }
+  .footer { padding:24px 32px; text-align:center; border-top:1px solid #2a2a40; }
+  .footer p { margin:4px 0; color:#555; font-size:12px; }
+  .badge { display:inline-block; background:#10b981; color:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="badge">📊 Marks Published</div>
+    <h1>Your Marks Are Ready!</h1>
+    <p>View your performance in Study Buddy</p>
+  </div>
+  <div class="body">
+    <p style="color:#c0c0d0;line-height:1.7;">
+      Hi {{ student_name }}, your marks have been published by your teacher. Log in to Study Buddy to see your full performance breakdown.
+    </p>
+
+    {% if subject %}
+    <div class="card">
+      <h3>Summary</h3>
+      {% if subject %}<div class="row"><span class="label">Subject</span><span class="value">{{ subject }}</span></div>{% endif %}
+      {% if category %}<div class="row"><span class="label">Assessment</span><span class="value">{{ category }}</span></div>{% endif %}
+      {% if obtained is not none %}<div class="row"><span class="label">Marks Obtained</span><span class="value">{{ obtained }} / {{ max_marks }}</span></div>{% endif %}
+      {% if percentage is not none %}<div class="row"><span class="label">Percentage</span><span class="value">{{ percentage }}%</span></div>{% endif %}
+      {% if grade %}<div class="row"><span class="label">Grade</span><span class="value">{{ grade }}</span></div>{% endif %}
+      <div class="row"><span class="label">Published On</span><span class="value">{{ published_at }}</span></div>
+    </div>
+    {% else %}
+    <p style="color:#888;font-size:14px;">Multiple marks entries have been published. Log in to see the full breakdown.</p>
+    {% endif %}
+
+    {% if app_url %}
+    <div style="text-align:center;">
+      <a href="{{ app_url }}/marks" class="btn">View Marks →</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    <p>Study Buddy — Your AI-powered learning companion</p>
+    <p>This is an automated message. Please do not reply.</p>
+  </div>
+</div>
+</body>
+</html>

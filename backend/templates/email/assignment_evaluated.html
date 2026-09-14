@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Assignment Evaluated — Study Buddy</title>
+<style>
+  body { margin:0; padding:0; background:#0f0f1a; font-family:'Segoe UI',Arial,sans-serif; color:#e0e0e0; }
+  .wrapper { max-width:600px; margin:40px auto; background:#1a1a2e; border-radius:16px; overflow:hidden; border:1px solid #2a2a40; }
+  .header { background:linear-gradient(135deg,#f59e0b,#ef4444); padding:40px 32px; text-align:center; }
+  .header h1 { margin:0; font-size:26px; color:#fff; }
+  .header p { margin:8px 0 0; color:rgba(255,255,255,0.85); font-size:14px; }
+  .body { padding:32px; }
+  .card { background:#12122a; border:1px solid #2a2a40; border-radius:12px; padding:24px; margin:20px 0; }
+  .card h3 { margin:0 0 16px; color:#fbbf24; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #2a2a40; }
+  .row:last-child { border-bottom:none; }
+  .row .label { color:#888; font-size:14px; }
+  .row .value { color:#e0e0e0; font-size:14px; font-weight:500; }
+  .score-box { background:#1c1410; border:1px solid #f59e0b; border-radius:12px; padding:20px; text-align:center; margin:20px 0; }
+  .score-box .score { font-size:40px; font-weight:700; color:#fbbf24; }
+  .score-box .sub { font-size:13px; color:#d97706; margin-top:4px; }
+  .feedback-box { background:#12122a; border-left:3px solid #f59e0b; padding:14px 18px; border-radius:0 8px 8px 0; margin:16px 0; color:#c0c0d0; font-size:14px; line-height:1.6; }
+  .btn { display:inline-block; margin:24px 0 0; padding:14px 32px; background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:15px; }
+  .footer { padding:24px 32px; text-align:center; border-top:1px solid #2a2a40; }
+  .footer p { margin:4px 0; color:#555; font-size:12px; }
+  .badge { display:inline-block; background:#f59e0b; color:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="badge">✅ Assignment Evaluated</div>
+    <h1>{{ assignment_title }}</h1>
+    <p>Your submission has been graded</p>
+  </div>
+  <div class="body">
+    <p style="color:#c0c0d0;line-height:1.7;">
+      Hi {{ student_name }}, your teacher has reviewed and graded your assignment submission.
+    </p>
+
+    <div class="score-box">
+      <div class="score">{{ marks_obtained }} / {{ max_marks }}</div>
+      <div class="sub">{% if percentage %}{{ percentage }}% — {% endif %}{{ subject }}</div>
+    </div>
+
+    <div class="card">
+      <h3>Submission Details</h3>
+      <div class="row"><span class="label">Assignment</span><span class="value">{{ assignment_title }}</span></div>
+      <div class="row"><span class="label">Subject</span><span class="value">{{ subject }}</span></div>
+      <div class="row"><span class="label">Marks</span><span class="value">{{ marks_obtained }} / {{ max_marks }}</span></div>
+      {% if percentage %}<div class="row"><span class="label">Percentage</span><span class="value">{{ percentage }}%</span></div>{% endif %}
+      <div class="row"><span class="label">Evaluated On</span><span class="value">{{ evaluated_at }}</span></div>
+    </div>
+
+    {% if feedback %}
+    <div>
+      <p style="color:#fbbf24;font-size:13px;font-weight:600;margin-bottom:8px;">Teacher's Feedback:</p>
+      <div class="feedback-box">{{ feedback }}</div>
+    </div>
+    {% endif %}
+
+    {% if app_url %}
+    <div style="text-align:center;">
+      <a href="{{ app_url }}/assignments" class="btn">View Submission →</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    <p>Study Buddy — Your AI-powered learning companion</p>
+    <p>This is an automated message. Please do not reply.</p>
+  </div>
+</div>
+</body>
+</html>

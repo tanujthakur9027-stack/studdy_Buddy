@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Timetable Published — Study Buddy</title>
+<style>
+  body { margin:0; padding:0; background:#0f0f1a; font-family:'Segoe UI',Arial,sans-serif; color:#e0e0e0; }
+  .wrapper { max-width:600px; margin:40px auto; background:#1a1a2e; border-radius:16px; overflow:hidden; border:1px solid #2a2a40; }
+  .header { background:linear-gradient(135deg,#0ea5e9,#6366f1); padding:40px 32px; text-align:center; }
+  .header h1 { margin:0; font-size:26px; color:#fff; }
+  .header p { margin:8px 0 0; color:rgba(255,255,255,0.85); font-size:14px; }
+  .body { padding:32px; }
+  .card { background:#12122a; border:1px solid #2a2a40; border-radius:12px; padding:24px; margin:20px 0; }
+  .card h3 { margin:0 0 16px; color:#38bdf8; font-size:13px; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #2a2a40; }
+  .row:last-child { border-bottom:none; }
+  .row .label { color:#888; font-size:14px; }
+  .row .value { color:#e0e0e0; font-size:14px; font-weight:500; }
+  .tt-table { width:100%; border-collapse:collapse; margin:16px 0; font-size:13px; }
+  .tt-table th { background:#1e2a3a; color:#38bdf8; padding:8px 10px; text-align:left; border:1px solid #2a2a40; }
+  .tt-table td { padding:8px 10px; border:1px solid #2a2a40; color:#c0c0d0; }
+  .tt-table tr:nth-child(even) td { background:#12182a; }
+  .btn { display:inline-block; margin:24px 0 0; padding:14px 32px; background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:15px; }
+  .footer { padding:24px 32px; text-align:center; border-top:1px solid #2a2a40; }
+  .footer p { margin:4px 0; color:#555; font-size:12px; }
+  .badge { display:inline-block; background:#0ea5e9; color:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; margin-bottom:16px; }
+  .info-bar { background:#0c1a2e; border:1px solid #1e3a5f; border-radius:10px; padding:16px 20px; margin:16px 0; color:#93c5fd; font-size:14px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="badge">📅 Timetable Published</div>
+    <h1>{{ timetable_name }}</h1>
+    <p>Your class timetable is now live</p>
+  </div>
+  <div class="body">
+    <p style="color:#c0c0d0;line-height:1.7;">
+      Hi {{ student_name }}, a new timetable has been published for your class. Log in to Study Buddy to view the full schedule.
+    </p>
+
+    <div class="card">
+      <h3>Timetable Details</h3>
+      <div class="row"><span class="label">Name</span><span class="value">{{ timetable_name }}</span></div>
+      {% if class_name %}<div class="row"><span class="label">Class</span><span class="value">{{ class_name }}</span></div>{% endif %}
+      {% if section_name %}<div class="row"><span class="label">Section</span><span class="value">{{ section_name }}</span></div>{% endif %}
+      <div class="row"><span class="label">Start Time</span><span class="value">{{ start_time }}</span></div>
+      <div class="row"><span class="label">Periods Per Day</span><span class="value">{{ periods_per_day }}</span></div>
+      <div class="row"><span class="label">Lunch After</span><span class="value">Period {{ lunch_after_period }}</span></div>
+      <div class="row"><span class="label">Published On</span><span class="value">{{ published_at }}</span></div>
+    </div>
+
+    <div class="info-bar">
+      🗓️ Monday to Saturday &nbsp;•&nbsp; Each period: 45 minutes &nbsp;•&nbsp; Lunch break: 45 minutes
+    </div>
+
+    {% if app_url %}
+    <div style="text-align:center;">
+      <a href="{{ app_url }}/timetable" class="btn">View Timetable →</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    <p>Study Buddy — Your AI-powered learning companion</p>
+    <p>This is an automated message. Please do not reply.</p>
+  </div>
+</div>
+</body>
+</html>

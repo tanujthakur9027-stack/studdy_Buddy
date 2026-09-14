@@ -44,6 +44,29 @@ class Settings(BaseSettings):
     chunk_size: int = 800
     chunk_overlap: int = 120
 
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    secret_key: str = "CHANGE_THIS_IN_PRODUCTION_USE_OPENSSL_RAND_HEX_32"
+    access_token_expire_minutes: int = 60
+    admin_seed_email: str = "admin@studybuddy.com"
+    admin_seed_password: str = "Admin@StudyBuddy2024"
+
+    # ── Email / SMTP ──────────────────────────────────────────────────────────
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_from: str = "noreply@studybuddy.com"
+    app_base_url: str = "http://localhost:3000"
+
+    # ── File limits ───────────────────────────────────────────────────────────
+    assignment_file_max_mb: int = 50
+    note_file_max_mb: int = 50
+    profile_photo_max_mb: int = 5
+
+    # ── Timetable ─────────────────────────────────────────────────────────────
+    period_duration_minutes: int = 45
+    lunch_duration_minutes: int = 45
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

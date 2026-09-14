@@ -44,3 +44,7 @@ streamlit_app/.streamlit/secrets.toml
 
 # Runtime data (created automatically — resets on redeploy)
 data/
+
+backend/studybuddy.db-shm
+backend/studybuddy.db-wal
+backend/_init_db.py
