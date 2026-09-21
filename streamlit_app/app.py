@@ -236,24 +236,24 @@ if not st.session_state.get("_splash_done"):
 # Page routing via st.navigation — uses FILE PATHS (not callables).
 # Each page file is an independent script; st.Page(path) runs it on navigation.
 # ─────────────────────────────────────────────────────────────────────────────
-_PAGES_DIR = _HERE / "pages"
-
+# st.Page() paths must be RELATIVE to this file (app.py) so they match what
+# st.switch_page() uses everywhere in the page files.
 if not _is_logged_in() and not _share_id:
     # ── Unauthenticated: only show Login page, nothing else ───────────────────
     pg = st.navigation(
-        [st.Page(str(_PAGES_DIR / "login.py"), title="Login", icon="🔑")],
+        [st.Page("pages/login.py", title="Login", icon="🔑")],
         position="hidden",
     )
 else:
     # ── Authenticated: build nav based on role ────────────────────────────────
     pages_common = [
-        st.Page(str(_PAGES_DIR / "dashboard.py"), title="Dashboard",      icon="🏠"),
-        st.Page(str(_PAGES_DIR / "learning.py"),  title="AI Study Tools", icon="🧠"),
-        st.Page(str(_PAGES_DIR / "classes.py"),   title="Classes",        icon="🏛️"),
-        st.Page(str(_PAGES_DIR / "profile.py"),   title="Profile",        icon="👤"),
+        st.Page("pages/dashboard.py", title="Dashboard",      icon="🏠"),
+        st.Page("pages/learning.py",  title="AI Study Tools", icon="🧠"),
+        st.Page("pages/classes.py",   title="Classes",        icon="🏛️"),
+        st.Page("pages/profile.py",   title="Profile",        icon="👤"),
     ]
     pages_admin = (
-        [st.Page(str(_PAGES_DIR / "admin.py"), title="Admin Panel", icon="⚙️")]
+        [st.Page("pages/admin.py", title="Admin Panel", icon="⚙️")]
         if _is_admin() else []
     )
     pg = st.navigation(pages_common + pages_admin)
