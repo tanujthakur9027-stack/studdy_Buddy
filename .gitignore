@@ -48,3 +48,8 @@ data/
 backend/studybuddy.db-shm
 backend/studybuddy.db-wal
 backend/_init_db.py
+
+# -- Local debug / test output
+backend_err.txt
+backend_test_err.txt
+backend_test_out.txt
