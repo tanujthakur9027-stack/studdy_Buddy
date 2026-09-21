@@ -11,7 +11,7 @@ import streamlit as st
 
 from core.styles import inject_global_css, heading
 from core.animations import login_card_css, shake_anim, success_checkmark, page_enter
-from core.auth_state import is_logged_in, do_login, do_register
+from core.auth_state import is_logged_in, do_login, do_register, _page
 
 inject_global_css()
 login_card_css()
@@ -19,7 +19,7 @@ page_enter()
 
 # Redirect if already logged in
 if is_logged_in():
-    st.switch_page("pages/dashboard.py")
+    st.switch_page(_page("dashboard.py"))
     st.stop()
 
 
@@ -105,7 +105,7 @@ with login_tab:
                 )
                 st.session_state["_login_shake"] = False
                 time.sleep(1.0)
-                st.switch_page("pages/dashboard.py")
+                st.switch_page(_page("dashboard.py"))
                 st.stop()
 
     st.markdown("""
@@ -180,5 +180,5 @@ with reg_tab:
                     f"Account created! Welcome, {full_name.split()[0]}!"
                 )
                 time.sleep(1.0)
-                st.switch_page("pages/dashboard.py")
+                st.switch_page(_page("dashboard.py"))
                 st.stop()

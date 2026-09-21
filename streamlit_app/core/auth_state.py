@@ -1,14 +1,5 @@
 """
 core/auth_state.py — Login, logout, token persistence, and page guards.
-
-Token storage: st.session_state (RAM) + browser cookie via extra-streamlit-components
-CookieManager. On page refresh the token is restored from the cookie.
-
-Security tradeoffs documented here:
-- Cookies are httponly=False (Streamlit renders JS cookies). The token is short-lived
-  (default 24h). For a production deployment with custom SSL, set Secure + SameSite=Strict
-  at the reverse-proxy level.
-- Never put tokens in the URL — query strings are logged by CDNs and appear in browser history.
 """
 from __future__ import annotations
 
@@ -21,69 +12,32 @@ from core.api_client import api_post, api_get
 
 logger = logging.getLogger(__name__)
 
-_COOKIE_KEY = "sb_token"
-_COOKIE_MAX_AGE = 86400  # 24 hours
+
+def _page(name: str) -> str:
+    """Return the same path string that st.Page() was registered with in app.py."""
+    prefix = st.session_state.get("_page_prefix", "pages")
+    return f"{prefix}/{name}"
 
 
 def _cookie_manager():
-    """No-op: streamlit-cookies-manager uses @st.cache which was removed in Streamlit 1.36+."""
+    """No-op: streamlit-cookies-manager uses @st.cache removed in Streamlit 1.36+."""
     return None
 
 
 def restore_session_from_cookie() -> None:
-    """
-    Called once at app startup. If no token is in session_state but there is
-    a valid cookie, restore the token and fetch the user profile.
-    """
-    if st.session_state.get("_token"):
-        return  # already logged in
-
-    mgr = _cookie_manager()
-    if mgr is None:
-        return
-
-    token = mgr.get(_COOKIE_KEY)
-    if not token:
-        return
-
-    # Validate by hitting /api/auth/me
-    st.session_state["_token"] = token
-    data, err = api_get("/api/auth/me", timeout=10)
-    if err or not data:
-        st.session_state.pop("_token", None)
-        try:
-            mgr[_COOKIE_KEY] = ""
-            mgr.save()
-        except Exception:
-            pass
-        return
-
-    st.session_state["_user"] = data
+    """No-op — token lives in session_state only."""
+    pass
 
 
 def save_token_to_cookie(token: str) -> None:
-    mgr = _cookie_manager()
-    if mgr is None:
-        return
-    try:
-        mgr[_COOKIE_KEY] = token
-        mgr.save()
-    except Exception:
-        pass
+    pass
 
 
 def delete_token_cookie() -> None:
-    mgr = _cookie_manager()
-    if mgr is None:
-        return
-    try:
-        mgr[_COOKIE_KEY] = ""
-        mgr.save()
-    except Exception:
-        pass
+    pass
 
 
-# ── Public helpers ────────────────────────────────────────────────────────────
+# ── Public helpers ─────────────────────────────────────────────────────────────
 
 def is_logged_in() -> bool:
     return bool(st.session_state.get("_token"))
@@ -98,13 +52,9 @@ def is_admin() -> bool:
 
 
 def require_login() -> None:
-    """
-    Guard for protected pages. If the user is not logged in, redirects to
-    the login page and stops execution of the calling page.
-    Call at the very top of every protected page.
-    """
+    """Guard for protected pages. Redirects to login if not authenticated."""
     if not is_logged_in():
-        st.switch_page("pages/login.py")
+        st.switch_page(_page("login.py"))
         st.stop()
 
 
@@ -114,9 +64,8 @@ def do_login(email: str, password: str) -> Optional[str]:
     if err:
         return err
     st.session_state["_token"] = data["access_token"]
-    st.session_state["_user"] = data["user"]
-    st.session_state["documents_loaded"] = False  # force refresh
-    save_token_to_cookie(data["access_token"])
+    st.session_state["_user"]  = data["user"]
+    st.session_state["documents_loaded"] = False
     return None
 
 
@@ -126,9 +75,8 @@ def do_register(payload: dict) -> Optional[str]:
     if err:
         return err
     st.session_state["_token"] = data["access_token"]
-    st.session_state["_user"] = data["user"]
+    st.session_state["_user"]  = data["user"]
     st.session_state["documents_loaded"] = False
-    save_token_to_cookie(data["access_token"])
     return None
 
 
@@ -136,4 +84,3 @@ def do_logout() -> None:
     api_post("/api/auth/logout")
     for k in ["_token", "_user", "documents_loaded", "documents", "active_doc"]:
         st.session_state.pop(k, None)
-    delete_token_cookie()

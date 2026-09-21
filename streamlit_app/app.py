@@ -233,29 +233,50 @@ if not st.session_state.get("_splash_done"):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Page routing via st.navigation — uses FILE PATHS (not callables).
-# Each page file is an independent script; st.Page(path) runs it on navigation.
+# Page routing via st.navigation
+#
+# Streamlit Cloud CWD is the repo root (e.g. /mount/src/studdy_buddy/).
+# app.py lives at streamlit_app/app.py, so page files are at
+# streamlit_app/pages/xxx.py — paths must be relative to CWD, not to app.py.
+#
+# st.Page() and st.switch_page() MUST use IDENTICAL path strings.
+# We compute the prefix once so every call is consistent.
 # ─────────────────────────────────────────────────────────────────────────────
-# st.Page() paths must be RELATIVE to this file (app.py) so they match what
-# st.switch_page() uses everywhere in the page files.
+
+# Path from CWD to the pages directory (works both locally and on Streamlit Cloud)
+_app_dir = Path(__file__).parent          # .../streamlit_app
+_cwd     = Path.cwd()                     # repo root on Streamlit Cloud, or wherever
+try:
+    _page_prefix = str(_app_dir.relative_to(_cwd) / "pages")  # e.g. "streamlit_app/pages"
+except ValueError:
+    # app.py IS the CWD (local dev running from inside streamlit_app/)
+    _page_prefix = "pages"
+
+
+def _page(name: str) -> str:
+    """Return the consistent path string for a page file."""
+    return f"{_page_prefix}/{name}"
+
+
 if not _is_logged_in() and not _share_id:
-    # ── Unauthenticated: only show Login page, nothing else ───────────────────
     pg = st.navigation(
-        [st.Page("pages/login.py", title="Login", icon="🔑")],
+        [st.Page(_page("login.py"), title="Login", icon="🔑")],
         position="hidden",
     )
 else:
-    # ── Authenticated: build nav based on role ────────────────────────────────
     pages_common = [
-        st.Page("pages/dashboard.py", title="Dashboard",      icon="🏠"),
-        st.Page("pages/learning.py",  title="AI Study Tools", icon="🧠"),
-        st.Page("pages/classes.py",   title="Classes",        icon="🏛️"),
-        st.Page("pages/profile.py",   title="Profile",        icon="👤"),
+        st.Page(_page("dashboard.py"), title="Dashboard",      icon="🏠"),
+        st.Page(_page("learning.py"),  title="AI Study Tools", icon="🧠"),
+        st.Page(_page("classes.py"),   title="Classes",        icon="🏛️"),
+        st.Page(_page("profile.py"),   title="Profile",        icon="👤"),
     ]
     pages_admin = (
-        [st.Page("pages/admin.py", title="Admin Panel", icon="⚙️")]
+        [st.Page(_page("admin.py"), title="Admin Panel", icon="⚙️")]
         if _is_admin() else []
     )
     pg = st.navigation(pages_common + pages_admin)
+
+# Store the prefix so page files can read it for st.switch_page() calls
+st.session_state["_page_prefix"] = _page_prefix
 
 pg.run()
