@@ -14,17 +14,21 @@ from core.api_client import api_post, api_get
 logger = logging.getLogger(__name__)
 
 
+# Absolute pages directory — always resolved from this file's own location.
+# This is identical to what app.py registers with st.Page(), because app.py
+# also derives _PAGES from Path(__file__).resolve().parent / "pages".
+# We never rely on session_state here so the path is always consistent,
+# even on the very first run before app.py has written to session_state.
+_PAGES_DIR = Path(__file__).resolve().parent.parent / "pages"
+
+
 def _p(name: str) -> str:
     """
     Return the absolute path string for a page file, matching exactly what
-    st.Page() was registered with in app.py.
-    Falls back to a path relative to this file if session_state not yet set.
+    st.Page() registered in app.py.  Derived from this file's own location —
+    never depends on CWD or session_state.
     """
-    pages_dir = st.session_state.get("_pages_dir")
-    if pages_dir:
-        return str(Path(pages_dir) / name)
-    # Fallback: compute from this file's location
-    return str(Path(__file__).resolve().parent.parent / "pages" / name)
+    return str(_PAGES_DIR / name)
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
@@ -42,10 +46,18 @@ def is_admin() -> bool:
 
 
 def require_login() -> None:
-    """Guard for protected pages. Redirects to login if not authenticated."""
+    """Guard for protected pages. Redirects to login if not authenticated.
+    
+    Uses st.rerun() so that app.py can re-evaluate navigation state and
+    serve the login page — avoids st.switch_page() trying to navigate to
+    a page that may not be registered in the current navigation set.
+    """
     if not is_logged_in():
-        st.switch_page(_p("login.py"))
-        st.stop()
+        # Clear any stale state so app.py rebuilds navigation for the
+        # unauthenticated case and shows login.py.
+        for k in ("_token", "_user", "documents_loaded", "documents", "active_doc"):
+            st.session_state.pop(k, None)
+        st.rerun()
 
 
 def do_login(email: str, password: str) -> Optional[str]:

@@ -26,8 +26,8 @@ COLORS = {
 _CSS = """
 <style>
 /* ── Fonts ─────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif !important; }
+/* Use system font stack — avoids network requests that fail in sandboxed envs */
+html, body, [class*="css"] { font-family: -apple-system, 'Segoe UI', system-ui, BlinkMacSystemFont, sans-serif !important; }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */
 .stApp { background: #09090b; }

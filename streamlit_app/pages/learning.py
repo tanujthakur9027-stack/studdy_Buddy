@@ -358,7 +358,7 @@ with tab_quiz:
                          disabled=len(answers) != len(questions)):
                 elapsed = time.time() - (st.session_state["quiz_start_ts"] or time.time())
                 with st.spinner("Grading…"):
-                    data, err = api_post("/quiz/submit",
+                    data, err = api_post("/api/quiz/submit",
                                           json={"quiz_id": quiz["quiz_id"],
                                                 "answers": answers, "time_taken": int(elapsed)})
                 if err:

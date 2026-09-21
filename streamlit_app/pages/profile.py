@@ -112,5 +112,6 @@ st.divider()
 st.markdown("### 🚪 Logout")
 if st.button("Sign Out", type="secondary"):
     do_logout()
-    st.switch_page(_p("login.py"))
-    st.stop()
+    # Rerun so app.py detects unauthenticated state and rebuilds
+    # navigation with only login.py, then serves it as the active page.
+    st.rerun()

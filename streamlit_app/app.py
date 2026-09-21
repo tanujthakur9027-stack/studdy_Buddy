@@ -173,16 +173,17 @@ if not st.session_state.get("_splash_done"):
 # These never depend on CWD, so they work identically on Streamlit Cloud and
 # locally regardless of which directory you run `streamlit run` from.
 #
-# Every page file imports _PAGE_MAP from app state and uses _sp("name.py") to
-# get the same absolute path string for st.switch_page().
+# Page files import _p() from core.auth_state which derives the same absolute
+# path from its own __file__ location — no session_state dependency.
+#
+# Navigation is rebuilt on every run: unauthenticated → only login.py;
+# authenticated → dashboard, learning, classes, profile (+ admin if admin).
+# After login/logout, pages use st.rerun() so app.py rebuilds nav correctly.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _p(name: str) -> str:
     """Absolute path string for a page — consistent across st.Page() and st.switch_page()."""
     return str(_PAGES / name)
-
-# Expose the resolver to all page files via session_state
-st.session_state["_pages_dir"] = str(_PAGES)
 
 if not _is_logged_in() and not _share_id:
     pg = st.navigation(
