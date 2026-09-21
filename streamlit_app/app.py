@@ -149,39 +149,12 @@ if not backend_ready:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Cookie-based token restore
-# Attempt to load streamlit-cookies-manager; fall back gracefully if unavailable.
+# Token lives in st.session_state (per-browser-tab, persists across reruns).
+# streamlit-cookies-manager is NOT used — it relies on @st.cache which was
+# removed in Streamlit 1.36+ and raises AttributeError on modern versions.
 # ─────────────────────────────────────────────────────────────────────────────
-def _restore_token_from_cookie() -> None:
-    """Try to restore auth token from a browser cookie into session_state."""
-    if st.session_state.get("_token"):
-        return  # already loaded in this session
-    try:
-        from streamlit_cookies_manager import EncryptedCookieManager  # type: ignore
-        cookie_secret = _secret("COOKIE_SECRET", "studybuddy-cookie-secret-2024")
-        cookies = EncryptedCookieManager(prefix="sb_", password=cookie_secret)
-        if not cookies.ready():
-            st.stop()
-        token = cookies.get("token")
-        if token:
-            # Verify it's still valid by calling /api/auth/me
-            try:
-                resp = requests.get(
-                    f"{BACKEND_URL}/api/auth/me",
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=5,
-                )
-                if resp.status_code == 200:
-                    st.session_state["_token"] = token
-                    st.session_state["_user"] = resp.json()
-                    st.session_state["_cookies"] = cookies
-            except Exception:
-                pass
-    except ImportError:
-        pass  # cookies manager not installed — token lives in session_state only
-
-
-_restore_token_from_cookie()
+# Nothing to restore on cold load — user must log in again after a page refresh.
+# Session state is preserved across st.rerun() within the same tab session.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
