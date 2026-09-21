@@ -15,7 +15,7 @@ import streamlit as st
 
 from core.styles import inject_global_css, heading, badge, card
 from core.animations import page_enter, count_up_metric
-from core.auth_state import require_login, current_user, is_admin, _page
+from core.auth_state import require_login, current_user, is_admin, _p
 from core.api_client import api_get
 
 inject_global_css()
@@ -149,10 +149,10 @@ else:
     qa1, qa2, qa3 = st.columns(3)
     with qa1:
         if st.button("🧠 AI Study Tools →", use_container_width=True, type="primary"):
-            st.switch_page(_page("learning.py"))
+            st.switch_page(_p("learning.py"))
     with qa2:
         if st.button("📋 Assignments →", use_container_width=True):
-            st.switch_page(_page("classes.py"))
+            st.switch_page(_p("classes.py"))
     with qa3:
         if st.button("📈 Progress →", use_container_width=True):
-            st.switch_page(_page("learning.py"))
+            st.switch_page(_p("learning.py"))

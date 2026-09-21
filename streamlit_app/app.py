@@ -1,17 +1,9 @@
 """
 StudyBuddy AI — Streamlit multipage entry point
 ================================================
-• Uses @st.cache_resource so the backend subprocess is launched ONCE per Streamlit
-  worker process, not once per browser session (fixes the race condition in the old
-  st.session_state-based launcher).
-• st.navigation / st.Page routing (requires streamlit >= 1.40).
-• Token is restored from a cookie on every page load via streamlit-cookies-manager.
-• ?share=<id> query param skips auth for public share links.
-
 Deploy on Streamlit Cloud:
   Entry point : streamlit_app/app.py
   Secrets     : GROQ_API_KEY, SECRET_KEY, ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD
-                COOKIE_SECRET (random 32-char string)
 """
 from __future__ import annotations
 
@@ -27,18 +19,18 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
-_HERE      = Path(__file__).parent
-_REPO_ROOT = _HERE.parent
+# ── Absolute paths — derived from __file__, never from CWD ────────────────────
+_HERE      = Path(__file__).resolve().parent   # .../streamlit_app
+_REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
 _DATA      = _REPO_ROOT / "data"
+_PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
 
 BACKEND_URL = "http://localhost:8000"
 
 
 # ── Secret helper ──────────────────────────────────────────────────────────────
 def _secret(key: str, default: str = "") -> str:
-    """Read from st.secrets first, then os.environ."""
     try:
         return st.secrets.get(key, os.environ.get(key, default))  # type: ignore[attr-defined]
     except Exception:
@@ -50,11 +42,6 @@ def _secret(key: str, default: str = "") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def _launch_backend() -> bool:
-    """
-    Launch uvicorn in a background subprocess and wait until /health responds.
-    Called once per Streamlit worker process (not per browser tab).
-    Returns True if the backend became healthy within the timeout.
-    """
     for sub in [
         "chroma_db", "uploads", "faiss_indexes",
         "uploads/assignments", "uploads/submissions",
@@ -93,35 +80,23 @@ def _launch_backend() -> bool:
     }
 
     subprocess.Popen(
-        [
-            sys.executable, "-m", "uvicorn", "main:app",
-            "--host", "127.0.0.1", "--port", "8000",
-            "--workers", "1", "--log-level", "warning",
-        ],
-        cwd=str(_BACKEND),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        [sys.executable, "-m", "uvicorn", "main:app",
+         "--host", "127.0.0.1", "--port", "8000",
+         "--workers", "1", "--log-level", "warning"],
+        cwd=str(_BACKEND), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-
-    # Seed admin (idempotent) in the background
     subprocess.Popen(
         [sys.executable, "seed_admin.py"],
         cwd=str(_BACKEND),
-        env={
-            **env,
-            "DATABASE_URL": f"sqlite+aiosqlite:///{_DATA}/studybuddy.db",
-        },
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        env={**env, "DATABASE_URL": f"sqlite+aiosqlite:///{_DATA}/studybuddy.db"},
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
-    # Wait up to 90 s for the backend to become healthy
     deadline = time.time() + 90
     while time.time() < deadline:
         try:
-            r = requests.get(f"{BACKEND_URL}/health", timeout=3)
-            if r.status_code == 200:
+            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
                 return True
         except Exception:
             pass
@@ -129,7 +104,7 @@ def _launch_backend() -> bool:
     return False
 
 
-# ── Page config (must be called before anything else writes to UI) ─────────────
+# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="StudyBuddy AI",
     page_icon="🎓",
@@ -137,9 +112,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Ensure backend is up (blocks with a spinner on cold start)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Start backend ──────────────────────────────────────────────────────────────
 with st.spinner("⏳ Starting StudyBuddy AI… (first load ~20 s)"):
     backend_ready = _launch_backend()
 
@@ -147,73 +120,34 @@ if not backend_ready:
     st.error("❌ Backend failed to start. Check that all dependencies are installed.")
     st.stop()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Token lives in st.session_state (per-browser-tab, persists across reruns).
-# streamlit-cookies-manager is NOT used — it relies on @st.cache which was
-# removed in Streamlit 1.36+ and raises AttributeError on modern versions.
-# ─────────────────────────────────────────────────────────────────────────────
-# Nothing to restore on cold load — user must log in again after a page refresh.
-# Session state is preserved across st.rerun() within the same tab session.
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Auth helpers ───────────────────────────────────────────────────────────────
 def _is_logged_in() -> bool:
     return bool(st.session_state.get("_token"))
-
 
 def _is_admin() -> bool:
     return st.session_state.get("_user", {}).get("role") == "admin"
 
+# ── Share param ────────────────────────────────────────────────────────────────
+_share_id = st.query_params.get("share")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ?share=<id> public route — skip auth
-# ─────────────────────────────────────────────────────────────────────────────
-_params = st.query_params
-_share_id = _params.get("share")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Splash screen — shown once per browser session until backend is ready
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Splash screen ──────────────────────────────────────────────────────────────
 if not st.session_state.get("_splash_done"):
     st.markdown("""
 <style>
-@keyframes fadeIn  { from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)} }
-@keyframes fadeOut { from{opacity:1} to{opacity:0;pointer-events:none} }
-@media (prefers-reduced-motion: reduce) {
-  .sb-splash, .sb-splash * { animation: none !important; }
-}
-.sb-splash {
-  position:fixed; inset:0; z-index:9999;
-  background: linear-gradient(135deg, #09090b 0%, #0f0f23 50%, #09090b 100%);
-  display:flex; align-items:center; justify-content:center; flex-direction:column;
-  animation: fadeIn .6s ease forwards;
-}
-.sb-splash-logo {
-  width:72px; height:72px; border-radius:20px;
-  background: linear-gradient(135deg,#6366f1,#8b5cf6);
-  display:flex; align-items:center; justify-content:center;
-  margin-bottom:1.5rem;
-  animation: fadeIn .8s ease .2s both;
-}
-.sb-splash-title {
-  font-size:2rem; font-weight:800; color:#fafafa; letter-spacing:-.04em;
-  font-family: -apple-system,'Segoe UI',system-ui,sans-serif;
-  animation: fadeIn .8s ease .4s both;
-}
-.sb-splash-sub {
-  font-size:.95rem; color:#71717a; margin-top:.5rem;
-  font-family: -apple-system,'Segoe UI',system-ui,sans-serif;
-  animation: fadeIn .8s ease .6s both;
-}
-.sb-splash-dot {
-  width:8px; height:8px; border-radius:50%;
-  background:#6366f1; margin:.top:1.5rem;
-  animation: fadeIn .8s ease .8s both;
-}
+@keyframes sbFadeIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
+@media (prefers-reduced-motion:reduce){ .sb-splash,.sb-splash *{animation:none!important} }
+.sb-splash{position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#09090b 0%,#0f0f23 50%,#09090b 100%);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  animation:sbFadeIn .6s ease forwards}
+.sb-splash-logo{width:72px;height:72px;border-radius:20px;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;
+  animation:sbFadeIn .8s ease .2s both}
+.sb-splash-title{font-size:2rem;font-weight:800;color:#fafafa;letter-spacing:-.04em;
+  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;animation:sbFadeIn .8s ease .4s both}
+.sb-splash-sub{font-size:.95rem;color:#71717a;margin-top:.5rem;
+  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;animation:sbFadeIn .8s ease .6s both}
 </style>
 <div class="sb-splash">
   <div class="sb-splash-logo">
@@ -225,58 +159,47 @@ if not st.session_state.get("_splash_done"):
   </div>
   <div class="sb-splash-title">Study Buddy AI</div>
   <div class="sb-splash-sub">Your intelligent learning companion</div>
-</div>
-""", unsafe_allow_html=True)
+</div>""", unsafe_allow_html=True)
     time.sleep(1.8)
     st.session_state["_splash_done"] = True
     st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Page routing via st.navigation
+# Page routing
 #
-# Streamlit Cloud CWD is the repo root (e.g. /mount/src/studdy_buddy/).
-# app.py lives at streamlit_app/app.py, so page files are at
-# streamlit_app/pages/xxx.py — paths must be relative to CWD, not to app.py.
+# KEY RULE: st.Page() and st.switch_page() must use IDENTICAL path strings.
+# We use ABSOLUTE paths from _PAGES (Path(__file__).resolve().parent / "pages").
+# These never depend on CWD, so they work identically on Streamlit Cloud and
+# locally regardless of which directory you run `streamlit run` from.
 #
-# st.Page() and st.switch_page() MUST use IDENTICAL path strings.
-# We compute the prefix once so every call is consistent.
+# Every page file imports _PAGE_MAP from app state and uses _sp("name.py") to
+# get the same absolute path string for st.switch_page().
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Path from CWD to the pages directory (works both locally and on Streamlit Cloud)
-_app_dir = Path(__file__).parent          # .../streamlit_app
-_cwd     = Path.cwd()                     # repo root on Streamlit Cloud, or wherever
-try:
-    _page_prefix = str(_app_dir.relative_to(_cwd) / "pages")  # e.g. "streamlit_app/pages"
-except ValueError:
-    # app.py IS the CWD (local dev running from inside streamlit_app/)
-    _page_prefix = "pages"
+def _p(name: str) -> str:
+    """Absolute path string for a page — consistent across st.Page() and st.switch_page()."""
+    return str(_PAGES / name)
 
-
-def _page(name: str) -> str:
-    """Return the consistent path string for a page file."""
-    return f"{_page_prefix}/{name}"
-
+# Expose the resolver to all page files via session_state
+st.session_state["_pages_dir"] = str(_PAGES)
 
 if not _is_logged_in() and not _share_id:
     pg = st.navigation(
-        [st.Page(_page("login.py"), title="Login", icon="🔑")],
+        [st.Page(_p("login.py"), title="Login", icon="🔑")],
         position="hidden",
     )
 else:
     pages_common = [
-        st.Page(_page("dashboard.py"), title="Dashboard",      icon="🏠"),
-        st.Page(_page("learning.py"),  title="AI Study Tools", icon="🧠"),
-        st.Page(_page("classes.py"),   title="Classes",        icon="🏛️"),
-        st.Page(_page("profile.py"),   title="Profile",        icon="👤"),
+        st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
+        st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
+        st.Page(_p("classes.py"),   title="Classes",        icon="🏛️"),
+        st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
     ]
     pages_admin = (
-        [st.Page(_page("admin.py"), title="Admin Panel", icon="⚙️")]
+        [st.Page(_p("admin.py"), title="Admin Panel", icon="⚙️")]
         if _is_admin() else []
     )
     pg = st.navigation(pages_common + pages_admin)
-
-# Store the prefix so page files can read it for st.switch_page() calls
-st.session_state["_page_prefix"] = _page_prefix
 
 pg.run()

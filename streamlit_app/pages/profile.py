@@ -9,7 +9,7 @@ import streamlit as st
 
 from core.styles import inject_global_css, heading
 from core.animations import page_enter
-from core.auth_state import require_login, current_user, do_logout, _page
+from core.auth_state import require_login, current_user, do_logout, _p
 from core.api_client import api_post, api_patch, api_get, api_request
 from core.media_uploader import render_media_uploader
 
@@ -112,5 +112,5 @@ st.divider()
 st.markdown("### 🚪 Logout")
 if st.button("Sign Out", type="secondary"):
     do_logout()
-    st.switch_page(_page("login.py"))
+    st.switch_page(_p("login.py"))
     st.stop()

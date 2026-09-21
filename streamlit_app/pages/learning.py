@@ -18,7 +18,7 @@ import streamlit as st
 
 from core.styles import inject_global_css, heading, badge
 from core.animations import page_enter, confetti
-from core.auth_state import require_login, _page
+from core.auth_state import require_login, _p
 from core.api_client import api_get, api_post, api_request, stream_sse, BACKEND_URL
 
 
@@ -85,11 +85,11 @@ with st.sidebar:
     st.divider()
     st.markdown('<div class="sb-nav-label">Navigate</div>', unsafe_allow_html=True)
     if st.button("🏠 Dashboard"):
-        st.switch_page(_page("dashboard.py"))
+        st.switch_page(_p("dashboard.py"))
     if st.button("📋 Classes & Assignments"):
-        st.switch_page(_page("classes.py"))
+        st.switch_page(_p("classes.py"))
     if st.button("👤 Profile"):
-        st.switch_page(_page("profile.py"))
+        st.switch_page(_p("profile.py"))
 
 
 # ── Page header ───────────────────────────────────────────────────────────────

@@ -1,40 +1,30 @@
 """
-core/auth_state.py — Login, logout, token persistence, and page guards.
+core/auth_state.py — Login, logout, and page guards.
+Token lives in st.session_state (no cookie library needed).
 """
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
-
 from core.api_client import api_post, api_get
 
 logger = logging.getLogger(__name__)
 
 
-def _page(name: str) -> str:
-    """Return the same path string that st.Page() was registered with in app.py."""
-    prefix = st.session_state.get("_page_prefix", "pages")
-    return f"{prefix}/{name}"
-
-
-def _cookie_manager():
-    """No-op: streamlit-cookies-manager uses @st.cache removed in Streamlit 1.36+."""
-    return None
-
-
-def restore_session_from_cookie() -> None:
-    """No-op — token lives in session_state only."""
-    pass
-
-
-def save_token_to_cookie(token: str) -> None:
-    pass
-
-
-def delete_token_cookie() -> None:
-    pass
+def _p(name: str) -> str:
+    """
+    Return the absolute path string for a page file, matching exactly what
+    st.Page() was registered with in app.py.
+    Falls back to a path relative to this file if session_state not yet set.
+    """
+    pages_dir = st.session_state.get("_pages_dir")
+    if pages_dir:
+        return str(Path(pages_dir) / name)
+    # Fallback: compute from this file's location
+    return str(Path(__file__).resolve().parent.parent / "pages" / name)
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
@@ -54,7 +44,7 @@ def is_admin() -> bool:
 def require_login() -> None:
     """Guard for protected pages. Redirects to login if not authenticated."""
     if not is_logged_in():
-        st.switch_page(_page("login.py"))
+        st.switch_page(_p("login.py"))
         st.stop()
 
 

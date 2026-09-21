@@ -19,7 +19,7 @@ import streamlit as st
 
 from core.styles import inject_global_css, heading, badge, card
 from core.animations import page_enter
-from core.auth_state import require_login, is_admin, _page
+from core.auth_state import require_login, is_admin, _p
 from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
 from core.media_uploader import render_media_uploader
 
@@ -77,7 +77,7 @@ with tab_asgn:
                     # Quick plan button
                     if st.button(f"📅 Plan for this assignment", key=f"plan_{a['id']}"):
                         st.session_state["_planner_prefill_date"] = a.get("due_date", "")
-                        st.switch_page(_page("learning.py"))
+                        st.switch_page(_p("learning.py"))
 
                     if a.get("my_submission"):
                         sub = a["my_submission"]
