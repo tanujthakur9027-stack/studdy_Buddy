@@ -11,7 +11,7 @@ import { Spinner, Badge, ProgressBar } from "@/components/ui";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
-interface Props { docId?: string }
+interface Props { docId?: string; conceptOverride?: string }
 
 const GRADE_META: Record<string, { label: string; bg: string; text: string; ring: string }> = {
   S: { label: "Mastered!",      bg: "bg-yellow-500/15 border-yellow-500/30", text: "text-yellow-400", ring: "#eab308" },
@@ -95,8 +95,8 @@ function QAItem({ q, a, index }: { q: string; a: string; index: number }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export function FeynmanMode({ docId }: Props) {
-  const [concept,     setConcept]     = useState("");
+export function FeynmanMode({ docId, conceptOverride }: Props) {
+  const [concept,     setConcept]     = useState(conceptOverride ?? "");
   const [explanation, setExplanation] = useState("");
   const [loading,     setLoading]     = useState(false);
   const [result,      setResult]      = useState<FeynmanResponse | null>(null);

@@ -10,7 +10,7 @@ import { Spinner, Badge, ProgressBar } from "@/components/ui";
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
 
-interface Props { docId?: string }
+interface Props { docId?: string; topicOverride?: string }
 
 interface FlashCard { id: string; front: string; back: string; topic_tag: string }
 interface Session { id: string; topic: string; created_at: string }
@@ -72,7 +72,7 @@ function FlipCard({ card, flipped, onFlip }: { card: FlashCard; flipped: boolean
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function Flashcards({ docId }: Props) {
+export function Flashcards({ docId, topicOverride }: Props) {
   const [phase,        setPhase]        = useState<Phase>("config");
   const [cards,        setCards]        = useState<FlashCard[]>([]);
   const [queue,        setQueue]        = useState<FlashCard[]>([]);
@@ -80,7 +80,7 @@ export function Flashcards({ docId }: Props) {
   const [currentIdx,   setCurrentIdx]   = useState(0);
   const [flipped,      setFlipped]      = useState(false);
   const [loading,      setLoading]      = useState(false);
-  const [topic,        setTopic]        = useState("");
+  const [topic,        setTopic]        = useState(topicOverride ?? "");
   const [sessions,     setSessions]     = useState<Session[]>([]);
   const [showHistory,  setShowHistory]  = useState(false);
 

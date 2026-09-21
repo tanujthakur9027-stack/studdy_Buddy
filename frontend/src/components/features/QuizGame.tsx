@@ -56,7 +56,7 @@ const GRADE_META: Record<string, { label: string; bg: string; text: string }> = 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Props { docId?: string }
+interface Props { docId?: string; topicOverride?: string }
 
 type Phase = "config" | "countdown" | "playing" | "results";
 
@@ -125,13 +125,13 @@ function ShareQuizButton({
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function QuizGame({ docId }: Props) {
+export function QuizGame({ docId, topicOverride }: Props) {
   const { play } = useSound();
   const { history, addEntry, clearHistory } = useQuizHistory();
   const [showHistory, setShowHistory] = useState(false);
 
   // ── Config state ──────────────────────────────────────────────────────────
-  const [topic,    setTopic]    = useState("");
+  const [topic,    setTopic]    = useState(topicOverride ?? "");
   const [numQ,     setNumQ]     = useState(5);
   const [diff,     setDiff]     = useState<"easy" | "medium" | "hard" | "mixed">("mixed");
   const [timerSec, setTimerSec] = useState<15 | 30>(30);

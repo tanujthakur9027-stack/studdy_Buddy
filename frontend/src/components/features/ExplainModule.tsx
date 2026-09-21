@@ -14,6 +14,8 @@ import toast from "react-hot-toast";
 
 interface Props {
   docId?: string;
+  /** Pre-fill the topic field when no document is uploaded (from pasted text mode) */
+  topicOverride?: string;
 }
 
 const LEVEL_CONFIG = {
@@ -27,8 +29,8 @@ const SAMPLE_TOPICS = [
   "The French Revolution", "Recursion in programming", "Gravity",
 ];
 
-export function ExplainModule({ docId }: Props) {
-  const [topic,       setTopic]       = useState("");
+export function ExplainModule({ docId, topicOverride }: Props) {
+  const [topic,       setTopic]       = useState(topicOverride ?? "");
   const [level,       setLevel]       = useState<"eli5" | "beginner" | "intermediate">("eli5");
   const [streamText,  setStreamText]  = useState("");
   const [loading,     setLoading]     = useState(false);

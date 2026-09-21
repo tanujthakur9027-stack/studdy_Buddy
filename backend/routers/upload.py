@@ -40,6 +40,9 @@ ALLOWED_MIME: set[str] = {
     "image/png",
     "image/jpeg",
     "image/webp",
+    # JFIF is typically sent as image/jpeg by browsers; also allow explicit jfif MIME
+    "image/jfif",
+    "image/pjpeg",
     # Generic binary (some browsers send this for any file)
     "application/octet-stream",
 }
@@ -48,7 +51,7 @@ ALLOWED_EXTENSIONS: set[str] = {
     ".pdf", ".txt", ".md", ".doc", ".docx", ".bin",
     ".ppt", ".pptx",
     ".xlsx", ".xls",
-    ".png", ".jpg", ".jpeg", ".webp",
+    ".png", ".jpg", ".jpeg", ".webp", ".jfif",
 }
 
 

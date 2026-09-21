@@ -16,7 +16,7 @@ import { clsx } from "clsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-interface Props { docId?: string }
+interface Props { docId?: string; syllabusOverride?: string }
 
 const SESSION_META = {
   concept: {
@@ -112,9 +112,9 @@ function StatsGrid({ stats, topicCount }: { stats: PlanStats; topicCount: number
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function RevisionPlanner({ docId }: Props) {
+export function RevisionPlanner({ docId, syllabusOverride }: Props) {
   // ── form state ────────────────────────────────────────────────────────────
-  const [syllabusText, setSyllabusText] = useState("");
+  const [syllabusText, setSyllabusText] = useState(syllabusOverride ?? "");
   const [topics,       setTopics]       = useState("");
   const [weakTopics,   setWeakTopics]   = useState("");
   const [examDate,     setExamDate]     = useState("");
