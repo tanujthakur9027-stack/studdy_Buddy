@@ -26,17 +26,8 @@ _COOKIE_MAX_AGE = 86400  # 24 hours
 
 
 def _cookie_manager():
-    """Lazily initialise CookieManager if extra-streamlit-components is installed."""
-    try:
-        from streamlit_cookies_manager import EncryptedCookieManager  # type: ignore
-        # Use a stable key so cookies survive reruns; value kept out of logs.
-        key = st.secrets.get("COOKIE_SECRET", "studybuddy-cookie-secret")
-        mgr = EncryptedCookieManager(prefix="sb_", password=key)
-        if not mgr.ready():
-            mgr.save()
-        return mgr
-    except ImportError:
-        return None
+    """No-op: streamlit-cookies-manager uses @st.cache which was removed in Streamlit 1.36+."""
+    return None
 
 
 def restore_session_from_cookie() -> None:

@@ -76,7 +76,7 @@ with st.form("change_pw_form"):
             st.error("New passwords do not match.")
         else:
             data, err = api_post("/api/auth/change-password",
-                                  json={"old_password": old_pw, "new_password": new_pw})
+                                  json={"current_password": old_pw, "new_password": new_pw})
             if err:
                 st.error(err)
             else:

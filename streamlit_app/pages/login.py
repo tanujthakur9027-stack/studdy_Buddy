@@ -1,19 +1,12 @@
 """
 pages/login.py — Login & Registration page with animations.
-
-Features:
-- Animated gradient background with floating orbs
-- Login form with email + password, show/hide toggle
-- Registration with email format check, password strength meter, confirm password
-- Shake animation on wrong password
-- Checkmark + success animation before redirect
-- Login↔Register tab switch
 """
 import sys
+import re
+import time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import re
 import streamlit as st
 
 from core.styles import inject_global_css, heading
@@ -26,12 +19,11 @@ page_enter()
 
 # Redirect if already logged in
 if is_logged_in():
-    st.switch_page("app.py")
+    st.switch_page("pages/dashboard.py")
     st.stop()
 
 
 def _password_strength(pw: str) -> tuple[int, str]:
-    """Returns (score 0-4, label)."""
     score = 0
     if len(pw) >= 8:   score += 1
     if len(pw) >= 12:  score += 1
@@ -51,13 +43,14 @@ def _strength_bar(pw: str) -> None:
     st.markdown(f"""
 <div style="margin-top:.25rem">
   <div style="height:4px;background:#27272a;border-radius:99px;overflow:hidden">
-    <div style="width:{pct}%;height:100%;background:{color};transition:width 0.3s,background 0.3s;border-radius:99px"></div>
+    <div style="width:{pct}%;height:100%;background:{color};
+         transition:width 0.3s,background 0.3s;border-radius:99px"></div>
   </div>
   <p style="font-size:11px;color:{color};margin:.2rem 0 0">{label}</p>
 </div>""", unsafe_allow_html=True)
 
 
-# ── Logo / Header ─────────────────────────────────────────────────────────────
+# ── Logo / Header ──────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="text-align:center;padding:2rem 0 1rem;animation:fadeUp 0.5s both">
   <div style="width:64px;height:64px;border-radius:18px;
@@ -65,38 +58,36 @@ st.markdown("""
        display:inline-flex;align-items:center;justify-content:center;
        box-shadow:0 0 32px rgba(99,102,241,0.4);margin-bottom:1rem">
     <svg width="36" height="36" viewBox="0 0 44 44" fill="none">
-      <path d="M22 4L4 15l18 11 18-11L22 4z" stroke="rgba(255,255,255,0.95)" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M4 29l18 11 18-11" stroke="rgba(255,255,255,0.95)" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M4 22l18 11 18-11" stroke="rgba(255,255,255,0.7)" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M22 4L4 15l18 11 18-11L22 4z" stroke="rgba(255,255,255,0.95)"
+            stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M4 29l18 11 18-11" stroke="rgba(255,255,255,0.95)"
+            stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M4 22l18 11 18-11" stroke="rgba(255,255,255,0.7)"
+            stroke-width="2.5" stroke-linejoin="round"/>
     </svg>
   </div>
-  <h1 style="font-size:28px;font-weight:800;color:#fafafa;margin:0">Study Buddy <span style="color:#a78bfa">AI</span></h1>
-  <p style="color:#71717a;font-size:14px;margin:.25rem 0 0">Your personalised AI learning companion</p>
+  <h1 style="font-size:28px;font-weight:800;color:#fafafa;margin:0">
+    Study Buddy <span style="color:#a78bfa">AI</span>
+  </h1>
+  <p style="color:#71717a;font-size:14px;margin:.25rem 0 0">
+    Your personalised AI learning companion
+  </p>
 </div>
 """, unsafe_allow_html=True)
 
 login_tab, reg_tab = st.tabs(["🔑 Sign In", "📝 Create Account"])
 
-# ── Login ─────────────────────────────────────────────────────────────────────
+# ── Login ──────────────────────────────────────────────────────────────────────
 with login_tab:
-    st.markdown('<div class="login-card-anim">', unsafe_allow_html=True)
-
     if st.session_state.get("_login_shake"):
         shake_anim()
         st.session_state["_login_shake"] = False
 
     with st.form("login_form"):
         email    = st.text_input("Email", placeholder="you@example.com")
-        col_pw, col_eye = st.columns([5, 1])
-        with col_pw:
-            pw_type = "text" if st.session_state.get("_show_login_pw") else "password"
-            password = st.text_input("Password", type=pw_type, placeholder="••••••••")
-        with col_eye:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.form_submit_button("👁️", use_container_width=True):
-                st.session_state["_show_login_pw"] = not st.session_state.get("_show_login_pw", False)
-                st.rerun()
-
+        # NOTE: st.text_input type must be a literal — dynamic toggle not allowed in forms.
+        # Show password toggle is placed OUTSIDE the form below.
+        password = st.text_input("Password", type="password", placeholder="••••••••")
         submitted = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
 
     if submitted:
@@ -109,14 +100,17 @@ with login_tab:
                 st.error(f"❌ {err}")
                 st.rerun()
             else:
-                success_checkmark(f"Welcome back, {st.session_state['_user'].get('full_name', '')}!")
+                success_checkmark(
+                    f"Welcome back, {st.session_state['_user'].get('full_name', '')}!"
+                )
                 st.session_state["_login_shake"] = False
-                import time; time.sleep(1.2)
+                time.sleep(1.0)
                 st.switch_page("pages/dashboard.py")
                 st.stop()
 
     st.markdown("""
-<div style="background:#18181b;border:1px solid #27272a;border-radius:10px;padding:.875rem 1.25rem;margin-top:1rem">
+<div style="background:#18181b;border:1px solid #27272a;border-radius:10px;
+     padding:.875rem 1.25rem;margin-top:1rem">
   <p style="margin:0;font-size:12px;font-weight:600;color:#f59e0b">🔐 Demo credentials</p>
   <p style="margin:4px 0 0;font-size:12px;color:#71717a">
     Email: <span style="color:#d4d4d8">admin@studybuddy.com</span><br>
@@ -124,33 +118,32 @@ with login_tab:
   </p>
 </div>""", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
-
-# ── Register ──────────────────────────────────────────────────────────────────
+# ── Register ───────────────────────────────────────────────────────────────────
 with reg_tab:
-    st.markdown('<div class="login-card-anim">', unsafe_allow_html=True)
     with st.form("register_form"):
         st.markdown("**Personal Information**")
         c1, c2 = st.columns(2)
-        full_name   = c1.text_input("Full Name *")
-        student_id  = c2.text_input("Student ID *")
-        email_r     = st.text_input("Email *", placeholder="you@example.com", key="reg_email")
+        full_name  = c1.text_input("Full Name *")
+        student_id = c2.text_input("Student ID *")
+        email_r    = st.text_input("Email *", placeholder="you@example.com", key="reg_email")
         c3, c4 = st.columns(2)
-        pwd1        = c3.text_input("Password *", type="password", key="reg_pwd1")
-        pwd2        = c4.text_input("Confirm Password *", type="password", key="reg_pwd2")
+        pwd1       = c3.text_input("Password *", type="password", key="reg_pwd1")
+        pwd2       = c4.text_input("Confirm Password *", type="password", key="reg_pwd2")
 
         st.markdown("**Academic Details**")
         c5, c6 = st.columns(2)
-        course      = c5.text_input("Course", placeholder="B.Tech")
-        branch      = c6.text_input("Branch", placeholder="CSE")
+        course   = c5.text_input("Course", placeholder="B.Tech")
+        branch   = c6.text_input("Branch", placeholder="CSE")
         c7, c8, c9 = st.columns(3)
-        semester    = c7.text_input("Semester", placeholder="3rd")
-        section     = c8.text_input("Section", placeholder="A")
-        phone       = c9.text_input("Phone (optional)")
-        submitted_r = st.form_submit_button("Create Account →", type="primary", use_container_width=True)
+        semester   = c7.text_input("Semester", placeholder="3rd")
+        section    = c8.text_input("Section",  placeholder="A")
+        phone      = c9.text_input("Phone (optional)")
+        submitted_r = st.form_submit_button(
+            "Create Account →", type="primary", use_container_width=True
+        )
 
-    # Show password strength outside the form (Streamlit limitation: no real-time in form)
+    # Password strength bar rendered outside form (no dynamic widget issue)
     if pwd1:
         _strength_bar(pwd1)
 
@@ -169,23 +162,23 @@ with reg_tab:
                 st.error(e)
         else:
             err = do_register({
-                "full_name": full_name.strip(),
-                "student_id": student_id.strip(),
-                "email": email_r.strip().lower(),
-                "password": pwd1,
-                "phone": phone.strip(),
-                "course": course.strip(),
-                "branch": branch.strip(),
-                "semester": semester.strip(),
-                "section": section.strip(),
+                "full_name":     full_name.strip(),
+                "student_id":    student_id.strip(),
+                "email":         email_r.strip().lower(),
+                "password":      pwd1,
+                "phone":         phone.strip(),
+                "course":        course.strip(),
+                "branch":        branch.strip(),
+                "semester":      semester.strip(),
+                "section":       section.strip(),
                 "academic_year": "",
             })
             if err:
                 st.error(f"❌ {err}")
             else:
-                success_checkmark(f"Account created! Welcome, {full_name.split()[0]}!")
-                import time; time.sleep(1.2)
+                success_checkmark(
+                    f"Account created! Welcome, {full_name.split()[0]}!"
+                )
+                time.sleep(1.0)
                 st.switch_page("pages/dashboard.py")
                 st.stop()
-
-    st.markdown('</div>', unsafe_allow_html=True)
