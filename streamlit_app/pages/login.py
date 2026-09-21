@@ -20,7 +20,6 @@ from core.styles import inject_global_css, heading
 from core.animations import login_card_css, shake_anim, success_checkmark, page_enter
 from core.auth_state import is_logged_in, do_login, do_register
 
-st.set_page_config(page_title="StudyBuddy — Sign In", page_icon="🎓", layout="centered")
 inject_global_css()
 login_card_css()
 page_enter()

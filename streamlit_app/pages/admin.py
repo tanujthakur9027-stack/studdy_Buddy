@@ -14,7 +14,7 @@ from core.animations import page_enter
 from core.auth_state import require_login, current_user, is_admin
 from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
 
-st.set_page_config(page_title="Admin — StudyBuddy", page_icon="🛡️", layout="wide")
+
 inject_global_css()
 require_login()
 page_enter()

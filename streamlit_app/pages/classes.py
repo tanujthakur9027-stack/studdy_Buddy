@@ -23,7 +23,7 @@ from core.auth_state import require_login, is_admin
 from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
 from core.media_uploader import render_media_uploader
 
-st.set_page_config(page_title="Classes — StudyBuddy", page_icon="📋", layout="wide")
+
 inject_global_css()
 require_login()
 page_enter()

@@ -233,36 +233,29 @@ if not st.session_state.get("_splash_done"):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Page routing via st.navigation (requires streamlit >= 1.40)
+# Page routing via st.navigation — uses FILE PATHS (not callables).
+# Each page file is an independent script; st.Page(path) runs it on navigation.
 # ─────────────────────────────────────────────────────────────────────────────
-from streamlit.navigation.page import StreamlitPage  # noqa: E402  (after set_page_config)
-
-# Import page render functions
-sys.path.insert(0, str(_HERE))
-
-from pages.login      import render as _login_page       # noqa: E402
-from pages.dashboard  import render as _dashboard_page   # noqa: E402
-from pages.learning   import render as _learning_page    # noqa: E402
-from pages.classes    import render as _classes_page     # noqa: E402
-from pages.profile    import render as _profile_page     # noqa: E402
-from pages.admin      import render as _admin_page       # noqa: E402
-
+_PAGES_DIR = _HERE / "pages"
 
 if not _is_logged_in() and not _share_id:
     # ── Unauthenticated: only show Login page, nothing else ───────────────────
-    pg = st.navigation([st.Page(_login_page, title="Login", icon="🔑")], position="hidden")
-    pg.run()
+    pg = st.navigation(
+        [st.Page(str(_PAGES_DIR / "login.py"), title="Login", icon="🔑")],
+        position="hidden",
+    )
 else:
-    # ── Authenticated: full nav ───────────────────────────────────────────────
+    # ── Authenticated: build nav based on role ────────────────────────────────
     pages_common = [
-        st.Page(_dashboard_page, title="Dashboard",      icon="🏠"),
-        st.Page(_learning_page,  title="AI Study Tools", icon="🧠"),
-        st.Page(_classes_page,   title="Classes",        icon="🏛️"),
-        st.Page(_profile_page,   title="Profile",        icon="👤"),
+        st.Page(str(_PAGES_DIR / "dashboard.py"), title="Dashboard",      icon="🏠"),
+        st.Page(str(_PAGES_DIR / "learning.py"),  title="AI Study Tools", icon="🧠"),
+        st.Page(str(_PAGES_DIR / "classes.py"),   title="Classes",        icon="🏛️"),
+        st.Page(str(_PAGES_DIR / "profile.py"),   title="Profile",        icon="👤"),
     ]
-    pages_admin = [
-        st.Page(_admin_page, title="Admin Panel", icon="⚙️"),
-    ] if _is_admin() else []
-
+    pages_admin = (
+        [st.Page(str(_PAGES_DIR / "admin.py"), title="Admin Panel", icon="⚙️")]
+        if _is_admin() else []
+    )
     pg = st.navigation(pages_common + pages_admin)
-    pg.run()
+
+pg.run()

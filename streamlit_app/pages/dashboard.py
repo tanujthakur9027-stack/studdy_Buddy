@@ -18,7 +18,6 @@ from core.animations import page_enter, count_up_metric
 from core.auth_state import require_login, current_user, is_admin
 from core.api_client import api_get
 
-st.set_page_config(page_title="Dashboard — StudyBuddy", page_icon="🏠", layout="wide")
 inject_global_css()
 require_login()
 page_enter()

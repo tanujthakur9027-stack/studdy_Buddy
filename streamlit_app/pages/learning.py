@@ -21,7 +21,7 @@ from core.animations import page_enter, confetti
 from core.auth_state import require_login
 from core.api_client import api_get, api_post, api_request, stream_sse, BACKEND_URL
 
-st.set_page_config(page_title="AI Study Tools — StudyBuddy", page_icon="🧠", layout="wide")
+
 inject_global_css()
 require_login()
 page_enter()
