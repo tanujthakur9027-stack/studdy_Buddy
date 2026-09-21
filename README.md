@@ -47,7 +47,8 @@
 
 | Feature | Description |
 |---------|-------------|
-| 📄 **Document Upload** | PDF, TXT, MD, DOC, DOCX, PPT, PPTX, XLSX, PNG, JPG, WEBP — parsed, chunked, indexed into FAISS + ChromaDB |
+| 📄 **Document Upload** | PDF, DOCX, TXT, MD, PPT, PPTX, XLSX, PNG, JPG, JPEG, WEBP, JFIF, GIF — parsed, chunked, indexed into FAISS + ChromaDB |
+| 📝 **Paste Text** | No file? Paste notes or a topic directly — all AI tools work from raw text |
 | 🧒 **ELI10 Explain** | Three levels (ELI5 · Beginner · Intermediate) with live streaming, analogies, and key points |
 | ⚡ **Kahoot-Style Quiz** | Timed MCQs with live scoring, streaks, hints, difficulty levels, and instant answer review |
 | 📅 **Smart Revision Planner** | Day-by-day schedule with concept, quiz, buffer, and rest sessions using spaced repetition |
@@ -66,7 +67,10 @@
 | 📊 **Progress Dashboard** | Quiz score history, streak counter, Feynman history, flashcard stats, weak/strong topic breakdown |
 | ✨ **AI Cheat Sheet** | One-click cheat sheet from any uploaded document — streams live, printable as PDF |
 | 🗄️ **Persistent Database** | SQLite (dev) / PostgreSQL (prod) — WAL mode enabled; nothing lost on server restart |
-| 🛡️ **Rate Limiting** | `slowapi` — 20 req/min per IP on all LLM endpoints |
+| 🔐 **Auth & Per-User Privacy** | JWT auth (register/login/change-password); every AI document, quiz, chat, and flashcard is scoped per user |
+| 🎨 **Animated UI** | Splash screen, staggered card animations, count-up numbers, confetti on quiz score ≥ 70% |
+| 🖼️ **GIF Upload** | Animated GIF avatar + assignment attachments; Pillow multi-frame OCR extracts text from all frames |
+| 🛡️ **Rate Limiting** | `slowapi` — per-user-ID (authenticated) / per-IP (anonymous) on all LLM endpoints |
 | 🔒 **Security Headers** | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-Request-ID` |
 | 📝 **Structured JSON Logging** | Every request logged as JSON with latency_ms, request_id; Sentry-ready |
 | 🎤 **Voice Input + TTS** | Web Speech API — speak your question, hear the answer read aloud |

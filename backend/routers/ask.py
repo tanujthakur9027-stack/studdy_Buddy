@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import json
-
-from fastapi.responses import StreamingResponse
-
+from database import get_db
+from dependencies.auth import get_current_user_flex
+from models.db_models import Document, User
 from models.schemas import AskRequest, AskResponse, SourceChunk
 from services.document_service import retrieve_context
 from services.llm_service import chat_with_history, stream_chat_with_history
@@ -84,12 +87,25 @@ def _build_context_block(context_text: str) -> str:
     tags=["Ask"],
 )
 @limiter.limit("20/minute")
-async def ask_question(request: Request, req: AskRequest) -> AskResponse:
-    # ── 1. Retrieve context chunks ────────────────────────────────────────────
+async def ask_question(
+    request: Request,
+    req: AskRequest,
+    current_user: Optional[User] = Depends(get_current_user_flex),
+    db: AsyncSession = Depends(get_db),
+) -> AskResponse:
+    # ── 1. Retrieve context chunks (scoped to caller's documents) ─────────────
+    user_doc_ids: Optional[list[str]] = None
+    if current_user is not None:
+        result = await db.execute(
+            select(Document.doc_id).where(Document.user_id == current_user.id)
+        )
+        user_doc_ids = [r for (r,) in result.all()]
+
     context_docs = retrieve_context(
         query=req.question,
         doc_id=req.doc_id,
         k=req.k,
+        user_doc_ids=user_doc_ids,
     )
 
     # Build context string, capped at ~3 000 tokens to stay well within limits
@@ -173,10 +189,23 @@ async def ask_question(request: Request, req: AskRequest) -> AskResponse:
     tags=["Ask"],
 )
 @limiter.limit("20/minute")
-async def ask_question_stream(request: Request, req: AskRequest) -> StreamingResponse:
+async def ask_question_stream(
+    request: Request,
+    req: AskRequest,
+    current_user: Optional[User] = Depends(get_current_user_flex),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
     """Stream LLM tokens via SSE. Sources + follow-ups sent as a final event."""
-    # ── 1. Retrieve context (same as non-streaming) ───────────────────────────
-    context_docs = retrieve_context(query=req.question, doc_id=req.doc_id, k=req.k)
+    # ── 1. Retrieve context (scoped to caller's documents) ────────────────────
+    user_doc_ids: Optional[list[str]] = None
+    if current_user is not None:
+        result = await db.execute(
+            select(Document.doc_id).where(Document.user_id == current_user.id)
+        )
+        user_doc_ids = [r for (r,) in result.all()]
+
+    context_docs = retrieve_context(query=req.question, doc_id=req.doc_id, k=req.k,
+                                    user_doc_ids=user_doc_ids)
     raw_context = "\n\n---\n\n".join(doc.page_content for doc in context_docs)
     context_text = truncate_to_tokens(raw_context, max_tokens=3000)
 

@@ -42,10 +42,46 @@ class Base(DeclarativeBase):
     pass
 
 
+# ── Column additions that can't be expressed via create_all ──────────────────
+# Each ALTER TABLE is idempotent: silently ignored if the column already exists.
+_MIGRATIONS_SQLITE = [
+    # Phase 1 — per-user privacy
+    "ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE quiz_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE quiz_results ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE saved_answers ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE chat_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE flashcard_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE feynman_results ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+]
+
+_MIGRATIONS_POSTGRES = [
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE quiz_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE quiz_results ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE saved_answers ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE flashcard_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE feynman_results ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+]
+
+
+async def _run_migrations(conn) -> None:
+    """Apply idempotent column-addition migrations."""
+    migrations = _MIGRATIONS_SQLITE if _is_sqlite else _MIGRATIONS_POSTGRES
+    for stmt in migrations:
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            # SQLite raises OperationalError "duplicate column name" — safe to ignore.
+            pass
+
+
 async def init_db() -> None:
     """Create all tables on startup (idempotent). Enable WAL mode for SQLite."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _run_migrations(conn)
         # WAL journal mode allows concurrent reads while a write is in progress.
         # This eliminates "database is locked" errors under concurrent requests
         # and cuts read latency significantly on the free-tier Render instance.

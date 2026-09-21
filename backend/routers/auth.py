@@ -11,6 +11,17 @@ from dependencies.auth import get_current_user
 from config import get_settings
 import re
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("New password must be at least 8 characters")
+        return v
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
 settings = get_settings()
 
@@ -161,3 +172,18 @@ async def me(current_user: User = Depends(get_current_user)):
         is_active=current_user.is_active,
         created_at=str(current_user.created_at),
     )
+
+
+@router.post("/change-password", status_code=200)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the authenticated user's password after verifying the current one."""
+    if not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.password_hash = hash_password(body.new_password)
+    db.add(current_user)
+    await db.commit()
+    return {"message": "Password changed successfully"}

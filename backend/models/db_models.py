@@ -36,6 +36,10 @@ class Document(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     doc_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    # user_id: nullable for rows that pre-date auth; non-NULL for new uploads.
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     filename: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     pages: Mapped[int] = mapped_column(Integer, default=0)
@@ -55,6 +59,9 @@ class QuizSession(Base):
     __tablename__ = "quiz_sessions"
 
     quiz_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     questions_json: Mapped[str] = mapped_column(Text)   # JSON-serialised list[QuizQuestion]
     topic: Mapped[str] = mapped_column(String(255), default="")
     difficulty: Mapped[str] = mapped_column(String(20), default="mixed")
@@ -69,6 +76,9 @@ class QuizResult(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     quiz_id: Mapped[str] = mapped_column(String(36), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     doc_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("documents.doc_id", ondelete="SET NULL"), nullable=True)
     topic: Mapped[str] = mapped_column(String(255), default="")
     difficulty: Mapped[str] = mapped_column(String(20), default="mixed")
@@ -88,6 +98,9 @@ class SavedAnswer(Base):
     __tablename__ = "saved_answers"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -100,6 +113,9 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), default="New Chat")
     doc_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -136,6 +152,9 @@ class FlashcardSession(Base):
     __tablename__ = "flashcard_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     doc_id: Mapped[str] = mapped_column(String(36), index=True)
     topic: Mapped[str] = mapped_column(String(255), default="General")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -169,6 +188,9 @@ class FeynmanResult(Base):
     __tablename__ = "feynman_results"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     concept: Mapped[str] = mapped_column(String(255), default="")
     explanation_length: Mapped[int] = mapped_column(Integer, default=0)
     score: Mapped[int] = mapped_column(Integer)          # 0–100
@@ -467,3 +489,25 @@ class Note(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     uploader: Mapped["User"] = relationship(foreign_keys=[uploaded_by])
+
+
+# ── Media (GIF / images for avatars, assignment attachments) ─────────────────
+
+class Media(Base):
+    """Owner-only binary media: GIF, PNG, JPG, WEBP used for avatars and attachments."""
+    __tablename__ = "media"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    filename_uuid: Mapped[str] = mapped_column(String(100), unique=True)   # UUID-based filename on disk
+    original_name: Mapped[str] = mapped_column(String(255), default="")
+    mime: Mapped[str] = mapped_column(String(80))                          # image/gif, image/png, …
+    size: Mapped[int] = mapped_column(Integer, default=0)                  # bytes
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    frame_count: Mapped[int] = mapped_column(Integer, default=1)           # >1 → animated GIF
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    owner: Mapped["User"] = relationship(foreign_keys=[user_id])

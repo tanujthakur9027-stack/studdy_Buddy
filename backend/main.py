@@ -47,6 +47,7 @@ from routers.connections import router as connections_router
 from routers.notes import router as notes_router
 from routers.announcements import router as announcements_router
 from routers.announcements import admin_router as admin_announcements_router
+from routers.media import router as media_router
 from services.document_service import populate_faiss_from_chroma
 from utils.log_config import setup_logging
 
@@ -72,10 +73,33 @@ else:
     logger.info("Sentry disabled — set SENTRY_DSN to enable error tracking")
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
+# Use authenticated user ID as the rate-limit key so that all Streamlit browser
+# sessions sharing the same localhost IP are NOT bucketed together.
+# Falls back to remote IP for unauthenticated requests (e.g. /health, /api/share).
+def _rate_key(request: Request) -> str:
+    # Bearer token → extract user sub without a full DB round-trip
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        from services.auth_service import decode_token
+        payload = decode_token(auth[7:])
+        if payload and payload.get("sub"):
+            return f"user:{payload['sub']}"
+    return get_remote_address(request)
+
+
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=_rate_key,
     default_limits=[f"{settings.rate_limit_per_minute}/minute"],
 )
+
+
+# ── SECRET_KEY startup guard ──────────────────────────────────────────────────
+if not settings.secret_key:
+    raise RuntimeError(
+        "SECRET_KEY env var is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "and set it in your .env or Streamlit secrets."
+    )
 
 
 @asynccontextmanager
@@ -210,6 +234,7 @@ app.include_router(student_timetable_router,  prefix="/api")
 app.include_router(connections_router,        prefix="/api")
 app.include_router(notes_router,              prefix="/api")
 app.include_router(announcements_router,      prefix="/api")
+app.include_router(media_router,              prefix="/api")
 
 # ── Legacy / unversioned routers (backwards compatibility) ────────────────────
 app.include_router(quiz.router)

@@ -4,10 +4,18 @@ Doubt solver router — RAG-powered conversational Q&A.
 from __future__ import annotations
 
 import json
-from fastapi import APIRouter, HTTPException, Request
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import get_db
+from dependencies.auth import get_current_user_flex
+from models.db_models import Document, User
 from models.schemas import DoubtRequest, DoubtResponse
 from services.llm_service import chat_with_history, stream_chat_with_history
 from services.document_service import retrieve_context
@@ -29,10 +37,23 @@ Guidelines:
 
 @router.post("/doubt/solve", response_model=DoubtResponse, tags=["Doubt Solver"])
 @limiter.limit("20/minute")
-async def solve_doubt(request: Request, req: DoubtRequest):
+async def solve_doubt(
+    request: Request,
+    req: DoubtRequest,
+    current_user: Optional[User] = Depends(get_current_user_flex),
+    db: AsyncSession = Depends(get_db),
+):
     """Answer a student's question using RAG over their uploaded documents."""
-    # Retrieve relevant context
-    context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5)
+    user_doc_ids: Optional[list[str]] = None
+    if current_user is not None:
+        result = await db.execute(
+            select(Document.doc_id).where(Document.user_id == current_user.id)
+        )
+        user_doc_ids = [r for (r,) in result.all()]
+
+    # Retrieve relevant context scoped to caller's documents
+    context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5,
+                                    user_doc_ids=user_doc_ids)
     sources = list({
         doc.metadata.get("filename", "document")
         for doc in context_docs
@@ -79,9 +100,22 @@ async def solve_doubt(request: Request, req: DoubtRequest):
 
 @router.post("/doubt/stream", tags=["Doubt Solver"])
 @limiter.limit("20/minute")
-async def stream_doubt(request: Request, req: DoubtRequest) -> StreamingResponse:
+async def stream_doubt(
+    request: Request,
+    req: DoubtRequest,
+    current_user: Optional[User] = Depends(get_current_user_flex),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
     """Stream the doubt answer token-by-token via SSE."""
-    context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5)
+    user_doc_ids: Optional[list[str]] = None
+    if current_user is not None:
+        result = await db.execute(
+            select(Document.doc_id).where(Document.user_id == current_user.id)
+        )
+        user_doc_ids = [r for (r,) in result.all()]
+
+    context_docs = retrieve_context(req.question, doc_id=req.doc_id, k=5,
+                                    user_doc_ids=user_doc_ids)
     sources_list = list({
         doc.metadata.get("filename", "document")
         for doc in context_docs

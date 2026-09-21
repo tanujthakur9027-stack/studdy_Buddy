@@ -189,20 +189,54 @@ def extract_xlsx(file_bytes: bytes) -> list[tuple[int, str]]:
     return pages
 
 
-# ── Image OCR parsing ─────────────────────────────────────────────────────────
+# ── Image / GIF OCR parsing ───────────────────────────────────────────────────
 
-def extract_image(file_bytes: bytes) -> list[tuple[int, str]]:
-    """Run Tesseract OCR on an image file and return extracted text as a single page."""
+_GIF_MAX_FRAMES = 12   # sample at most this many evenly-spaced frames per GIF
+
+def extract_image(file_bytes: bytes, filename: str = "") -> list[tuple[int, str]]:
+    """
+    Run Tesseract OCR on an image or animated GIF.
+
+    For GIFs we extract the first frame plus up to _GIF_MAX_FRAMES evenly spaced
+    frames, OCR each, deduplicate text, then stitch into one or more pages.
+    For static images (PNG, JPG, WEBP, JFIF) we OCR a single frame.
+    """
     try:
         import pytesseract
         from PIL import Image
+
         img = Image.open(io.BytesIO(file_bytes))
-        raw = pytesseract.image_to_string(img)
-        text = clean_text(raw)
-        if text:
-            return [(1, text)]
+        ext = Path(filename).suffix.lower() if filename else ""
+        is_gif = ext == ".gif" or getattr(img, "format", "").upper() == "GIF"
+
+        frames: list[Image.Image] = []
+        if is_gif:
+            n_frames = getattr(img, "n_frames", 1)
+            if n_frames <= 1:
+                frames = [img.convert("RGB")]
+            else:
+                step = max(1, n_frames // _GIF_MAX_FRAMES)
+                for i in range(0, n_frames, step):
+                    try:
+                        img.seek(i)
+                        frames.append(img.convert("RGB"))
+                    except EOFError:
+                        break
+        else:
+            frames = [img.convert("RGB")]
+
+        seen_texts: set[str] = set()
+        pages: list[tuple[int, str]] = []
+        for page_num, frame in enumerate(frames, start=1):
+            raw = pytesseract.image_to_string(frame)
+            text = clean_text(raw)
+            if text and text not in seen_texts:
+                seen_texts.add(text)
+                pages.append((page_num, text))
+
+        return pages
     except Exception as exc:
-        logger.warning("OCR extraction failed: %s", exc)
+        logger.warning("OCR extraction failed for '%s': %s", filename, exc)
     return []
 
 
@@ -220,8 +254,10 @@ def generate_description(pages: list[tuple[int, str]], filename: str, parser_use
         unit = "slide" if total == 1 else "slides"
     elif ext in (".xlsx", ".xls"):
         unit = "sheet" if total == 1 else "sheets"
-    elif ext in (".png", ".jpg", ".jpeg", ".webp"):
+    elif ext in (".png", ".jpg", ".jpeg", ".webp", ".jfif"):
         unit = "image"
+    elif ext == ".gif":
+        unit = "frame" if total == 1 else "frames"
     else:
         unit = "page" if total == 1 else "pages"
 
@@ -351,8 +387,8 @@ def _sync_process_and_index(
     elif ext in (".xlsx", ".xls"):
         pages = extract_xlsx(file_bytes)
         parser_used = "openpyxl"
-    elif ext in (".png", ".jpg", ".jpeg", ".webp"):
-        pages = extract_image(file_bytes)
+    elif ext in (".png", ".jpg", ".jpeg", ".webp", ".jfif", ".gif"):
+        pages = extract_image(file_bytes, filename)
         parser_used = "tesseract-ocr"
     else:
         raise ValueError(f"Unsupported file extension: {ext}")
@@ -421,14 +457,19 @@ def retrieve_context(
     query: str,
     doc_id: Optional[str] = None,
     k: int = 5,
+    user_doc_ids: Optional[list[str]] = None,
 ) -> list[Document]:
     """
     Retrieve the top-k most relevant chunks for *query*.
 
+    RAG isolation: if *user_doc_ids* is provided (a list of doc_ids owned by the
+    current user), all results are filtered to only include chunks from those docs.
+    This prevents cross-user data leakage through the merged global FAISS index.
+
     Strategy (in order of preference):
     1. If doc_id is given AND a per-doc FAISS index exists → use it (fastest, most precise).
     2. If doc_id is given but FAISS index is absent → fall back to global FAISS with metadata filter.
-    3. If no doc_id → query global FAISS index.
+    3. If no doc_id → query global FAISS index filtered by user_doc_ids.
     4. Final safety net → ChromaDB with optional metadata filter.
     """
     results: list[Document] = []
@@ -447,8 +488,14 @@ def retrieve_context(
         if global_idx is not None:
             try:
                 candidates = global_idx.similarity_search(query, k=k * 3)
+                # ── Per-user RAG isolation ─────────────────────────────────
+                # Filter by the specific doc_id if given, otherwise restrict to
+                # the set of doc_ids that belong to the requesting user.
                 if doc_id:
                     candidates = [d for d in candidates if d.metadata.get("doc_id") == doc_id]
+                elif user_doc_ids is not None:
+                    allowed = set(user_doc_ids)
+                    candidates = [d for d in candidates if d.metadata.get("doc_id") in allowed]
                 results = candidates[:k]
                 logger.debug("FAISS global hit: %d results", len(results))
             except Exception as exc:
@@ -457,7 +504,12 @@ def retrieve_context(
     if not results:
         try:
             chroma = get_chroma()
-            filter_dict = {"doc_id": doc_id} if doc_id else None
+            if doc_id:
+                filter_dict: Optional[dict] = {"doc_id": doc_id}
+            elif user_doc_ids is not None:
+                filter_dict = {"doc_id": {"$in": user_doc_ids}} if user_doc_ids else None
+            else:
+                filter_dict = None
             results = chroma.similarity_search(query, k=k, filter=filter_dict)
             logger.debug("ChromaDB fallback: %d results", len(results))
         except Exception as exc:

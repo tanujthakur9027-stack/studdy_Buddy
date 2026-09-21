@@ -45,10 +45,19 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    secret_key: str = "CHANGE_THIS_IN_PRODUCTION_USE_OPENSSL_RAND_HEX_32"
+    # secret_key MUST be set via env var in production; default only used for
+    # local dev. Application startup will refuse to start if this equals the
+    # sentinel string below AND the env says we're in production.
+    secret_key: str = ""   # Fail-secure: empty = no default; env var required
     access_token_expire_minutes: int = 60
     admin_seed_email: str = "admin@studybuddy.com"
     admin_seed_password: str = "Admin@StudyBuddy2024"
+
+    # ── Auth feature flag ─────────────────────────────────────────────────────
+    # AUTH_REQUIRED=false → all AI endpoints accept unauthenticated requests
+    # (anonymous user). Keeps the legacy Next.js frontend working without tokens.
+    # AUTH_REQUIRED=true  → every AI endpoint requires a valid JWT.
+    auth_required: bool = True
 
     # ── Email / SMTP ──────────────────────────────────────────────────────────
     smtp_host: str = ""

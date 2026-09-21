@@ -1,5 +1,5 @@
 """
-/api/progress — Study progress summary aggregated from quiz results.
+/api/progress — Study progress summary aggregated from quiz results (per user).
 
 Endpoints:
   GET /api/progress/summary   — overall stats + last-10 quiz score history
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -15,7 +16,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db_models import QuizResult, FlashcardSession, Flashcard, FeynmanResult
+from dependencies.auth import get_current_user_flex
+from models.db_models import QuizResult, FlashcardSession, Flashcard, FeynmanResult, User
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -91,17 +93,30 @@ def _compute_streak(dates: list[datetime]) -> int:
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.get("/progress/summary", response_model=ProgressSummary, tags=["Progress"])
-async def get_progress_summary(db: AsyncSession = Depends(get_db)):
-    """Aggregate quiz results into a progress dashboard summary."""
-    result = await db.execute(
-        select(QuizResult).order_by(QuizResult.completed_at.desc())
+async def get_progress_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Aggregate the current user's quiz results into a progress dashboard summary."""
+    uid = current_user.id if current_user else None
+
+    q_results = select(QuizResult).order_by(QuizResult.completed_at.desc())
+    q_fc_sessions = select(func.count()).select_from(FlashcardSession)
+    q_fc_cards = select(func.count()).select_from(Flashcard).join(
+        FlashcardSession, Flashcard.session_id == FlashcardSession.id
     )
+    if uid:
+        q_results = q_results.where(QuizResult.user_id == uid)
+        q_fc_sessions = q_fc_sessions.where(FlashcardSession.user_id == uid)
+        q_fc_cards = q_fc_cards.where(FlashcardSession.user_id == uid)
+
+    result = await db.execute(q_results)
     all_results = result.scalars().all()
 
     # --- Flashcard stats ---
-    fc_count_result = await db.execute(select(func.count()).select_from(FlashcardSession))
+    fc_count_result = await db.execute(q_fc_sessions)
     fc_total_sessions = fc_count_result.scalar() or 0
-    fc_cards_result = await db.execute(select(func.count()).select_from(Flashcard))
+    fc_cards_result = await db.execute(q_fc_cards)
     fc_total_cards = fc_cards_result.scalar() or 0
     flashcard_stats = FlashcardStats(
         total_sessions=fc_total_sessions,
@@ -109,9 +124,10 @@ async def get_progress_summary(db: AsyncSession = Depends(get_db)):
     )
 
     # --- Feynman history (last 10) ---
-    feynman_result = await db.execute(
-        select(FeynmanResult).order_by(FeynmanResult.created_at.desc()).limit(10)
-    )
+    q_feynman = select(FeynmanResult).order_by(FeynmanResult.created_at.desc()).limit(10)
+    if uid:
+        q_feynman = q_feynman.where(FeynmanResult.user_id == uid)
+    feynman_result = await db.execute(q_feynman)
     feynman_rows = feynman_result.scalars().all()
     feynman_history = [
         FeynmanHistoryPoint(

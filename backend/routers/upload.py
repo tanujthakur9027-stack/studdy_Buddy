@@ -1,21 +1,24 @@
 """
 /api/upload — ingest a document into the vector stores.
 
-Supported formats: PDF, TXT, MD, DOC, DOCX, PPT, PPTX, XLSX, PNG, JPG, JPEG, WEBP, BIN.
+Supported formats: PDF, TXT, MD, DOC, DOCX, PPT, PPTX, XLSX, PNG, JPG, JPEG, WEBP, JFIF, GIF, BIN.
 - Validates content-type AND file extension for defence-in-depth.
+- Stamps user_id on the Document row for per-user isolation.
 - Returns extended IngestionStats including an auto-generated description.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import get_db
-from models.db_models import Document
+from dependencies.auth import get_current_user_flex
+from models.db_models import Document, User
 from models.schemas import UploadResponse
 from services.document_service import process_and_index, save_upload
 
@@ -43,6 +46,8 @@ ALLOWED_MIME: set[str] = {
     # JFIF is typically sent as image/jpeg by browsers; also allow explicit jfif MIME
     "image/jfif",
     "image/pjpeg",
+    # GIF (for OCR ingestion)
+    "image/gif",
     # Generic binary (some browsers send this for any file)
     "application/octet-stream",
 }
@@ -52,6 +57,7 @@ ALLOWED_EXTENSIONS: set[str] = {
     ".ppt", ".pptx",
     ".xlsx", ".xls",
     ".png", ".jpg", ".jpeg", ".webp", ".jfif",
+    ".gif",
 }
 
 
@@ -67,7 +73,11 @@ ALLOWED_EXTENSIONS: set[str] = {
     ),
     tags=["Documents"],
 )
-async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):  # noqa: B008
+async def upload_document(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
     # ── Validate MIME type ────────────────────────────────────────────────────
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in ALLOWED_MIME:
@@ -135,6 +145,7 @@ async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depen
     # ── Persist metadata to DB ────────────────────────────────────────────────
     doc_row = Document(
         doc_id=stats.doc_id,
+        user_id=current_user.id if current_user else None,
         filename=stats.filename,
         description=stats.description,
         pages=stats.pages,
