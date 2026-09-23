@@ -62,7 +62,9 @@ with tab_asgn:
             for a in filtered:
                 status = a.get("submission_status") or "pending"
                 badge_color = {"pending": "yellow", "submitted": "blue", "evaluated": "green"}.get(status, "yellow")
-                with st.expander(f"📋 {a['title']}  {badge(status.title(), badge_color)}", expanded=False):
+                with st.expander(f"📋 {a['title']}", expanded=False):
+                    # Badge rendered inside body — expander labels don't support HTML
+                    st.markdown(badge(status.title(), badge_color), unsafe_allow_html=True)
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Max Marks", a.get("max_marks", "?"))
                     c2.metric("Due Date",  a.get("due_date", "?"))
@@ -276,7 +278,8 @@ with tab_notes:
             if not notes:
                 st.info("No notes found.")
             for n in notes:
-                with st.expander(f"📄 {n.get('title','')}  —  {n.get('subject','')}  {badge(n.get('visibility','?'),'blue')}", expanded=False):
+                with st.expander(f"📄 {n.get('title','')}  —  {n.get('subject','')}", expanded=False):
+                    st.markdown(badge(n.get('visibility','?'), 'blue'), unsafe_allow_html=True)
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Semester",  n.get("semester") or "—")
                     c2.metric("Course",    n.get("course") or "—")

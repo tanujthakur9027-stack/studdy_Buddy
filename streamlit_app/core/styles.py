@@ -327,11 +327,8 @@ hr { border-color: #27272a !important; margin: 1.5rem 0 !important; }
 
 
 def inject_global_css() -> None:
-    """Inject once per session (guarded by session_state)."""
-    if st.session_state.get("_css_injected"):
-        return
+    """Inject on every render — Streamlit wipes the DOM on each rerun."""
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.session_state["_css_injected"] = True
 
 
 def heading(title: str, sub: str = "") -> None:
