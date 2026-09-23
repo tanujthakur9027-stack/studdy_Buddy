@@ -1,0 +1,457 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>StudyBuddy AI — Project Overview</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.65;color:#1f2328;background:#ffffff}
+  .page{max-width:760px;margin:0 auto;padding:48px 32px 56px}
+
+  /* ── Cover ── */
+  .cover{background:#09090b;border-radius:14px;padding:40px 36px 36px;margin-bottom:36px;color:#fafafa}
+  .cover-logo{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .cover h1{font-size:28px;font-weight:800;letter-spacing:-.04em;color:#fafafa;margin-bottom:4px}
+  .cover h1 span{color:#a78bfa}
+  .cover-sub{font-size:13px;color:#71717a;margin-bottom:20px;max-width:560px;line-height:1.6}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid}
+  .badge-purple{background:#1e1b4b;color:#a5b4fc;border-color:#3730a3}
+  .badge-green{background:#14532d;color:#86efac;border-color:#166534}
+  .badge-amber{background:#422006;color:#fcd34d;border-color:#92400e}
+  .badge-blue{background:#172554;color:#93c5fd;border-color:#1e40af}
+  .badge-rose{background:#4c0519;color:#fda4af;border-color:#9f1239}
+  .cover-links{display:flex;flex-wrap:wrap;gap:10px}
+  .cover-link{font-size:12px;color:#a78bfa;text-decoration:none;border:1px solid #3730a3;background:#1e1b4b;padding:4px 12px;border-radius:6px}
+
+  /* ── Sections ── */
+  h2{font-size:16px;font-weight:700;color:#1f2328;margin:28px 0 12px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;letter-spacing:-.02em}
+  h3{font-size:13px;font-weight:700;color:#3b82d4;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.06em}
+  p{color:#57606a;margin-bottom:10px;font-size:13.5px}
+
+  /* ── Team ── */
+  .team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px}
+  .team-card{background:#f7f8fa;border:1px solid #e5e7eb;border-radius:10px;padding:14px 14px 12px;text-align:center}
+  .team-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:18px;color:#fff;font-weight:700}
+  .team-name{font-size:13px;font-weight:700;color:#1f2328}
+  .team-role{font-size:11px;font-weight:600;color:#7c5cd8;margin-top:2px;margin-bottom:6px}
+  .team-contrib{font-size:11px;color:#57606a;line-height:1.5}
+  .leader-badge{font-size:10px;background:#1e1b4b;color:#a78bfa;border:1px solid #3730a3;padding:2px 8px;border-radius:20px;display:inline-block;margin-top:4px}
+
+  /* ── Tables ── */
+  table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12.5px}
+  th{background:#f7f8fa;color:#57606a;font-weight:600;text-align:left;padding:7px 10px;border:1px solid #e5e7eb;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td{padding:7px 10px;border:1px solid #e5e7eb;color:#1f2328;vertical-align:top}
+  tr:nth-child(even) td{background:#fafafa}
+  code{font-family:"SF Mono","Consolas","Courier New",monospace;font-size:11px;background:#f0f0f0;padding:1px 5px;border-radius:4px;color:#c0392b}
+
+  /* ── Architecture ── */
+  .arch-box{background:#09090b;border-radius:10px;padding:20px 22px;margin-bottom:8px}
+  .arch-box pre{color:#e4e4e7;font-family:"SF Mono","Consolas","Courier New",monospace;font-size:11.5px;line-height:1.7;white-space:pre-wrap}
+
+  /* ── Feature grid ── */
+  .feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
+  .feat-card{background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:11px 13px}
+  .feat-icon{font-size:16px;margin-bottom:4px}
+  .feat-title{font-size:12.5px;font-weight:700;color:#1f2328;margin-bottom:2px}
+  .feat-desc{font-size:11.5px;color:#57606a;line-height:1.5}
+
+  /* ── DB Tables ── */
+  .db-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+  .db-card{background:#f7f8fa;border:1px solid #e5e7eb;border-radius:7px;padding:9px 11px}
+  .db-group{font-size:10px;font-weight:700;color:#7c5cd8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+  .db-table{font-size:11px;color:#57606a;line-height:1.7}
+  .db-table span{color:#1f2328;font-weight:600}
+
+  /* ── Deploy ── */
+  .deploy-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px}
+  .deploy-card{background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px}
+  .deploy-platform{font-size:12px;font-weight:700;color:#1f2328;margin-bottom:2px}
+  .deploy-service{font-size:11px;color:#57606a}
+  .deploy-status{font-size:10px;font-weight:600;margin-top:6px;padding:2px 8px;border-radius:20px;display:inline-block}
+  .status-live{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+  .status-alt{background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd}
+  .status-api{background:#faf5ff;color:#7c3aed;border:1px solid #c4b5fd}
+
+  /* ── Changelog ── */
+  .changelog{border-left:3px solid #e5e7eb;padding-left:16px}
+  .cl-item{margin-bottom:10px;position:relative}
+  .cl-item::before{content:'';position:absolute;left:-19px;top:6px;width:7px;height:7px;border-radius:50%;background:#6366f1}
+  .cl-hash{font-size:11px;font-family:"SF Mono","Consolas",monospace;background:#f0f0f0;padding:1px 6px;border-radius:4px;color:#1f2328;margin-right:6px}
+  .cl-msg{font-size:12.5px;color:#1f2328}
+  .cl-sub{font-size:11.5px;color:#57606a;margin-top:2px}
+
+  /* ── Limitations ── */
+  .limit-item{display:flex;gap:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;margin-bottom:8px}
+  .limit-icon{font-size:14px;flex-shrink:0;margin-top:1px}
+  .limit-text{font-size:12.5px;color:#78350f}
+  .limit-text strong{color:#1f2328}
+
+  /* ── Footer ── */
+  .footer{margin-top:48px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font-size:12px;color:#57606a}
+</style>
+</head>
+<body>
+<div class="page">
+
+  
+  <div class="cover">
+    <div class="cover-logo">
+      <svg width="30" height="30" fill="none">
+        <path d="M22 4L4 15l18 11 18-11L22 4z" stroke="rgba(255,255,255,0.95)" stroke-width="2.5" stroke-linejoin="round"></path>
+        <path d="M4 29l18 11 18-11" stroke="rgba(255,255,255,0.95)" stroke-width="2.5" stroke-linejoin="round"></path>
+        <path d="M4 22l18 11 18-11" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-linejoin="round"></path>
+      </svg>
+    </div>
+    <h1>Study Buddy <span>AI</span></h1>
+    <p class="cover-sub">An AI-powered personal study assistant combining Retrieval-Augmented Generation (RAG), local ONNX embeddings, streaming LLM responses, a Streamlit frontend, and a modern Next.js interface — designed to make studying smarter, faster, and more personalised for every student.</p>
+    <div class="badges">
+      <span class="badge badge-purple">Python 3.11+</span>
+      <span class="badge badge-blue">FastAPI v4</span>
+      <span class="badge badge-green">Streamlit Cloud</span>
+      <span class="badge badge-amber">Next.js 14</span>
+      <span class="badge badge-rose">Groq / OpenAI</span>
+      <span class="badge badge-purple">SQLite / PostgreSQL</span>
+      <span class="badge badge-blue">FAISS + ChromaDB</span>
+      <span class="badge badge-green">JWT Auth</span>
+    </div>
+    <div class="cover-links">
+      <a class="cover-link" href="https://studdybuddy-zenmnfbuwdcdqqqj5kpn5g.streamlit.app/">🌐 Live App (Streamlit)</a>
+      <a class="cover-link" href="https://studdy-buddy-api.onrender.com/docs">🔌 API Docs (Render)</a>
+      <a class="cover-link" href="https://studdy-buddy-gray.vercel.app">⚡ Next.js Frontend</a>
+      <a class="cover-link" href="https://github.com/tanujthakur9027-stack/studdy_Buddy">💻 GitHub Repo</a>
+    </div>
+  </div>
+
+  
+  <h2>👥 Team</h2>
+  <div class="team-grid">
+    <div class="team-card">
+      <div class="team-avatar">B</div>
+      <div class="team-name">Bhavna Agarwal</div>
+      <div class="team-role">Team Leader 🏆</div>
+      <div class="leader-badge">Leader</div>
+      <div class="team-contrib" style="margin-top:8px">Project Architecture · AI/ML Integration · Full-Stack Development</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar">D</div>
+      <div class="team-name">Divya Goyal</div>
+      <div class="team-role">Team Member</div>
+      <div class="team-contrib" style="margin-top:8px">AI/ML Engineering · RAG Pipeline · Vector Search</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar">T</div>
+      <div class="team-name">Tanuj Kumar Singh</div>
+      <div class="team-role">Team Member</div>
+      <div class="team-contrib" style="margin-top:8px">Full-Stack Development · Backend API · Deployment &amp; DevOps</div>
+    </div>
+  </div>
+
+  
+  <h2>🏗️ System Architecture</h2>
+  <div class="arch-box"><pre>
+┌────────────────────────────────────────────────────────────────┐
+│   Streamlit Cloud  (Primary UI)    Vercel  (Alternative UI)    │
+│   streamlit_app/app.py             frontend/ — Next.js 14      │
+│   6 pages · dark animated UI       18 pages · TypeScript       │
+└─────────────────────┬──────────────────────────────────────────┘
+                      │  HTTPS · SSE (Server-Sent Events)
+                      ▼
+            FastAPI v4  (Python 3.11 · Docker · Render)
+                      │
+       ┌──────────────┼──────────────────────┐
+       ▼              ▼                      ▼
+ asyncio.to_thread  SQLAlchemy async    slowapi · Sentry
+ PDF/DOCX/PPT/IMG   SQLite WAL (dev)    Rate limit · Errors
+ FAISS index        PostgreSQL (prod)   Security headers
+ ChromaDB           25+ ORM tables      JWT Auth (bcrypt)
+       │
+       ├── fastembed  BAAI/bge-small-en-v1.5  (local ONNX — no GPU)
+       ├── FAISS      in-process vector index  (ultra-fast)
+       ├── ChromaDB   disk-persisted vector store
+       └── OpenAI gpt-4o-mini  /  Groq compound-mini  (streaming)
+  </pre></div>
+
+  
+  <h2>✨ Features</h2>
+
+  <h3>📚 Core AI Study Tools</h3>
+  <div class="feat-grid">
+    <div class="feat-card"><div class="feat-icon">📄</div><div class="feat-title">Document Upload</div><div class="feat-desc">PDF, DOCX, TXT, MD, PPT, PPTX, XLSX, PNG, JPG, GIF, WEBP — parsed, chunked, indexed into FAISS + ChromaDB</div></div>
+    <div class="feat-card"><div class="feat-icon">📝</div><div class="feat-title">Paste Text</div><div class="feat-desc">Paste notes or a topic directly — all AI tools work from raw text without any file upload</div></div>
+    <div class="feat-card"><div class="feat-icon">💡</div><div class="feat-title">ELI10 Explain</div><div class="feat-desc">Three explanation levels (ELI5 · Beginner · Intermediate) with live streaming, analogies, and key points</div></div>
+    <div class="feat-card"><div class="feat-icon">🎯</div><div class="feat-title">Kahoot-Style Quiz</div><div class="feat-desc">Timed MCQs with live scoring, streaks, hints, difficulty levels, and instant answer review</div></div>
+    <div class="feat-card"><div class="feat-icon">📅</div><div class="feat-title">Smart Revision Planner</div><div class="feat-desc">Day-by-day schedule with concept, quiz, buffer, and rest sessions using spaced repetition</div></div>
+    <div class="feat-card"><div class="feat-icon">🤖</div><div class="feat-title">RAG Doubt Solver</div><div class="feat-desc">Conversational Q&amp;A grounded in uploaded documents with source citations — streaming SSE</div></div>
+    <div class="feat-card"><div class="feat-icon">🧠</div><div class="feat-title">Feynman Mode</div><div class="feat-desc">AI scores your explanation 0–100, finds knowledge gaps, generates Q&amp;A pairs and coaching tips</div></div>
+    <div class="feat-card"><div class="feat-icon">🃏</div><div class="feat-title">AI Flashcards</div><div class="feat-desc">Generates flip-card decks from notes; "Know it / Review it" spaced-repetition loop; saved to DB</div></div>
+    <div class="feat-card"><div class="feat-icon">🗺️</div><div class="feat-title">Concept Map</div><div class="feat-desc">One-click interactive node-edge concept map generated from any uploaded document</div></div>
+    <div class="feat-card"><div class="feat-icon">✨</div><div class="feat-title">AI Cheat Sheet</div><div class="feat-desc">Streams a condensed cheat sheet live — printable as PDF from the browser</div></div>
+  </div>
+
+  <h3>🏫 Academic Management</h3>
+  <div class="feat-grid">
+    <div class="feat-card"><div class="feat-icon">🔐</div><div class="feat-title">JWT Authentication</div><div class="feat-desc">Register · login · change-password; role-based access — admin vs student; every resource scoped per user</div></div>
+    <div class="feat-card"><div class="feat-icon">👑</div><div class="feat-title">Admin Panel</div><div class="feat-desc">Manage students, classes, sections, subjects, assignments, marks, timetables, announcements</div></div>
+    <div class="feat-card"><div class="feat-icon">📋</div><div class="feat-title">Assignments</div><div class="feat-desc">Admins publish assignments with file attachments; students submit with file uploads; evaluation with feedback</div></div>
+    <div class="feat-card"><div class="feat-icon">📊</div><div class="feat-title">Marks &amp; Grades</div><div class="feat-desc">Assessment categories with weightage; per-student mark entry; overall grade computation (S/A/B/C/D)</div></div>
+    <div class="feat-card"><div class="feat-icon">🗓️</div><div class="feat-title">Timetable</div><div class="feat-desc">Admin-configurable period-by-period weekly timetable with room and teacher; published to students</div></div>
+    <div class="feat-card"><div class="feat-icon">🔔</div><div class="feat-title">Notifications</div><div class="feat-desc">Real-time feed for assignments, marks, timetable changes, and announcements; unread count badge</div></div>
+    <div class="feat-card"><div class="feat-icon">🤝</div><div class="feat-title">Student Connections</div><div class="feat-desc">Send/accept connection requests; share notes only with connections or classmates</div></div>
+    <div class="feat-card"><div class="feat-icon">📁</div><div class="feat-title">Notes Sharing</div><div class="feat-desc">Upload and share study notes (connections / class / public visibility) — PDF, DOCX, images</div></div>
+  </div>
+
+  <h3>🚀 Production &amp; Infrastructure</h3>
+  <div class="feat-grid">
+    <div class="feat-card"><div class="feat-icon">⚡</div><div class="feat-title">Streaming LLM</div><div class="feat-desc">Tokens stream via SSE — time-to-first-token &lt;1 s; AbortController cancels mid-stream</div></div>
+    <div class="feat-card"><div class="feat-icon">🖼️</div><div class="feat-title">GIF Avatar Upload</div><div class="feat-desc">Animated GIF + PNG/JPG/WEBP avatars; Pillow multi-frame OCR extracts text from all frames</div></div>
+    <div class="feat-card"><div class="feat-icon">🛡️</div><div class="feat-title">Rate Limiting</div><div class="feat-desc">slowapi — per-user-ID (authenticated) / per-IP (anonymous) on all LLM endpoints; 20 req/min default</div></div>
+    <div class="feat-card"><div class="feat-icon">🔒</div><div class="feat-title">Security Headers</div><div class="feat-desc">X-Content-Type-Options · X-Frame-Options · Referrer-Policy · X-Request-ID on every response</div></div>
+    <div class="feat-card"><div class="feat-icon">📝</div><div class="feat-title">Structured JSON Logging</div><div class="feat-desc">Every request logged as JSON with latency_ms, request_id; slow-request alerts at 5 s; Sentry-ready</div></div>
+    <div class="feat-card"><div class="feat-icon">🎨</div><div class="feat-title">Animated UI</div><div class="feat-desc">Splash screen, staggered fade-up cards, count-up numbers, confetti on quiz score ≥ 70%</div></div>
+  </div>
+
+  
+  <h2>🗄️ Database — 25+ ORM Tables (SQLAlchemy)</h2>
+  <div class="db-grid">
+    <div class="db-card">
+      <div class="db-group">Auth &amp; Users</div>
+      <div class="db-table">
+        <span>users</span><br />
+        <span>student_profiles</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Academic</div>
+      <div class="db-table">
+        <span>classes</span><br />
+        <span>sections</span><br />
+        <span>subjects</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Assignments</div>
+      <div class="db-table">
+        <span>assignments</span><br />
+        <span>assignment_submissions</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Marks</div>
+      <div class="db-table">
+        <span>assessment_categories</span><br />
+        <span>marks</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Schedule</div>
+      <div class="db-table">
+        <span>timetables</span><br />
+        <span>timetable_slots</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Social</div>
+      <div class="db-table">
+        <span>notifications</span><br />
+        <span>announcements</span><br />
+        <span>connection_requests</span><br />
+        <span>student_connections</span><br />
+        <span>notes</span><br />
+        <span>media</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">AI Documents</div>
+      <div class="db-table">
+        <span>documents</span><br />
+        <span>saved_answers</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">Quiz</div>
+      <div class="db-table">
+        <span>quiz_sessions</span><br />
+        <span>quiz_results</span><br />
+        <span>shared_resources</span>
+      </div>
+    </div>
+    <div class="db-card">
+      <div class="db-group">AI Features</div>
+      <div class="db-table">
+        <span>chat_sessions</span><br />
+        <span>chat_messages</span><br />
+        <span>flashcard_sessions</span><br />
+        <span>flashcards</span><br />
+        <span>feynman_results</span>
+      </div>
+    </div>
+  </div>
+
+  
+  <h2>🛠️ Tech Stack</h2>
+
+  <h3>Backend (Python 3.11 · FastAPI · Render)</h3>
+  <table>
+    <tr><th>Library</th><th>Version</th><th>Purpose</th></tr>
+    <tr><td>FastAPI</td><td>0.111</td><td>Async REST API + SSE streaming + Swagger UI</td></tr>
+    <tr><td>SQLAlchemy</td><td>2.x</td><td>Async ORM (aiosqlite / asyncpg) + WAL mode</td></tr>
+    <tr><td>python-jose + passlib[bcrypt]</td><td>3.x / 1.x</td><td>JWT auth + password hashing</td></tr>
+    <tr><td>LangChain</td><td>0.3</td><td>Document loading, text splitting, RAG pipeline</td></tr>
+    <tr><td>fastembed (BAAI/bge-small-en-v1.5)</td><td>0.3.6</td><td>Local ONNX embeddings — no GPU, no API key needed</td></tr>
+    <tr><td>FAISS</td><td>1.8</td><td>In-process vector index — ultra-fast similarity search</td></tr>
+    <tr><td>ChromaDB</td><td>0.5</td><td>Disk-persisted vector store — survives restarts</td></tr>
+    <tr><td>slowapi</td><td>0.1.9</td><td>Rate limiting — per user-ID or per IP</td></tr>
+    <tr><td>sentry-sdk[fastapi]</td><td>2.x</td><td>Error tracking + performance monitoring (optional)</td></tr>
+    <tr><td>python-json-logger</td><td>2.x</td><td>Structured JSON logs with latency_ms</td></tr>
+    <tr><td>pdfplumber / PyPDF2</td><td>0.11</td><td>PDF text + table extraction</td></tr>
+    <tr><td>Pillow</td><td>10.x</td><td>Image + animated GIF processing / multi-frame OCR</td></tr>
+    <tr><td>pydantic-settings</td><td>2.x</td><td>Typed settings from .env / Streamlit secrets</td></tr>
+  </table>
+
+  <h3>Streamlit Frontend (Primary — Streamlit Cloud)</h3>
+  <table>
+    <tr><th>Library</th><th>Purpose</th></tr>
+    <tr><td>Streamlit</td><td>Multipage app framework — routing, widgets, session state</td></tr>
+    <tr><td>requests</td><td>REST + SSE calls to the backend subprocess</td></tr>
+    <tr><td>Pillow</td><td>GIF / image processing for avatar uploads</td></tr>
+  </table>
+
+  <h3>Next.js Frontend (Alternative — Vercel)</h3>
+  <table>
+    <tr><th>Library</th><th>Version</th><th>Purpose</th></tr>
+    <tr><td>Next.js</td><td>14</td><td>App Router, SSR, file-based routing (18 pages)</td></tr>
+    <tr><td>TypeScript</td><td>5.x</td><td>End-to-end type safety</td></tr>
+    <tr><td>Tailwind CSS</td><td>3</td><td>Utility-first styling</td></tr>
+    <tr><td>Framer Motion</td><td>11</td><td>Page + component animations</td></tr>
+    <tr><td>Lucide React</td><td>latest</td><td>Icon library</td></tr>
+    <tr><td>React Markdown</td><td>9</td><td>Markdown rendering with GFM</td></tr>
+    <tr><td>Axios</td><td>1.x</td><td>REST API client</td></tr>
+  </table>
+
+  <h3>AI / LLM Providers</h3>
+  <table>
+    <tr><th>Provider</th><th>Model</th><th>Notes</th></tr>
+    <tr><td>Groq</td><td><code>groq/compound-mini</code></td><td>Default — free, ultra-fast inference, automatic fallback chain</td></tr>
+    <tr><td>OpenAI</td><td><code>gpt-4o-mini</code></td><td>Optional primary — set <code>OPENAI_API_KEY</code> to activate</td></tr>
+    <tr><td>Groq fallback chain</td><td><code>compound → gpt-oss-20b → gpt-oss-120b</code></td><td>Auto-rotated when primary model is rate-limited</td></tr>
+  </table>
+
+  
+  <h2>🌐 Key API Endpoints</h2>
+
+  <h3>Auth</h3>
+  <table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td><code>POST</code></td><td><code>/api/auth/register</code></td><td>Create a new user account + student profile</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/auth/login</code></td><td>Obtain a JWT access token</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/auth/change-password</code></td><td>Change authenticated user's password</td></tr>
+    <tr><td><code>GET/PATCH</code></td><td><code>/api/profile</code></td><td>Get / update current user profile</td></tr>
+  </table>
+
+  <h3>Core AI</h3>
+  <table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td><code>POST</code></td><td><code>/api/upload</code></td><td>Upload &amp; index a document (offloaded to thread)</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/ask/stream</code></td><td>RAG Q&amp;A — streaming SSE</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/doubt/stream</code></td><td>Conversational RAG — streaming SSE</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/explain/stream</code></td><td>ELI10 explanation — streaming SSE</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/generate-quiz</code></td><td>Generate timed MCQ quiz</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/quiz/submit</code></td><td>Submit quiz + persist result</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/generate-plan</code></td><td>Day-by-day revision plan</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/cheatsheet</code></td><td>AI cheat sheet — streaming SSE</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/feynman/evaluate</code></td><td>Feynman evaluation (score + gaps + Q&amp;A)</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/flashcards/generate</code></td><td>Generate flashcard deck</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/concept-map</code></td><td>Generate concept map (nodes + edges)</td></tr>
+  </table>
+
+  <h3>Admin</h3>
+  <table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td><code>GET/POST</code></td><td><code>/api/admin/students</code></td><td>List / register students</td></tr>
+    <tr><td><code>GET/POST/DELETE</code></td><td><code>/api/admin/classes</code></td><td>Manage classes, sections, subjects</td></tr>
+    <tr><td><code>GET/POST/PATCH/DELETE</code></td><td><code>/api/admin/assignments</code></td><td>Full assignment CRUD</td></tr>
+    <tr><td><code>GET/POST/PATCH</code></td><td><code>/api/admin/marks</code></td><td>Enter / update student marks</td></tr>
+    <tr><td><code>GET/POST/PATCH</code></td><td><code>/api/admin/timetable</code></td><td>Create / publish timetables</td></tr>
+    <tr><td><code>GET/POST</code></td><td><code>/api/admin/announcements</code></td><td>Post announcements</td></tr>
+  </table>
+
+  <h3>Student</h3>
+  <table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td><code>GET</code></td><td><code>/api/assignments</code></td><td>My assignments with submission status</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/assignments/{id}/submit</code></td><td>Submit an assignment</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/marks/summary</code></td><td>My marks &amp; overall grade</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/timetable/today</code></td><td>Today's timetable periods</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/notifications</code></td><td>My notification feed</td></tr>
+    <tr><td><code>GET/POST/DELETE</code></td><td><code>/api/connections</code></td><td>Student connection requests</td></tr>
+    <tr><td><code>GET/POST</code></td><td><code>/api/notes</code></td><td>Browse / upload shared notes</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/progress/summary</code></td><td>Study analytics (quiz + Feynman + flashcard)</td></tr>
+  </table>
+
+  
+  <h2>☁️ Deployment</h2>
+  <div class="deploy-grid">
+    <div class="deploy-card">
+      <div class="deploy-platform">🌐 Streamlit Cloud</div>
+      <div class="deploy-service">Primary frontend — Streamlit multipage app. Backend auto-launched as subprocess. Free tier.</div>
+      <div class="deploy-status status-live">● Live</div>
+    </div>
+    <div class="deploy-card">
+      <div class="deploy-platform">🔌 Render</div>
+      <div class="deploy-service">FastAPI backend — Dockerised, auto-detected via <code>render.yaml</code>. Free tier (cold starts after 15 min).</div>
+      <div class="deploy-status status-api">● API Live</div>
+    </div>
+    <div class="deploy-card">
+      <div class="deploy-platform">⚡ Vercel</div>
+      <div class="deploy-service">Next.js alternative frontend. Root directory <code>frontend/</code>. Free tier.</div>
+      <div class="deploy-status status-alt">● Live (Alt)</div>
+    </div>
+  </div>
+
+  <h3>Environment Variables (key ones)</h3>
+  <table>
+    <tr><th>Variable</th><th>Required</th><th>Description</th></tr>
+    <tr><td><code>GROQ_API_KEY</code></td><td>Yes (free)</td><td>Groq API key — get free at console.groq.com</td></tr>
+    <tr><td><code>SECRET_KEY</code></td><td>Yes</td><td>JWT signing secret (32-char hex) — app refuses to start without it</td></tr>
+    <tr><td><code>OPENAI_API_KEY</code></td><td>Optional</td><td>Takes priority over Groq when set</td></tr>
+    <tr><td><code>DATABASE_URL</code></td><td>No</td><td>SQLite (default) or <code>postgresql+asyncpg://…</code></td></tr>
+    <tr><td><code>ADMIN_SEED_EMAIL</code></td><td>No</td><td>Email for the auto-seeded admin account</td></tr>
+    <tr><td><code>ADMIN_SEED_PASSWORD</code></td><td>No</td><td>Password for the auto-seeded admin account</td></tr>
+    <tr><td><code>CORS_ORIGINS</code></td><td>No</td><td>Comma-separated allowed frontend origins</td></tr>
+    <tr><td><code>SENTRY_DSN</code></td><td>No</td><td>Enables Sentry error tracking when set</td></tr>
+  </table>
+
+  
+  <h2>📈 Changelog</h2>
+  <div class="changelog">
+    <div class="cl-item"><span class="cl-hash">fdc385a</span><span class="cl-msg">🔧 Add debug output files to .gitignore</span></div>
+    <div class="cl-item"><span class="cl-hash">caca8cd</span><span class="cl-msg">🐛 Fix StreamlitPageNotFoundError</span><div class="cl-sub">Replace all st.switch_page() auth transitions with st.rerun(); remove session_state["_pages_dir"] anti-pattern</div></div>
+    <div class="cl-item"><span class="cl-hash">8539a9f</span><span class="cl-msg">🔧 Clear all 24 ESLint warnings — unused imports, shadowed vars, missing deps</span></div>
+    <div class="cl-item"><span class="cl-hash">5e4e4fa</span><span class="cl-msg">🐛 Fix upload on Render — asyncio.to_thread() + /tmp dirs</span></div>
+    <div class="cl-item"><span class="cl-hash">10dbc97</span><span class="cl-msg">🐛 Fix Render deploy crash — SQLite NullPool args</span></div>
+    <div class="cl-item"><span class="cl-hash">f7839a8</span><span class="cl-msg">🐛 Fix Vercel build — escape unescaped JSX entities</span></div>
+    <div class="cl-item"><span class="cl-hash">3d4fa28</span><span class="cl-msg">✨ Add Feynman Mode, AI Flashcards, Concept Map, enhanced Progress Dashboard</span></div>
+    <div class="cl-item"><span class="cl-hash">64fed53</span><span class="cl-msg">✨ Structured JSON logging · Sentry integration · AI Cheat Sheet generator</span></div>
+    <div class="cl-item"><span class="cl-hash">d758d13</span><span class="cl-msg">✨ Share quiz via link · Progress dashboard with charts</span></div>
+    <div class="cl-item"><span class="cl-hash">0fe7f20</span><span class="cl-msg">✨ Persistent chat history · Session sidebar · Rename/delete sessions</span></div>
+    <div class="cl-item"><span class="cl-hash">94ab43e</span><span class="cl-msg">⚡ Streaming LLM responses (SSE) — ▍ cursor, &lt;1s TTFT</span></div>
+    <div class="cl-item"><span class="cl-hash">f99d66a</span><span class="cl-msg">🗄️ Persistent database · Rate limiting · Security headers</span></div>
+  </div>
+
+  
+  <h2>⚠️ Known Limitations</h2>
+  <div class="limit-item"><div class="limit-icon">⚙️</div><div class="limit-text"><strong>Single worker</strong> — FAISS indexes are in-process. The Dockerfile enforces <code>--workers 1</code>. FAISS resets on restart; re-upload documents after a Render redeploy.</div></div>
+  <div class="limit-item"><div class="limit-icon">💾</div><div class="limit-text"><strong>Streamlit Cloud data reset</strong> — The <code>data/</code> directory (SQLite, uploads, vector indexes) is ephemeral and resets on redeploy. Connect a PostgreSQL <code>DATABASE_URL</code> for persistence.</div></div>
+  <div class="limit-item"><div class="limit-icon">😴</div><div class="limit-text"><strong>Free tier cold start</strong> — Render free tier sleeps after 15 min. First request after sleep takes 30–60 s. Subsequent requests are fast.</div></div>
+  <div class="limit-item"><div class="limit-icon">📦</div><div class="limit-text"><strong>File size limits</strong> — 20 MB per AI document upload; 50 MB for assignment / note attachments; 5 MB for avatar — all configurable via env vars.</div></div>
+
+  
+  <div class="footer">
+    Made with IBM Bob  ·  StudyBuddy AI  ·  MIT © 2024 StudyBuddy AI Team
+  </div>
+
+</div>
+</body>
+</html>
