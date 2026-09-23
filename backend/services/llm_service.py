@@ -3,7 +3,7 @@ LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
 
 Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (compound-beta-mini by default).
+  - Else if GROQ_API_KEY is set → use Groq (openai/gpt-oss-20b by default).
   - Neither set → raises RuntimeError with a helpful message.
 """
 from __future__ import annotations
