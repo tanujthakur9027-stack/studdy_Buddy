@@ -3,7 +3,7 @@ LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
 
 Provider selection:
   - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (groq/compound-mini by default).
+  - Else if GROQ_API_KEY is set → use Groq (compound-beta-mini by default).
   - Neither set → raises RuntimeError with a helpful message.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import re
 import time
 from collections.abc import AsyncIterator
 
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, NotFoundError, RateLimitError
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -128,8 +128,8 @@ async def chat(
                 max_tokens=max_tokens,
                 messages=messages,
             )
-        except RateLimitError as exc:
-            logger.warning("rate_limit_hit model=%s, trying next: %s", used_model, exc)
+        except (RateLimitError, NotFoundError) as exc:
+            logger.warning("model_unavailable model=%s, trying next: %s", used_model, exc)
             last_exc = exc
             continue  # rotate to next model
         latency_ms = int((time.monotonic() - t0) * 1000)
@@ -179,8 +179,8 @@ async def chat_with_history(
                 max_tokens=max_tokens,
                 messages=messages,
             )
-        except RateLimitError as exc:
-            logger.warning("rate_limit_hit model=%s, trying next: %s", used_model, exc)
+        except (RateLimitError, NotFoundError) as exc:
+            logger.warning("model_unavailable model=%s, trying next: %s", used_model, exc)
             last_exc = exc
             continue
         latency_ms = int((time.monotonic() - t0) * 1000)
@@ -237,8 +237,8 @@ async def stream_chat_with_history(
                 if delta:
                     yield delta
             return  # success — stop after first working model
-        except RateLimitError as exc:
-            logger.warning("rate_limit_hit stream model=%s, trying next: %s", used_model, exc)
+        except (RateLimitError, NotFoundError) as exc:
+            logger.warning("model_unavailable stream model=%s, trying next: %s", used_model, exc)
             continue
 
     tried = ", ".join(models_to_try)
@@ -275,8 +275,8 @@ async def stream_chat(
                 if delta:
                     yield delta
             return  # success
-        except RateLimitError as exc:
-            logger.warning("rate_limit_hit stream model=%s, trying next: %s", used_model, exc)
+        except (RateLimitError, NotFoundError) as exc:
+            logger.warning("model_unavailable stream model=%s, trying next: %s", used_model, exc)
             continue
 
     tried = ", ".join(models_to_try)
