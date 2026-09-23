@@ -60,7 +60,7 @@ with tab_asgn:
             st.info("No assignments found.")
         else:
             for a in filtered:
-                status = a.get("submission_status", "pending")
+                status = a.get("submission_status") or "pending"
                 badge_color = {"pending": "yellow", "submitted": "blue", "evaluated": "green"}.get(status, "yellow")
                 with st.expander(f"📋 {a['title']}  {badge(status.title(), badge_color)}", expanded=False):
                     c1, c2, c3 = st.columns(3)

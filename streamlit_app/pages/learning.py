@@ -281,94 +281,317 @@ with tab_explain:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB: Quiz
+# TAB: Quiz  (Kahoot-style — one question at a time, big tiles, live timer)
 # ─────────────────────────────────────────────────────────────────────────────
-with tab_quiz:
-    heading("Quiz", "Timed multiple-choice quiz from your document or topic.")
-    _ss("quiz_data", None); _ss("quiz_answers", {}); _ss("quiz_result", None); _ss("quiz_start_ts", None)
 
+# Kahoot tile colours — cycles through 4 per question
+_KAHOOT_COLORS = [
+    ("#e21b3c", "#ff3355"),   # red
+    ("#1368ce", "#2196f3"),   # blue
+    ("#26890c", "#2ecc71"),   # green
+    ("#d89e00", "#f9a825"),   # yellow
+]
+_KAHOOT_SHAPES = ["▲", "◆", "●", "■"]
+
+_KAHOOT_CSS = """
+<style>
+.kh-header{background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+  border-radius:16px;padding:1.5rem 2rem;margin-bottom:1.5rem;text-align:center}
+.kh-header h2{color:#fff;font-size:1.5rem;font-weight:800;margin:0 0 .25rem}
+.kh-header p{color:rgba(255,255,255,.75);font-size:.9rem;margin:0}
+.kh-timer{font-size:3.5rem;font-weight:900;text-align:center;
+  color:#fafafa;line-height:1;margin:.5rem 0}
+.kh-timer-warn{color:#f59e0b !important}
+.kh-timer-danger{color:#ef4444 !important;animation:pulse 0.6s infinite}
+.kh-question{background:#18181b;border:2px solid #3f3f46;border-radius:16px;
+  padding:1.5rem 2rem;margin:1rem 0 1.5rem;text-align:center}
+.kh-question p{font-size:1.25rem;font-weight:700;color:#fafafa;margin:0;line-height:1.5}
+.kh-tile{border-radius:14px;padding:1.1rem 1rem;cursor:pointer;
+  display:flex;align-items:center;gap:.75rem;transition:transform .15s,filter .15s;
+  border:none;width:100%;text-align:left;margin-bottom:.5rem}
+.kh-tile:hover{transform:scale(1.03);filter:brightness(1.12)}
+.kh-tile span.shape{font-size:1.4rem;flex-shrink:0}
+.kh-tile span.label{font-size:1rem;font-weight:700;color:#fff;line-height:1.3}
+.kh-tile-correct{outline:4px solid #22c55e !important;filter:brightness(1.15)}
+.kh-tile-wrong{filter:brightness(0.45) !important}
+.kh-feedback-correct{background:#052e16;border:2px solid #22c55e;border-radius:12px;
+  padding:1rem 1.5rem;text-align:center;color:#22c55e;font-size:1.1rem;font-weight:700}
+.kh-feedback-wrong{background:#2d0a0a;border:2px solid #ef4444;border-radius:12px;
+  padding:1rem 1.5rem;text-align:center;color:#ef4444;font-size:1.1rem;font-weight:700}
+.kh-progress-track{background:#27272a;border-radius:99px;height:8px;margin:.75rem 0}
+.kh-progress-fill{background:linear-gradient(90deg,#6366f1,#8b5cf6);
+  border-radius:99px;height:8px;transition:width .4s ease}
+.kh-result-card{background:#18181b;border:2px solid #3f3f46;border-radius:20px;
+  padding:2.5rem 2rem;text-align:center;margin:1rem 0}
+.kh-grade{display:inline-block;width:80px;height:80px;border-radius:50%;
+  font-size:2rem;font-weight:900;line-height:80px;margin-bottom:1rem}
+.kh-grade-s{background:#ffd700;color:#09090b}
+.kh-grade-a{background:#22c55e;color:#fff}
+.kh-grade-b{background:#6366f1;color:#fff}
+.kh-grade-c{background:#f59e0b;color:#fff}
+.kh-grade-d{background:#ef4444;color:#fff}
+.kh-streak{background:#1e1b4b;border-radius:10px;padding:.5rem 1rem;
+  display:inline-block;font-size:.85rem;color:#a5b4fc;font-weight:600;margin-top:.5rem}
+.kh-review-item{border-radius:12px;padding:.875rem 1.25rem;margin:.4rem 0;
+  display:flex;align-items:flex-start;gap:.75rem}
+.kh-review-correct{background:#052e16;border:1px solid #22c55e}
+.kh-review-wrong{background:#2d0a0a;border:1px solid #ef4444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes bounceIn{0%{transform:scale(0.5);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+.bounce-in{animation:bounceIn 0.5s both}
+</style>
+"""
+
+with tab_quiz:
+    st.markdown(_KAHOOT_CSS, unsafe_allow_html=True)
+
+    # ── State init ────────────────────────────────────────────────────────────
+    _ss("quiz_data",        None)
+    _ss("quiz_answers",     {})
+    _ss("quiz_result",      None)
+    _ss("quiz_start_ts",    None)
+    _ss("kh_q_index",       0)          # current question index
+    _ss("kh_q_start_ts",    None)       # per-question timer start
+    _ss("kh_chosen",        None)       # chosen option index for current Q
+    _ss("kh_revealed",      False)      # whether answer is revealed
+    _ss("kh_streak",        0)          # consecutive correct answers
+    _ss("kh_q_time_limit",  20)         # seconds per question
+
+    # ── SCREEN 1: Setup form ──────────────────────────────────────────────────
     if st.session_state["quiz_data"] is None and st.session_state["quiz_result"] is None:
+        st.markdown("""
+<div class="kh-header">
+  <h2>🎯 Kahoot-Style Quiz</h2>
+  <p>One question at a time · Timed · Instant feedback</p>
+</div>""", unsafe_allow_html=True)
+
         default_topic_q = st.session_state.get("pasted_text", "")[:80] if not _active_doc_id() else ""
         with st.form("quiz_form"):
-            topic_q    = st.text_input("Topic (optional)", value=default_topic_q)
-            num_q      = st.slider("Questions", 3, 15, 5)
-            difficulty = st.selectbox("Difficulty", ["easy", "medium", "hard", "mixed"])
-            if st.form_submit_button("🎯 Generate Quiz", type="primary"):
-                with st.spinner("Generating quiz…"):
-                    data, err = api_post("/api/generate-quiz",
-                                          json={"doc_id": _active_doc_id(),
-                                                "topic": topic_q.strip() or None,
-                                                "num_questions": num_q,
-                                                "difficulty": difficulty})
-                if err:
-                    st.error(err)
-                else:
-                    st.session_state.update({
-                        "quiz_data": data, "quiz_answers": {},
-                        "quiz_result": None, "quiz_start_ts": time.time()
-                    })
-                    st.rerun()
+            topic_q    = st.text_input("Topic (optional — leave blank to use active document)", value=default_topic_q)
+            c1, c2, c3 = st.columns(3)
+            num_q      = c1.slider("Questions", 3, 15, 5)
+            difficulty = c2.selectbox("Difficulty", ["easy", "medium", "hard", "mixed"])
+            time_limit = c3.selectbox("Seconds/Question", [10, 15, 20, 30, 45], index=2)
+            go = st.form_submit_button("🚀 Start Quiz!", type="primary", use_container_width=True)
+        if go:
+            with st.spinner("Generating quiz…"):
+                data, err = api_post("/api/generate-quiz",
+                                      json={"doc_id": _active_doc_id(),
+                                            "topic": topic_q.strip() or None,
+                                            "num_questions": num_q,
+                                            "difficulty": difficulty})
+            if err:
+                st.error(err)
+            else:
+                st.session_state.update({
+                    "quiz_data": data, "quiz_answers": {},
+                    "quiz_result": None, "quiz_start_ts": time.time(),
+                    "kh_q_index": 0, "kh_q_start_ts": time.time(),
+                    "kh_chosen": None, "kh_revealed": False,
+                    "kh_streak": 0, "kh_q_time_limit": time_limit,
+                })
+                st.rerun()
 
+    # ── SCREEN 3: Results ─────────────────────────────────────────────────────
     elif st.session_state["quiz_result"] is not None:
-        res = st.session_state["quiz_result"]
-        pct = res.get("percentage", 0)
+        res   = st.session_state["quiz_result"]
+        pct   = res.get("percentage", 0)
         grade = res.get("grade", "?")
-        gcls = {"S": "grade-s", "A": "grade-a", "B": "grade-b", "C": "grade-c", "D": "grade-d"}.get(grade, "grade-b")
+        gcls  = {"S":"kh-grade-s","A":"kh-grade-a","B":"kh-grade-b",
+                 "C":"kh-grade-c","D":"kh-grade-d"}.get(grade, "kh-grade-b")
         confetti(pct >= 70)
 
+        # Score card
+        if pct >= 90:
+            verdict, verdict_color = "Outstanding! 🔥", "#ffd700"
+        elif pct >= 70:
+            verdict, verdict_color = "Great job! 🎉", "#22c55e"
+        elif pct >= 50:
+            verdict, verdict_color = "Good effort! 💪", "#6366f1"
+        else:
+            verdict, verdict_color = "Keep practising! 📚", "#f59e0b"
+
         st.markdown(f"""
-<div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1rem;animation:scaleIn 0.5s both">
-  <span class="{gcls}">{grade}</span>
+<div class="kh-result-card bounce-in">
+  <div class="kh-grade {gcls}">{grade}</div>
+  <p style="font-size:2rem;font-weight:900;color:#fafafa;margin:.25rem 0">{pct:.0f}%</p>
+  <p style="font-size:1rem;color:{verdict_color};font-weight:700;margin:0">{verdict}</p>
+  <p style="font-size:.875rem;color:#71717a;margin:.5rem 0 0">
+    {res['score']} / {res['total']} correct &nbsp;·&nbsp; {res.get('time_taken',0):.0f}s total
+  </p>
+  <div class="kh-streak">🔥 Best streak this quiz: {st.session_state['kh_streak']} in a row</div>
+</div>""", unsafe_allow_html=True)
+
+        # Per-question review
+        st.markdown("### 📋 Answer Review")
+        for d in res.get("details", []):
+            icon   = "✅" if d["is_correct"] else "❌"
+            cls    = "kh-review-correct" if d["is_correct"] else "kh-review-wrong"
+            colour = "#22c55e" if d["is_correct"] else "#ef4444"
+            st.markdown(f"""
+<div class="kh-review-item {cls}">
+  <span style="font-size:1.25rem">{icon}</span>
   <div>
-    <p style="font-size:28px;font-weight:800;color:#fafafa;margin:0">{pct:.0f}%</p>
-    <p style="font-size:13px;color:#71717a;margin:0">{res['score']}/{res['total']} correct · {res.get('time_taken',0):.0f}s</p>
+    <p style="margin:0;font-size:.9rem;font-weight:700;color:{colour}">{d['question']}</p>
+    {f'<p style="margin:.25rem 0 0;font-size:.8rem;color:#a1a1aa">{d["explanation"]}</p>' if d.get("explanation") else ""}
   </div>
 </div>""", unsafe_allow_html=True)
 
-        with st.expander("📋 Review Answers", expanded=True):
-            for d in res.get("details", []):
-                colour = "#22c55e" if d["is_correct"] else "#ef4444"
-                st.markdown(f'<p style="color:{colour};font-size:14px;font-weight:600">{"✓" if d["is_correct"] else "✗"} {d["question"]}</p>',
-                            unsafe_allow_html=True)
-                if d.get("explanation"):
-                    st.caption(d["explanation"])
-                st.divider()
-        if st.button("🔄 New Quiz"):
-            st.session_state.update({"quiz_data": None, "quiz_answers": {}, "quiz_result": None})
+        st.markdown("")
+        if st.button("🔄 Play Again", type="primary", use_container_width=True):
+            st.session_state.update({
+                "quiz_data": None, "quiz_answers": {}, "quiz_result": None,
+                "kh_q_index": 0, "kh_chosen": None, "kh_revealed": False, "kh_streak": 0,
+            })
             st.rerun()
 
+    # ── SCREEN 2: Active quiz — one question at a time ────────────────────────
     else:
-        quiz = st.session_state["quiz_data"]
+        quiz      = st.session_state["quiz_data"]
         questions = quiz.get("questions", [])
+        qi        = st.session_state["kh_q_index"]
         answers   = st.session_state["quiz_answers"]
-        st.progress(len(answers) / len(questions) if questions else 0,
-                    text=f"{len(answers)}/{len(questions)} answered")
-        for i, q in enumerate(questions):
-            with st.container(border=True):
-                st.markdown(f"**Q{i+1}. {q['question']}**")
-                chosen = st.radio("", range(len(q.get("options", []))),
-                                  format_func=lambda j, opts=q.get("options", []): opts[j],
-                                  key=f"q_{q['id']}", index=None)
-                if chosen is not None:
-                    answers[q["id"]] = chosen
-                    st.session_state["quiz_answers"] = answers
-        col_sub, col_dis = st.columns(2)
-        with col_sub:
-            if st.button("✅ Submit Quiz", type="primary",
-                         disabled=len(answers) != len(questions)):
-                elapsed = time.time() - (st.session_state["quiz_start_ts"] or time.time())
-                with st.spinner("Grading…"):
-                    data, err = api_post("/api/quiz/submit",
-                                          json={"quiz_id": quiz["quiz_id"],
-                                                "answers": answers, "time_taken": int(elapsed)})
-                if err:
-                    st.error(err)
+        time_limit = st.session_state["kh_q_time_limit"]
+
+        if qi >= len(questions):
+            # All answered — auto-submit
+            elapsed = time.time() - (st.session_state["quiz_start_ts"] or time.time())
+            with st.spinner("Grading…"):
+                data, err = api_post("/api/quiz/submit",
+                                      json={"quiz_id": quiz["quiz_id"],
+                                            "answers": answers, "time_taken": int(elapsed)})
+            if err:
+                st.error(err)
+            else:
+                st.session_state["quiz_result"] = data
+                st.rerun()
+        else:
+            q       = questions[qi]
+            options = q.get("options", [])
+            chosen  = st.session_state["kh_chosen"]
+            revealed = st.session_state["kh_revealed"]
+            correct_idx = q.get("correct_answer", 0)
+
+            # ── Top bar: progress + question counter ──────────────────────────
+            progress_pct = qi / len(questions) * 100
+            st.markdown(f"""
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+  <span style="font-size:.8rem;color:#71717a;font-weight:600">
+    Question {qi+1} of {len(questions)}
+  </span>
+  <span style="font-size:.8rem;color:#71717a">
+    🔥 Streak: {st.session_state['kh_streak']}
+  </span>
+</div>
+<div class="kh-progress-track">
+  <div class="kh-progress-fill" style="width:{progress_pct}%"></div>
+</div>""", unsafe_allow_html=True)
+
+            # ── Timer ─────────────────────────────────────────────────────────
+            if st.session_state["kh_q_start_ts"] is None:
+                st.session_state["kh_q_start_ts"] = time.time()
+            elapsed_q = time.time() - st.session_state["kh_q_start_ts"]
+            remaining = max(0, time_limit - int(elapsed_q))
+            timer_cls = "kh-timer-danger" if remaining <= 5 else ("kh-timer-warn" if remaining <= 10 else "")
+            st.markdown(f'<div class="kh-timer {timer_cls}">{remaining}s</div>', unsafe_allow_html=True)
+
+            # ── Question box ──────────────────────────────────────────────────
+            st.markdown(f"""
+<div class="kh-question">
+  <p>{q['question']}</p>
+</div>""", unsafe_allow_html=True)
+
+            # ── Auto-reveal if timer hits 0 ───────────────────────────────────
+            if remaining == 0 and not revealed:
+                st.session_state["kh_revealed"] = True
+                if chosen is None:
+                    st.session_state["kh_chosen"] = -1   # timed out — no pick
+                st.rerun()
+
+            # ── Answer tiles (2×2 grid) ───────────────────────────────────────
+            tile_rows = [options[i:i+2] for i in range(0, len(options), 2)]
+            for row_idx, row in enumerate(tile_rows):
+                cols = st.columns(len(row))
+                for col_idx, (col, opt) in enumerate(zip(cols, row)):
+                    opt_idx = row_idx * 2 + col_idx
+                    bg, bg2 = _KAHOOT_COLORS[opt_idx % 4]
+                    shape   = _KAHOOT_SHAPES[opt_idx % 4]
+
+                    # After reveal: dim wrong tiles, highlight correct
+                    if revealed:
+                        if opt_idx == correct_idx:
+                            extra_style = f"outline:4px solid #22c55e;"
+                        elif opt_idx == chosen:
+                            extra_style = "filter:brightness(0.4);"
+                        else:
+                            extra_style = "filter:brightness(0.35);"
+                    else:
+                        extra_style = ""
+
+                    with col:
+                        st.markdown(f"""
+<div style="background:linear-gradient(135deg,{bg},{bg2});border-radius:14px;
+     padding:1.1rem 1rem;display:flex;align-items:center;gap:.75rem;
+     margin-bottom:.5rem;{extra_style}">
+  <span style="font-size:1.4rem">{shape}</span>
+  <span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.3">{opt}</span>
+</div>""", unsafe_allow_html=True)
+                        if not revealed:
+                            if col.button(f"Choose", key=f"kh_{qi}_{opt_idx}",
+                                          use_container_width=True):
+                                st.session_state["kh_chosen"]  = opt_idx
+                                st.session_state["kh_revealed"] = True
+                                if opt_idx == correct_idx:
+                                    st.session_state["kh_streak"] += 1
+                                else:
+                                    st.session_state["kh_streak"] = 0
+                                answers[q["id"]] = opt_idx
+                                st.session_state["quiz_answers"] = answers
+                                st.rerun()
+
+            # ── Instant feedback after answer ─────────────────────────────────
+            if revealed:
+                if chosen == -1:
+                    st.markdown('<div class="kh-feedback-wrong">⏰ Time\'s up! Moving on…</div>',
+                                unsafe_allow_html=True)
+                elif chosen == correct_idx:
+                    st.markdown('<div class="kh-feedback-correct">✅ Correct! Nice one! 🔥</div>',
+                                unsafe_allow_html=True)
                 else:
-                    st.session_state["quiz_result"] = data
-                    st.rerun()
-        with col_dis:
-            if st.button("Discard"):
-                st.session_state.update({"quiz_data": None, "quiz_answers": {}})
+                    correct_text = options[correct_idx] if correct_idx < len(options) else "?"
+                    st.markdown(f'<div class="kh-feedback-wrong">❌ Wrong! Correct answer: <strong>{correct_text}</strong></div>',
+                                unsafe_allow_html=True)
+                if q.get("explanation"):
+                    st.info(f"💡 {q['explanation']}")
+
+                st.markdown("")
+                col_next, col_quit = st.columns([3, 1])
+                with col_next:
+                    next_label = "Next Question ▶" if qi + 1 < len(questions) else "🏁 See Results"
+                    if st.button(next_label, type="primary", use_container_width=True,
+                                 key=f"next_{qi}"):
+                        # Ensure unanswered (timed-out) questions have a placeholder
+                        if q["id"] not in answers:
+                            answers[q["id"]] = -1
+                            st.session_state["quiz_answers"] = answers
+                        st.session_state.update({
+                            "kh_q_index":    qi + 1,
+                            "kh_q_start_ts": time.time(),
+                            "kh_chosen":     None,
+                            "kh_revealed":   False,
+                        })
+                        st.rerun()
+                with col_quit:
+                    if st.button("Quit", key=f"quit_{qi}"):
+                        st.session_state.update({
+                            "quiz_data": None, "quiz_answers": {}, "quiz_result": None,
+                            "kh_q_index": 0, "kh_chosen": None, "kh_revealed": False,
+                        })
+                        st.rerun()
+
+            # ── Auto-refresh while timer is running (no answer yet) ───────────
+            if not revealed and remaining > 0:
+                time.sleep(1)
                 st.rerun()
 
 
