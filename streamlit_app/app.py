@@ -135,33 +135,144 @@ _share_id = st.query_params.get("share")
 if not st.session_state.get("_splash_done"):
     st.markdown("""
 <style>
-@keyframes sbFadeIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
-@media (prefers-reduced-motion:reduce){ .sb-splash,.sb-splash *{animation:none!important} }
-.sb-splash{position:fixed;inset:0;z-index:9999;
-  background:linear-gradient(135deg,#09090b 0%,#0f0f23 50%,#09090b 100%);
+@media (prefers-reduced-motion:reduce){.sb-splash,
+  .sb-splash *{animation:none!important;transition:none!important}}
+
+@keyframes sbBgPulse {
+  0%,100%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+}
+@keyframes sbLogoIn {
+  0%{opacity:0;transform:scale(.5) translateY(30px)}
+  60%{transform:scale(1.08) translateY(-4px)}
+  100%{opacity:1;transform:scale(1) translateY(0)}
+}
+@keyframes sbLogoGlow {
+  0%,100%{box-shadow:0 0 30px rgba(99,102,241,.5),0 0 60px rgba(139,92,246,.25)}
+  50%{box-shadow:0 0 50px rgba(99,102,241,.8),0 0 90px rgba(139,92,246,.45)}
+}
+@keyframes sbTitleIn {
+  0%{opacity:0;transform:translateY(20px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+@keyframes sbUnderline {
+  0%{width:0}100%{width:60px}
+}
+@keyframes sbSubIn {
+  0%{opacity:0;transform:translateY(12px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+@keyframes sbStarFloat {
+  0%,100%{transform:translateY(0) rotate(0deg);opacity:.7}
+  33%{transform:translateY(-12px) rotate(8deg);opacity:1}
+  66%{transform:translateY(4px) rotate(-4deg);opacity:.5}
+}
+@keyframes sbParticle {
+  0%{transform:translateY(0) translateX(0);opacity:0}
+  10%{opacity:.6}
+  90%{opacity:.3}
+  100%{transform:translateY(-120px) translateX(var(--dx));opacity:0}
+}
+@keyframes sbFadeOut {
+  0%{opacity:1}100%{opacity:0;pointer-events:none}
+}
+
+.sb-splash {
+  position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#06061a 0%,#0d0d2b 35%,#0a0a1f 65%,#06061a 100%);
+  background-size:300% 300%;
+  animation:sbBgPulse 6s ease infinite;
   display:flex;align-items:center;justify-content:center;flex-direction:column;
-  animation:sbFadeIn .6s ease forwards}
-.sb-splash-logo{width:72px;height:72px;border-radius:20px;
-  background:linear-gradient(135deg,#6366f1,#8b5cf6);
-  display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;
-  animation:sbFadeIn .8s ease .2s both}
-.sb-splash-title{font-size:2rem;font-weight:800;color:#fafafa;letter-spacing:-.04em;
-  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;animation:sbFadeIn .8s ease .4s both}
-.sb-splash-sub{font-size:.95rem;color:#71717a;margin-top:.5rem;
-  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;animation:sbFadeIn .8s ease .6s both}
+  overflow:hidden;
+}
+.sb-splash.hiding{animation:sbFadeOut .5s ease forwards}
+
+/* floating particles */
+.sb-particle {
+  position:absolute;width:4px;height:4px;border-radius:50%;
+  background:rgba(139,92,246,.7);
+  animation:sbParticle var(--dur,3s) var(--delay,0s) ease-in infinite;
+}
+
+/* logo icon */
+.sb-splash-logo {
+  width:80px;height:80px;border-radius:22px;
+  background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 60%,#a78bfa 100%);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:1.75rem;
+  animation:sbLogoIn .8s cubic-bezier(.34,1.56,.64,1) .1s both,
+            sbLogoGlow 3s ease-in-out 1s infinite;
+}
+
+/* title */
+.sb-splash-title {
+  font-size:2.1rem;font-weight:800;letter-spacing:-.04em;
+  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+  color:#fff;
+  animation:sbTitleIn .7s cubic-bezier(.16,1,.3,1) .5s both;
+}
+.sb-splash-title span {
+  background:linear-gradient(90deg,#a78bfa,#6366f1);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+
+/* animated underline */
+.sb-splash-line {
+  height:3px;
+  background:linear-gradient(90deg,#6366f1,#a78bfa);
+  border-radius:2px;margin:.4rem auto .9rem;
+  animation:sbUnderline .6s cubic-bezier(.16,1,.3,1) .9s both;
+}
+
+/* subtitle */
+.sb-splash-sub {
+  font-size:.9rem;color:rgba(255,255,255,.5);
+  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+  animation:sbSubIn .6s ease 1s both;
+  letter-spacing:.02em;
+}
+.sb-star {
+  display:inline-block;color:#fbbf24;font-size:.8rem;
+  animation:sbStarFloat 2.5s ease-in-out infinite;
+}
+.sb-star:last-child{animation-delay:.8s}
 </style>
-<div class="sb-splash">
+
+<div class="sb-splash" id="sbSplash">
+
+  <!-- particles -->
+  <div class="sb-particle" style="left:12%;bottom:10%;--dur:3.5s;--delay:0s;--dx:20px"></div>
+  <div class="sb-particle" style="left:25%;bottom:15%;--dur:4s;--delay:.5s;--dx:-15px;width:3px;height:3px;background:rgba(99,102,241,.5)"></div>
+  <div class="sb-particle" style="left:40%;bottom:8%;--dur:3s;--delay:1s;--dx:25px;width:5px;height:5px;background:rgba(167,139,250,.6)"></div>
+  <div class="sb-particle" style="left:60%;bottom:12%;--dur:4.5s;--delay:.3s;--dx:-20px"></div>
+  <div class="sb-particle" style="left:75%;bottom:18%;--dur:3.8s;--delay:.7s;--dx:10px;width:3px;height:3px"></div>
+  <div class="sb-particle" style="left:88%;bottom:9%;--dur:3.2s;--delay:1.2s;--dx:-25px;background:rgba(99,102,241,.6)"></div>
+  <div class="sb-particle" style="left:50%;bottom:5%;--dur:2.8s;--delay:.2s;--dx:15px;width:6px;height:6px;background:rgba(139,92,246,.4)"></div>
+  <div class="sb-particle" style="left:33%;bottom:20%;--dur:5s;--delay:.9s;--dx:-10px;width:2px;height:2px"></div>
+  <div class="sb-particle" style="left:70%;bottom:6%;--dur:3.6s;--delay:1.5s;--dx:18px;background:rgba(167,139,250,.5)"></div>
+
+  <!-- logo -->
   <div class="sb-splash-logo">
-    <svg width="38" height="38" viewBox="0 0 24 24" fill="none">
-      <path d="M12 3L4 8l8 5 8-5-8-5z" stroke="rgba(255,255,255,.95)" stroke-width="1.8" stroke-linejoin="round"/>
-      <path d="M4 16l8 5 8-5" stroke="rgba(255,255,255,.95)" stroke-width="1.8" stroke-linejoin="round"/>
-      <path d="M4 12l8 5 8-5" stroke="rgba(255,255,255,.7)" stroke-width="1.8" stroke-linejoin="round"/>
+    <svg width="42" height="42" viewBox="0 0 24 24" fill="none">
+      <path d="M12 2L4 7l8 5 8-5-8-5z" stroke="rgba(255,255,255,.95)" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M4 17l8 5 8-5" stroke="rgba(255,255,255,.95)" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M4 12l8 5 8-5" stroke="rgba(255,255,255,.65)" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>
     </svg>
   </div>
-  <div class="sb-splash-title">Study Buddy AI</div>
-  <div class="sb-splash-sub">Your intelligent learning companion</div>
+
+  <!-- title -->
+  <div class="sb-splash-title">Study Buddy <span>AI</span></div>
+
+  <!-- animated underline -->
+  <div class="sb-splash-line"></div>
+
+  <!-- subtitle -->
+  <div class="sb-splash-sub">
+    <span class="sb-star">✦</span>&nbsp; Your personal AI learning companion &nbsp;<span class="sb-star">✦</span>
+  </div>
+
 </div>""", unsafe_allow_html=True)
-    time.sleep(1.8)
+    time.sleep(2.2)
     st.session_state["_splash_done"] = True
     st.rerun()
 
