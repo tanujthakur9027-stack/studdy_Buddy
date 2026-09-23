@@ -9,12 +9,12 @@ class Settings(BaseSettings):
 
     # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
     groq_api_key: str = ""
-    groq_model: str = "openai/gpt-oss-20b"
+    groq_model: str = "qwen/qwen3.8-27b"
 
     # ── Groq model rotation (tried in order when the primary is rate-limited) ─
     # Models verified available on this Groq account via /models endpoint.
-    # openai/gpt-oss-20b → openai/gpt-oss-120b → qwen/qwen3.8-27b
-    groq_fallback_models: str = "openai/gpt-oss-120b,qwen/qwen3.8-27b"
+    # qwen/qwen3.8-27b → openai/gpt-oss-20b → openai/gpt-oss-120b
+    groq_fallback_models: str = "openai/gpt-oss-20b,openai/gpt-oss-120b"
 
     # ── Database ──────────────────────────────────────────────────────────────
     # Use SQLite for local dev; swap to PostgreSQL URL in production:

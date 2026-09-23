@@ -52,8 +52,8 @@ def _launch_backend() -> bool:
     env = {
         **os.environ,
         "GROQ_API_KEY":                _secret("GROQ_API_KEY"),
-        "GROQ_MODEL":                  _secret("GROQ_MODEL", "openai/gpt-oss-20b"),
-        "GROQ_FALLBACK_MODELS":        _secret("GROQ_FALLBACK_MODELS", "openai/gpt-oss-120b,qwen/qwen3.8-27b"),
+        "GROQ_MODEL":                  _secret("GROQ_MODEL", "qwen/qwen3.8-27b"),
+        "GROQ_FALLBACK_MODELS":        _secret("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"),
         "OPENAI_API_KEY":              _secret("OPENAI_API_KEY", ""),
         "DATABASE_URL":                f"sqlite+aiosqlite:///{_DATA}/studybuddy.db",
         "CHROMA_PERSIST_DIR":          str(_DATA / "chroma_db"),
