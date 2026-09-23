@@ -377,7 +377,7 @@ with tab_quiz:
             with st.spinner("Generating quiz…"):
                 data, err = api_post("/api/generate-quiz",
                                       json={"doc_id": _active_doc_id(),
-                                            "topic": topic_q.strip() or None,
+                                            "topic": topic_q.strip() or "",
                                             "num_questions": num_q,
                                             "difficulty": difficulty})
             if err:
@@ -651,16 +651,21 @@ with tab_fc:
     _ss("fc_cards", None); _ss("fc_index", 0); _ss("fc_flipped", False)
 
     if st.session_state["fc_cards"] is None:
+        if not _active_doc_id():
+            st.warning("⚠️ Please upload a document and select it from the sidebar before generating flashcards.")
         default_topic_fc = st.session_state.get("pasted_text", "")[:80] if not _active_doc_id() else ""
         with st.form("fc_form"):
             topic_fc = st.text_input("Topic (optional)", value=default_topic_fc)
             num_fc   = st.slider("Number of cards", 3, 20, 8)
             if st.form_submit_button("Generate Cards 🃏", type="primary"):
+                if not _active_doc_id():
+                    st.error("⚠️ No document selected. Upload one in the Study Material tab first.")
+                    st.stop()
                 with st.spinner("Generating flashcards…"):
                     data, err = api_post("/api/flashcards/generate",
                                           json={"doc_id": _active_doc_id(),
-                                                "topic": topic_fc.strip() or None,
-                                                "count": num_fc})
+                                                "topic": topic_fc.strip() or "",
+                                                "num_cards": num_fc})
                 if err:
                     st.error(err)
                 else:

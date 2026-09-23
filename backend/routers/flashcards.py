@@ -50,9 +50,13 @@ Rules:
 
 
 class FlashcardGenerateRequest(BaseModel):
-    doc_id: str
+    doc_id: str | None = None
     topic: str = ""
     num_cards: int = 15
+    count: int | None = None          # frontend alias — resolved below
+
+    def resolved_count(self) -> int:
+        return self.count if self.count is not None else self.num_cards
 
 
 class FlashcardOut(BaseModel):
@@ -84,6 +88,11 @@ async def generate_flashcards(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Generate a flashcard deck from the document and persist it."""
+    if not req.doc_id:
+        raise HTTPException(
+            status_code=422,
+            detail="No document selected. Please upload a document or select one from the sidebar first.",
+        )
     query = req.topic.strip() if req.topic.strip() else "key concepts definitions terms"
     docs = retrieve_context(query, doc_id=req.doc_id, k=12)
 
@@ -95,7 +104,7 @@ async def generate_flashcards(
 
     focus = f' Focus on: "{req.topic}".' if req.topic.strip() else ""
     user_prompt = (
-        f"Generate {req.num_cards} flashcards from the following material.{focus}\n\n"
+        f"Generate {req.resolved_count()} flashcards from the following material.{focus}\n\n"
         f"=== MATERIAL ===\n{context}\n=== END ==="
     )
 
