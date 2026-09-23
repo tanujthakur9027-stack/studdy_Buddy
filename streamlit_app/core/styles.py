@@ -332,9 +332,36 @@ def inject_global_css() -> None:
 
 
 def heading(title: str, sub: str = "") -> None:
-    st.markdown(f'<p class="sb-heading">{title}</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p style="font-size:22px;font-weight:700;color:#fafafa;margin:0 0 .2rem;letter-spacing:-.3px">{title}</p>',
+        unsafe_allow_html=True,
+    )
     if sub:
-        st.markdown(f'<p class="sb-sub">{sub}</p>', unsafe_allow_html=True)
+        st.markdown(
+            f'<p style="font-size:13px;color:#71717a;margin:0 0 1.25rem">{sub}</p>',
+            unsafe_allow_html=True,
+        )
+
+
+def page_heading(title: str, sub: str = "", icon: str = "") -> None:
+    """Full-width page header with optional icon and subtitle."""
+    icon_html = f'<span style="font-size:1.5rem;margin-right:.5rem">{icon}</span>' if icon else ""
+    st.markdown(f"""
+<div style="margin-bottom:1.5rem;animation:fadeUp .4s both">
+  <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .3rem;letter-spacing:-.03em">
+    {icon_html}{title}
+  </h1>
+  {f'<p style="font-size:.9rem;color:#71717a;margin:0">{sub}</p>' if sub else ""}
+</div>""", unsafe_allow_html=True)
+
+
+def section_header(title: str) -> None:
+    """Muted uppercase section label."""
+    st.markdown(
+        f'<p style="font-size:11px;font-weight:600;color:#71717a;text-transform:uppercase;'
+        f'letter-spacing:.07em;margin:.25rem 0 .75rem">{title}</p>',
+        unsafe_allow_html=True,
+    )
 
 
 def badge(text: str, color: str = "blue") -> str:

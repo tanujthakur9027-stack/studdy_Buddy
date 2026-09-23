@@ -16,7 +16,7 @@ import time
 import requests
 import streamlit as st
 
-from core.styles import inject_global_css, heading, badge
+from core.styles import inject_global_css, badge
 from core.animations import page_enter, confetti
 from core.auth_state import require_login, _p
 from core.api_client import api_get, api_post, api_request, stream_sse, BACKEND_URL
@@ -25,6 +25,13 @@ from core.api_client import api_get, api_post, api_request, stream_sse, BACKEND_
 inject_global_css()
 require_login()
 page_enter()
+
+def _tab_head(t, s=""):
+    st.markdown(
+        f'<p style="font-size:1rem;font-weight:700;color:#fafafa;margin:0 0 .2rem">{t}</p>'
+        + (f'<p style="font-size:.8rem;color:#71717a;margin:0 0 1rem">{s}</p>' if s else ""),
+        unsafe_allow_html=True,
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -93,7 +100,13 @@ with st.sidebar:
 
 
 # ── Page header ───────────────────────────────────────────────────────────────
-heading("AI Study Tools", "Upload your material or paste text, then use any tool below.")
+st.markdown("""
+<div style="margin-bottom:1.25rem;animation:fadeUp .4s both">
+  <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .25rem;letter-spacing:-.03em">
+    🧠 AI Study Tools
+  </h1>
+  <p style="font-size:.875rem;color:#71717a;margin:0">Upload your material or paste text, then use any tool below.</p>
+</div>""", unsafe_allow_html=True)
 
 (tab_upload, tab_ask, tab_explain, tab_quiz, tab_planner,
  tab_fc, tab_feynman, tab_cheat, tab_progress) = st.tabs([
@@ -193,7 +206,7 @@ with tab_upload:
 # TAB: Ask AI
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_ask:
-    heading("Ask AI — RAG Q&A", "Ask anything about your document or topic.")
+    _tab_head("Ask AI — RAG Q&A", "Ask anything about your document or topic.")
     _ss("ask_history", [])
     mode = st.radio("Mode", ["standard", "eli5"], horizontal=True,
                     format_func=lambda x: "📚 Standard" if x == "standard" else "🧒 ELI5")
@@ -252,7 +265,7 @@ with tab_ask:
 # TAB: ELI10 Explain
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_explain:
-    heading("ELI10 — Explain Like I'm 10", "Get simple, clear explanations with analogies.")
+    _tab_head("ELI10 — Explain Like I'm 10", "Get simple, clear explanations with analogies.")
     default_topic = st.session_state.get("pasted_text", "")[:100] if not _active_doc_id() else ""
     topic = st.text_input("Topic or concept", value=default_topic,
                            placeholder="e.g. Photosynthesis, Newton's Laws")
@@ -599,7 +612,7 @@ with tab_quiz:
 # TAB: Revision Planner
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_planner:
-    heading("Revision Planner", "Personalised study schedule from your exam date.")
+    _tab_head("Revision Planner", "Personalised study schedule from your exam date.")
     _ss("plan_data", None)
     if st.session_state["plan_data"] is None:
         default_syllabus = st.session_state.get("pasted_text", "") if not _active_doc_id() else ""
@@ -647,7 +660,7 @@ with tab_planner:
 # TAB: Flashcards
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_fc:
-    heading("Flashcards", "AI-generated flip cards for spaced-repetition practice.")
+    _tab_head("Flashcards", "AI-generated flip cards for spaced-repetition practice.")
     _ss("fc_cards", None); _ss("fc_index", 0); _ss("fc_flipped", False)
 
     if st.session_state["fc_cards"] is None:
@@ -711,7 +724,7 @@ with tab_fc:
 # TAB: Feynman
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_feynman:
-    heading("Feynman Technique", "Explain a concept in plain words — AI scores your understanding.")
+    _tab_head("Feynman Technique", "Explain a concept in plain words — AI scores your understanding.")
     default_concept = st.session_state.get("pasted_text", "")[:80] if not _active_doc_id() else ""
     with st.form("feynman_form"):
         concept     = st.text_input("Concept", value=default_concept,
@@ -755,7 +768,7 @@ with tab_feynman:
 # TAB: Cheat Sheet
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_cheat:
-    heading("Cheat Sheet", "One-page key-concept summary for your document.")
+    _tab_head("Cheat Sheet", "One-page key-concept summary for your document.")
     doc_id = _active_doc_id()
     if not doc_id:
         st.warning("⚠️ Upload and select a document first (Study Material tab).")
@@ -777,7 +790,7 @@ with tab_cheat:
 # TAB: Progress
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_progress:
-    heading("Progress Dashboard", "Your study analytics — quizzes, Feynman, streaks.")
+    _tab_head("Progress Dashboard", "Your study analytics — quizzes, Feynman, streaks.")
     with st.spinner("Loading…"):
         data, err = api_get("/api/progress/summary", timeout=30)
     if err:

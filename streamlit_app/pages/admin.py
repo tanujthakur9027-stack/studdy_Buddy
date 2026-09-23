@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
-from core.styles import inject_global_css, heading, badge, card
+from core.styles import inject_global_css, badge, card
 from core.animations import page_enter
 from core.auth_state import require_login, current_user, is_admin
 from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
@@ -23,7 +23,16 @@ if not is_admin():
     st.error("🔒 Admin access required.")
     st.stop()
 
-heading("Admin Panel", "Manage students, classes, assignments, marks and timetable.")
+# helpers
+def _h(t): st.markdown(f'<p style="font-size:1rem;font-weight:700;color:#fafafa;margin:.75rem 0 .5rem">{t}</p>', unsafe_allow_html=True)
+
+st.markdown("""
+<div style="margin-bottom:1.5rem;animation:fadeUp .4s both">
+  <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .25rem;letter-spacing:-.03em">
+    ⚙️ Admin Panel
+  </h1>
+  <p style="font-size:.875rem;color:#71717a;margin:0">Manage students, classes, assignments, marks and timetable.</p>
+</div>""", unsafe_allow_html=True)
 
 (students_tab, classes_tab, assignments_tab,
  submissions_tab, marks_tab, timetable_tab, announcements_tab) = st.tabs([
@@ -34,7 +43,7 @@ heading("Admin Panel", "Manage students, classes, assignments, marks and timetab
 
 # ── Students ──────────────────────────────────────────────────────────────────
 with students_tab:
-    st.markdown("### Registered Students")
+    _h("👨‍🎓 Registered Students")
     search = st.text_input("Search by name, email or student ID", key="admin_student_search")
     data, err = api_get(f"/api/admin/students?search={search}" if search else "/api/admin/students", timeout=15)
     if err:
@@ -60,7 +69,7 @@ with students_tab:
 
 # ── Classes ───────────────────────────────────────────────────────────────────
 with classes_tab:
-    st.markdown("### Classes, Sections & Subjects")
+    _h("🏛️ Classes, Sections &amp; Subjects")
     classes_data,  _ = api_get("/api/admin/classes",  timeout=10)
     sections_data, _ = api_get("/api/admin/sections", timeout=10)
     subjects_data, _ = api_get("/api/admin/subjects", timeout=10)
@@ -128,7 +137,7 @@ with classes_tab:
 
 # ── Assignments ───────────────────────────────────────────────────────────────
 with assignments_tab:
-    st.markdown("### Manage Assignments")
+    _h("📋 Manage Assignments")
     classes_data, _ = api_get("/api/admin/classes",  timeout=10)
     subjects_data, _ = api_get("/api/admin/subjects", timeout=10)
     classes  = classes_data  or []
@@ -180,7 +189,7 @@ with assignments_tab:
 
 # ── Submissions ───────────────────────────────────────────────────────────────
 with submissions_tab:
-    st.markdown("### Assignment Submissions")
+    _h("✅ Assignment Submissions")
     assignments_data, _ = api_get("/api/admin/assignments", timeout=10)
     assignment_list = assignments_data or []
     sel_asgn = st.selectbox("Select Assignment",
@@ -216,7 +225,7 @@ with submissions_tab:
 
 # ── Marks ─────────────────────────────────────────────────────────────────────
 with marks_tab:
-    st.markdown("### Marks Management")
+    _h("📊 Marks Management")
     subjects_data, _ = api_get("/api/admin/subjects", timeout=10)
     subjects = subjects_data or []
     sel_sub = st.selectbox("Select Subject", [s["id"] for s in subjects],
@@ -277,7 +286,7 @@ with marks_tab:
 
 # ── Timetable ─────────────────────────────────────────────────────────────────
 with timetable_tab:
-    st.markdown("### Timetable Management")
+    _h("📅 Timetable Management")
     classes_data, _ = api_get("/api/admin/classes", timeout=10)
     classes = classes_data or []
     with st.expander("➕ Create New Timetable"):
@@ -332,7 +341,7 @@ with timetable_tab:
 
 # ── Announcements ─────────────────────────────────────────────────────────────
 with announcements_tab:
-    st.markdown("### Announcements")
+    _h("📢 Announcements")
     classes_data, _ = api_get("/api/admin/classes", timeout=10)
     classes = classes_data or []
     with st.form("new_ann"):

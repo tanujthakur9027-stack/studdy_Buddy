@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
-from core.styles import inject_global_css, heading, badge, card
+from core.styles import inject_global_css, badge, card
 from core.animations import page_enter
 from core.auth_state import require_login, is_admin, _p
 from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
@@ -28,7 +28,16 @@ inject_global_css()
 require_login()
 page_enter()
 
-heading("Classes & Assignments", "Manage your schedule, assignments and classmates.")
+st.markdown("""
+<div style="margin-bottom:1.5rem;animation:fadeUp .4s both">
+  <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .25rem;letter-spacing:-.03em">
+    🏛️ Classes &amp; Assignments
+  </h1>
+  <p style="font-size:.875rem;color:#71717a;margin:0">Manage your schedule, assignments and classmates.</p>
+</div>""", unsafe_allow_html=True)
+
+def _sec(t): st.markdown(f'<p style="font-size:11px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:.07em;margin:.25rem 0 .75rem">{t}</p>', unsafe_allow_html=True)
+def _tab_head(t, s=""): st.markdown(f'<p style="font-size:1rem;font-weight:700;color:#fafafa;margin:0 0 .2rem">{t}</p>{"<p style=font-size:.8rem;color:#71717a;margin:0 0 1rem>"+s+"</p>" if s else ""}', unsafe_allow_html=True)
 
 (tab_asgn, tab_marks, tab_tt, tab_notif, tab_notes, tab_conn) = st.tabs([
     "📋 Assignments", "📊 Marks", "📅 Timetable",
@@ -40,7 +49,7 @@ heading("Classes & Assignments", "Manage your schedule, assignments and classmat
 # TAB: Assignments
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_asgn:
-    heading("My Assignments", "View and submit your assignments.")
+    _tab_head("My Assignments", "View and submit your assignments.")
     data, err = api_get("/api/assignments", timeout=15)
     if err:
         st.error(err)
@@ -118,7 +127,7 @@ with tab_asgn:
 # TAB: Marks
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_marks:
-    heading("My Marks", "View published grades by subject.")
+    _tab_head("My Marks", "View published grades by subject.")
     summary, err = api_get("/api/marks/summary", timeout=15)
     if err:
         st.error(err)
@@ -153,7 +162,7 @@ with tab_marks:
 # TAB: Timetable
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_tt:
-    heading("Class Timetable", "Your weekly class schedule.")
+    _tab_head("Class Timetable", "Your weekly class schedule.")
     data, err = api_get("/api/timetable", timeout=15)
     if err:
         st.error(err)
@@ -192,7 +201,7 @@ with tab_tt:
 # TAB: Notifications
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_notif:
-    heading("Notifications", "Your alerts and updates.")
+    _tab_head("Notifications", "Your alerts and updates.")
     col1, col2 = st.columns([4, 1])
     with col2:
         if st.button("✓ Mark all read"):
@@ -236,7 +245,7 @@ with tab_notif:
 # TAB: Notes
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_notes:
-    heading("Notes & Resources", "Share and discover study notes.")
+    _tab_head("Notes & Resources", "Share and discover study notes.")
     upload_tab, browse_tab = st.tabs(["📤 Upload Note", "📚 Browse Notes"])
 
     with upload_tab:
@@ -294,7 +303,7 @@ with tab_notes:
 # TAB: Connections
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_conn:
-    heading("Connections", "Connect with classmates to share notes and collaborate.")
+    _tab_head("Connections", "Connect with classmates to share notes and collaborate.")
     conn_tab, search_tab, req_tab = st.tabs(["👥 My Connections", "🔍 Find Students", "📨 Requests"])
 
     with conn_tab:
