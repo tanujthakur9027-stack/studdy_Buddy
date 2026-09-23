@@ -81,7 +81,7 @@ async def solve_doubt(
             system=SYSTEM_PROMPT,
             history=history,
             temperature=0.65,
-            max_tokens=1500,
+            max_tokens=4096,
         )
         raw = strip_json_fences(raw)
         data = json.loads(raw)
@@ -140,7 +140,7 @@ async def stream_doubt(
                 system=SYSTEM_PROMPT,
                 history=history,
                 temperature=0.65,
-                max_tokens=1500,
+                max_tokens=4096,
             ):
                 safe = token.replace("\n", "\\n")
                 yield f"data: {safe}\n\n"

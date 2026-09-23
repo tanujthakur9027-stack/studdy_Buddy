@@ -147,7 +147,7 @@ async def ask_question(
             system=system,
             history=history,
             temperature=0.55 if req.mode == "standard" else 0.70,
-            max_tokens=1200,
+            max_tokens=4096,
         )
     except Exception as exc:
         logger.exception("LLM call failed")
@@ -244,7 +244,7 @@ async def ask_question_stream(
                 system=system,
                 history=history,
                 temperature=0.55 if req.mode == "standard" else 0.70,
-                max_tokens=1200,
+                max_tokens=4096,
             ):
                 full_text += token
                 # Escape newlines for SSE protocol

@@ -98,6 +98,39 @@ def _compute_stats(tasks: list[RevisionTask], days_to_exam: int) -> PlanStats:
     )
 
 
+def _safe_parse_plan_json(raw: str) -> dict:
+    """
+    Try to parse the LLM output as JSON.
+    If it fails (truncated response), attempt to salvage however many
+    complete plan tasks were emitted before the cutoff by closing the
+    array and object manually.
+    """
+    # Happy path
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Salvage: find the last complete task object (ends with "}")
+    # Strategy: close the open array + object and retry
+    salvage = raw.rstrip()
+
+    # If output ends mid-object, truncate to the last complete "}" at task level
+    # Find the last occurrence of "}," or "}" before the closing array bracket
+    last_close = max(salvage.rfind("},"), salvage.rfind("}"))
+    if last_close > 0:
+        salvage = salvage[: last_close + 1]
+        # Close the plan array and the root object
+        for closing in (']}', ']\n}', '],"summary":""}'):
+            try:
+                return json.loads(salvage + closing)
+            except json.JSONDecodeError:
+                continue
+
+    # Nothing salvageable — re-raise so caller can return 500
+    raise json.JSONDecodeError("Could not parse or salvage LLM plan JSON", raw, 0)
+
+
 # ── core generation ───────────────────────────────────────────────────────────
 
 async def _generate_plan_core(req: RevisionPlanRequest) -> RevisionPlanResponse:
@@ -145,60 +178,52 @@ async def _generate_plan_core(req: RevisionPlanRequest) -> RevisionPlanResponse:
     daily_mins = int(req.daily_hours * 60)
 
     # ── LLM prompt ────────────────────────────────────────────────────────────
-    user_prompt = f"""Create a complete day-by-day revision plan with these parameters:
+    # Keep per-task fields minimal to avoid token cutoff on large plans.
+    user_prompt = f"""Create a day-by-day revision plan.
 
-Topics to cover: {topics_str}
-Weak topics (extra attention): {weak_str}
-Exam date: {req.exam_date}  ({days_left} days from today, {today})
-Daily study time available: {req.daily_hours:.1f} hours ({daily_mins} mins){context_block}
+Topics: {topics_str}
+Weak topics (prioritise): {weak_str}
+Exam date: {req.exam_date} ({days_left} days away, today={today})
+Daily time: {req.daily_hours:.1f} h ({daily_mins} min){context_block}
 
-Session type rules:
-- "concept"  → Core topic teaching/review session (Active Recall, Feynman, Mind Map, Flashcards, Reading)
-- "quiz"     → Self-testing session (Practice Problems, Mock Test, Spaced Repetition, Past Papers)
-- "buffer"   → Catch-up/revision buffer (no new content, review difficult areas)
-- "rest"     → Complete rest day (no study — place one every 6-7 days and the day before the exam)
+Rules:
+- session_type: "concept" | "quiz" | "buffer" | "rest"
+- Weak topics in first third, repeated more often
+- At least one "quiz" after each topic's first "concept"
+- One "buffer" per ~5 study days; one "rest" per ~6-7 days
+- Day before exam: "rest". Two days before: "buffer"
+- Multiple sessions per day allowed; total ≤ {daily_mins} min/day
+- Each session 25-90 min
 
-Scheduling rules:
-1. Weak topics must appear in the FIRST THIRD of the plan and recur more often.
-2. Every topic needs at least one "quiz" session after its first "concept" session.
-3. Insert one "buffer" day per ~5 study days (15-20 % of total days).
-4. Insert one "rest" day per ~6-7 days AND the day before the exam.
-5. Final 2 days before the exam: one "buffer" (full review), one "rest".
-6. Each day can have MULTIPLE sessions. Total duration per day must NOT exceed {daily_mins} mins.
-7. Each session should be 25-90 mins.
-
-Respond ONLY with valid JSON (no markdown fences):
+Return ONLY valid JSON, no markdown fences:
 {{
-  "topic_list": ["<resolved topic 1>", ...],
+  "topic_list": ["topic1", ...],
+  "summary": "2-3 sentence strategy overview",
   "plan": [
     {{
       "date": "YYYY-MM-DD",
-      "day_label": "Day N · Weekday DD Mon",
-      "session_type": "<concept|quiz|buffer|rest>",
-      "topic": "<topic name or 'Buffer Review' or 'Rest Day'>",
-      "subtopics": ["<subtopic 1>", "<subtopic 2>"],
-      "duration_mins": <25-90>,
-      "priority": "<high|medium|low>",
-      "technique": "<technique name>",
-      "resources": ["<resource 1>"],
-      "notes": "<one sentence coaching note for this session>"
+      "day_label": "Day N",
+      "session_type": "concept",
+      "topic": "Topic Name",
+      "duration_mins": 45,
+      "priority": "high",
+      "technique": "Active Recall",
+      "notes": "brief coaching note"
     }}
-  ],
-  "summary": "<3-4 sentence overview of the strategy>",
-  "tips": ["<tip 1>", "<tip 2>", "<tip 3>", "<tip 4>", "<tip 5>"]
+  ]
 }}"""
 
     try:
         raw = await chat(
             system=_SYSTEM_PLANNER,
             user=user_prompt,
-            temperature=0.55,
-            max_tokens=2000,   # keeps within Groq TPM window; compact JSON is enough
+            temperature=0.4,
+            max_tokens=4096,
         )
-        raw = strip_json_fences(raw)
-        data = json.loads(raw)
+        cleaned = strip_json_fences(raw)
+        data = _safe_parse_plan_json(cleaned)
     except json.JSONDecodeError as exc:
-        logger.error("Revision planner: LLM returned non-JSON: %s", exc)
+        logger.error("Revision planner: LLM returned non-JSON: %s\nRaw (first 500): %s", exc, raw[:500])
         raise HTTPException(
             status_code=500,
             detail="Plan generation failed: LLM returned malformed JSON. Please retry.",

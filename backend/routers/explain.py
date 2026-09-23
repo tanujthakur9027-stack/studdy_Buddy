@@ -106,7 +106,7 @@ async def explain_topic_stream(request: Request, req: ExplainRequest) -> Streami
                 system=system,
                 user=user_prompt,
                 temperature=0.65,
-                max_tokens=1000,
+                max_tokens=4096,
             ):
                 safe = token.replace("\n", "\\n")
                 yield f"data: {safe}\n\n"

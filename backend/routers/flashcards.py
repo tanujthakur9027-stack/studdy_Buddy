@@ -109,7 +109,7 @@ async def generate_flashcards(
     )
 
     try:
-        raw = await chat(system=_SYSTEM, user=user_prompt, temperature=0.4, max_tokens=2000)
+        raw = await chat(system=_SYSTEM, user=user_prompt, temperature=0.4, max_tokens=4096)
         cleaned = strip_json_fences(raw)
         cards_data = json.loads(cleaned)
         if not isinstance(cards_data, list):

@@ -80,7 +80,7 @@ async def generate_cheatsheet(request: Request, req: CheatsheetRequest) -> Strea
                 system=_CHEATSHEET_SYSTEM,
                 user=user_prompt,
                 temperature=0.45,
-                max_tokens=1400,
+                max_tokens=4096,
             ):
                 safe = token.replace("\n", "\\n")
                 yield f"data: {safe}\n\n"
