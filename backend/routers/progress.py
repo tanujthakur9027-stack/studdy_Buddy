@@ -80,9 +80,14 @@ def _compute_streak(dates: list[datetime]) -> int:
     today = datetime.now(timezone.utc).date()
     unique_days = sorted({d.date() for d in dates}, reverse=True)
     streak = 0
+    # Allow streak to start from today OR yesterday (so studying yesterday still counts)
     expected = today
     for day in unique_days:
-        if day == expected or day == expected - timedelta(days=1) and streak == 0:
+        if day == expected:
+            streak += 1
+            expected = day - timedelta(days=1)
+        elif streak == 0 and day == today - timedelta(days=1):
+            # First activity was yesterday, not today — still a valid streak
             streak += 1
             expected = day - timedelta(days=1)
         else:
@@ -101,7 +106,7 @@ async def get_progress_summary(
     uid = current_user.id if current_user else None
 
     q_results = select(QuizResult).order_by(QuizResult.completed_at.desc())
-    q_fc_sessions = select(func.count()).select_from(FlashcardSession)
+    q_fc_sessions = select(FlashcardSession)
     q_fc_cards = select(func.count()).select_from(Flashcard).join(
         FlashcardSession, Flashcard.session_id == FlashcardSession.id
     )
@@ -114,8 +119,9 @@ async def get_progress_summary(
     all_results = result.scalars().all()
 
     # --- Flashcard stats ---
-    fc_count_result = await db.execute(q_fc_sessions)
-    fc_total_sessions = fc_count_result.scalar() or 0
+    fc_sessions_result = await db.execute(q_fc_sessions)
+    fc_session_rows = fc_sessions_result.scalars().all()
+    fc_total_sessions = len(fc_session_rows)
     fc_cards_result = await db.execute(q_fc_cards)
     fc_total_cards = fc_cards_result.scalar() or 0
     flashcard_stats = FlashcardStats(
@@ -123,12 +129,13 @@ async def get_progress_summary(
         total_cards=fc_total_cards,
     )
 
-    # --- Feynman history (last 10) ---
-    q_feynman = select(FeynmanResult).order_by(FeynmanResult.created_at.desc()).limit(10)
+    # --- Feynman history (last 10 for display; all for streak) ---
+    q_feynman_all = select(FeynmanResult).order_by(FeynmanResult.created_at.desc())
     if uid:
-        q_feynman = q_feynman.where(FeynmanResult.user_id == uid)
-    feynman_result = await db.execute(q_feynman)
-    feynman_rows = feynman_result.scalars().all()
+        q_feynman_all = q_feynman_all.where(FeynmanResult.user_id == uid)
+    feynman_all_result = await db.execute(q_feynman_all)
+    all_feynman_rows = feynman_all_result.scalars().all()
+    feynman_rows = all_feynman_rows[:10]
     feynman_history = [
         FeynmanHistoryPoint(
             date=r.created_at.isoformat(),
@@ -139,7 +146,7 @@ async def get_progress_summary(
         for r in feynman_rows
     ]
 
-    # --- Daily activity (last 90 days: quiz + feynman events) ---
+    # --- Daily activity (last 90 days: quiz + feynman + flashcard events) ---
     cutoff = datetime.now(timezone.utc) - timedelta(days=90)
     # SQLite stores datetimes as naive strings; make cutoff naive for comparison
     cutoff_naive = cutoff.replace(tzinfo=None)
@@ -151,7 +158,13 @@ async def get_progress_summary(
         if ts_naive >= cutoff_naive:
             day = ts_naive.date().isoformat()
             activity_map[day] = activity_map.get(day, 0) + 1
-    for r in feynman_rows:
+    for r in all_feynman_rows:
+        ts = r.created_at
+        ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
+        if ts_naive >= cutoff_naive:
+            day = ts_naive.date().isoformat()
+            activity_map[day] = activity_map.get(day, 0) + 1
+    for r in fc_session_rows:
         ts = r.created_at
         ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
         if ts_naive >= cutoff_naive:
@@ -162,10 +175,21 @@ async def get_progress_summary(
         for d, c in sorted(activity_map.items())
     ]
 
+    # Combine quiz + feynman + flashcard dates for streak; make naive ones UTC-aware
+    def _to_aware(dt: datetime) -> datetime:
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+    streak_dates = (
+        [_to_aware(r.completed_at) for r in all_results]
+        + [_to_aware(r.created_at) for r in all_feynman_rows]
+        + [_to_aware(r.created_at) for r in fc_session_rows]
+    )
+    streak = _compute_streak(streak_dates)
+
     if not all_results:
         return ProgressSummary(
             total_quizzes=0, avg_score_pct=0, best_score_pct=0,
-            current_streak_days=0, total_questions_answered=0,
+            current_streak_days=streak, total_questions_answered=0,
             score_history=[], weak_topics=[], strong_topics=[],
             daily_activity=daily_activity,
             flashcard_stats=flashcard_stats,
@@ -177,13 +201,6 @@ async def get_progress_summary(
     avg_pct     = round(sum(percentages) / len(percentages), 1)
     best_pct    = round(max(percentages), 1)
     total_q     = sum(r.total for r in all_results)
-    # Pass tz-aware datetimes to _compute_streak; make naive ones UTC-aware first
-    streak_dates = [
-        r.completed_at if r.completed_at.tzinfo is not None
-        else r.completed_at.replace(tzinfo=timezone.utc)
-        for r in all_results
-    ]
-    streak      = _compute_streak(streak_dates)
 
     # --- Score history (last 10) ---
     history = [

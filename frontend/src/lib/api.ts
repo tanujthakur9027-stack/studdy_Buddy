@@ -226,7 +226,7 @@ export interface ProgressSummary {
 }
 
 export async function fetchProgressSummary(): Promise<ProgressSummary> {
-  const { data } = await api.get("/api/progress/summary");
+  const { data } = await api.get("/api/progress/summary", { withCredentials: true });
   return data;
 }
 

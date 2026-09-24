@@ -9,14 +9,17 @@ interface Assignment {
   due_date: string; max_marks: number; is_published: boolean; created_at: string;
 }
 interface Subject { id: string; name: string; class_id: string; }
-interface Class { id: string; name: string; }
+interface Class { id: string; name: string; course: string; }
 
 export default function AdminAssignmentsPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: "", subject_id: "", class_id: "", section_id: "", description: "", instructions: "", due_date: "", due_time: "23:59", max_marks: "100" });
+  const [form, setForm] = useState({
+    title: "", subject_id: "", class_id: "", section_id: "",
+    description: "", instructions: "", due_date: "", due_time: "23:59", max_marks: "100",
+  });
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -25,6 +28,16 @@ export default function AdminAssignmentsPage() {
     api.get("/api/admin/subjects", { withCredentials: true }).then(r => setSubjects(r.data)).catch(() => {});
     api.get("/api/admin/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
   }, []);
+
+  // Subjects that belong to the currently selected class
+  const filteredSubjects = form.class_id
+    ? subjects.filter(s => s.class_id === form.class_id)
+    : [];
+
+  const handleClassChange = (classId: string) => {
+    // Reset subject when class changes
+    setForm(f => ({ ...f, class_id: classId, subject_id: "" }));
+  };
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +49,8 @@ export default function AdminAssignmentsPage() {
       const r = await api.post("/api/admin/assignments", fd, { withCredentials: true, headers: { "Content-Type": "multipart/form-data" } });
       setAssignments(a => [r.data, ...a]);
       setShowForm(false);
+      setForm({ title: "", subject_id: "", class_id: "", section_id: "", description: "", instructions: "", due_date: "", due_time: "23:59", max_marks: "100" });
+      setFile(null);
       toast.success("Assignment created!");
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed");
@@ -59,12 +74,17 @@ export default function AdminAssignmentsPage() {
     } catch { toast.error("Failed"); }
   };
 
+  const getClassName = (classId: string) =>
+    classes.find(c => c.id === classId)?.name ?? classId;
+
   const inp = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><ClipboardList className="w-6 h-6 text-purple-400" />Assignments</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <ClipboardList className="w-6 h-6 text-purple-400" />Assignments
+        </h1>
         <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl">
           <Plus className="w-4 h-4" />Create Assignment
         </button>
@@ -83,6 +103,9 @@ export default function AdminAssignmentsPage() {
                 <h3 className="font-semibold text-white">{a.title}</h3>
                 <span className={`text-xs px-2 py-0.5 rounded-full ${a.is_published ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
                   {a.is_published ? "Published" : "Draft"}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
+                  {getClassName(a.class_id)}
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">Due: {a.due_date} • Max: {a.max_marks} marks</p>
@@ -105,15 +128,38 @@ export default function AdminAssignmentsPage() {
             <h2 className="text-lg font-bold text-white mb-4">Create Assignment</h2>
             <form onSubmit={create} className="space-y-3">
               <input required placeholder="Title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inp} />
+
+              {/* Step 1: Pick class first */}
+              <select
+                required
+                value={form.class_id}
+                onChange={e => handleClassChange(e.target.value)}
+                className={inp}
+              >
+                <option value="">Select Class *</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.course ? ` — ${c.course}` : ""}</option>
+                ))}
+              </select>
+
+              {/* Step 2: Pick subject from that class */}
+              <select
+                required
+                value={form.subject_id}
+                onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))}
+                className={inp}
+                disabled={!form.class_id}
+              >
+                <option value="">{form.class_id ? "Select Subject *" : "Select a class first"}</option>
+                {filteredSubjects.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              {form.class_id && filteredSubjects.length === 0 && (
+                <p className="text-xs text-yellow-400">No subjects found for this class. Add subjects under Classes first.</p>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
-                <select required value={form.class_id} onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))} className={inp}>
-                  <option value="">Select Class *</option>
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <select required value={form.subject_id} onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))} className={inp}>
-                  <option value="">Select Subject *</option>
-                  {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
                 <input type="date" required placeholder="Due Date *" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={inp} />
                 <input type="time" value={form.due_time} onChange={e => setForm(f => ({ ...f, due_time: e.target.value }))} className={inp} />
                 <input type="number" placeholder="Max Marks" value={form.max_marks} onChange={e => setForm(f => ({ ...f, max_marks: e.target.value }))} className={inp} />

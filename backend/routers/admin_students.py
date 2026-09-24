@@ -11,7 +11,7 @@ from typing import Optional
 
 from database import get_db
 from dependencies.auth import require_admin
-from models.db_models import User, StudentProfile
+from models.db_models import User, StudentProfile, Class
 
 router = APIRouter(prefix="/admin/students", tags=["Admin - Students"])
 
@@ -159,3 +159,41 @@ async def delete_student(
     user.is_active = False
     await db.commit()
     return {"message": "Student deactivated"}
+
+
+class ClassAssign(BaseModel):
+    class_id: Optional[str] = None  # None = unassign from class
+
+
+@router.patch("/{student_id}/class")
+async def assign_student_to_class(
+    student_id: str,
+    body: ClassAssign,
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign or unassign a student to/from a class."""
+    # Verify student exists
+    user_result = await db.execute(
+        select(User).where(User.id == student_id, User.role == "student")
+    )
+    if not user_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Verify class exists if provided
+    if body.class_id:
+        class_result = await db.execute(select(Class).where(Class.id == body.class_id))
+        if not class_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Class not found")
+
+    # Load or create student profile
+    profile_result = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == student_id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+
+    profile.class_id = body.class_id
+    await db.commit()
+    return {"message": "Class assignment updated", "class_id": body.class_id}

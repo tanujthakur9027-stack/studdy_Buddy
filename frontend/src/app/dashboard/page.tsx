@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, fetchProgressSummary } from "@/lib/api";
+import type { ProgressSummary } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { ClipboardList, BarChart2, Calendar, Bell, FileText, Users, Brain, ArrowRight } from "lucide-react";
+import { ClipboardList, BarChart2, Calendar, Bell, FileText, Users, Brain, ArrowRight, Flame, Trophy } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -12,6 +13,7 @@ export default function DashboardPage() {
   const [unread, setUnread] = useState(0);
   const [todayPeriods, setTodayPeriods] = useState<{ subject: string; start_time: string; end_time: string }[]>([]);
   const [announcements, setAnnouncements] = useState<{ id: string; title: string; created_at: string }[]>([]);
+  const [progress, setProgress] = useState<ProgressSummary | null>(null);
 
   useEffect(() => {
     api.get("/api/assignments", { withCredentials: true }).then(r => setAssignments(r.data.slice(0, 5))).catch(() => {});
@@ -19,6 +21,7 @@ export default function DashboardPage() {
     api.get("/api/notifications/unread-count", { withCredentials: true }).then(r => setUnread(r.data.count)).catch(() => {});
     api.get("/api/timetable/today", { withCredentials: true }).then(r => setTodayPeriods(r.data.periods || [])).catch(() => {});
     api.get("/api/announcements", { withCredentials: true }).then(r => setAnnouncements(r.data.slice(0, 3))).catch(() => {});
+    fetchProgressSummary().then(setProgress).catch(() => {});
   }, []);
 
   const pending = assignments.filter(a => !a.submission_status).length;
@@ -28,6 +31,8 @@ export default function DashboardPage() {
     { label: "Overall Grade", value: marks?.overall_grade || "—", icon: BarChart2, color: "text-green-400", href: "/marks", bg: "bg-green-500/10" },
     { label: "Today's Classes", value: todayPeriods.length, icon: Calendar, color: "text-blue-400", href: "/timetable", bg: "bg-blue-500/10" },
     { label: "Unread Notifications", value: unread, icon: Bell, color: "text-purple-400", href: "/notifications", bg: "bg-purple-500/10" },
+    { label: "Study Streak", value: progress ? `${progress.current_streak_days}d` : "—", icon: Flame, color: "text-orange-400", href: "/learn", bg: "bg-orange-500/10" },
+    { label: "Quizzes Taken", value: progress?.total_quizzes ?? "—", icon: Trophy, color: "text-yellow-400", href: "/learn", bg: "bg-yellow-500/10" },
   ];
 
   return (
@@ -38,7 +43,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {cards.map((c) => (
           <Link key={c.label} href={c.href} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-colors">
             <div className={`w-10 h-10 ${c.bg} rounded-xl flex items-center justify-center mb-3`}>
