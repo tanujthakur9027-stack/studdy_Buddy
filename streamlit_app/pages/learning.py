@@ -382,7 +382,7 @@ with tab_quiz:
         with st.form("quiz_form"):
             topic_q    = st.text_input("Topic (optional — leave blank to use active document)", value=default_topic_q)
             c1, c2, c3 = st.columns(3)
-            num_q      = c1.slider("Questions", 3, 15, 5)
+            num_q      = c1.slider("Questions", 3, 10, 5)   # max=10 matches schema cap
             difficulty = c2.selectbox("Difficulty", ["easy", "medium", "hard", "mixed"])
             time_limit = c3.selectbox("Seconds/Question", [10, 15, 20, 30, 45], index=2)
             go = st.form_submit_button("🚀 Start Quiz!", type="primary", use_container_width=True)
@@ -483,7 +483,7 @@ with tab_quiz:
             options = q.get("options", [])
             chosen  = st.session_state["kh_chosen"]
             revealed = st.session_state["kh_revealed"]
-            correct_idx = q.get("correct_answer", 0)
+            correct_idx = q.get("correct_index", 0)   # field is correct_index not correct_answer
 
             # ── Top bar: progress + question counter ──────────────────────────
             progress_pct = qi / len(questions) * 100
@@ -552,12 +552,13 @@ with tab_quiz:
                         if not revealed:
                             if col.button(f"Choose", key=f"kh_{qi}_{opt_idx}",
                                           use_container_width=True):
-                                st.session_state["kh_chosen"]  = opt_idx
-                                st.session_state["kh_revealed"] = True
+                                st.session_state["kh_chosen"]   = opt_idx
+                                st.session_state["kh_revealed"]  = True
                                 if opt_idx == correct_idx:
                                     st.session_state["kh_streak"] += 1
                                 else:
-                                    st.session_state["kh_streak"] = 0
+                                    st.session_state["kh_streak"]  = 0
+                                # Record the 0-based index the user chose (or -1 for timeout)
                                 answers[q["id"]] = opt_idx
                                 st.session_state["quiz_answers"] = answers
                                 st.rerun()
@@ -791,25 +792,44 @@ with tab_cheat:
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_progress:
     _tab_head("Progress Dashboard", "Your study analytics — quizzes, Feynman, streaks.")
-    with st.spinner("Loading…"):
-        data, err = api_get("/api/progress/summary", timeout=30)
+
+    # Allow user to force-refresh without reloading the whole page
+    if st.button("🔄 Refresh Progress", key="refresh_progress"):
+        st.session_state.pop("_progress_cache", None)
+
+    if "_progress_cache" not in st.session_state:
+        with st.spinner("Loading…"):
+            _pdata, _perr = api_get("/api/progress/summary", timeout=30)
+        st.session_state["_progress_cache"] = (_pdata, _perr)
+
+    data, err = st.session_state["_progress_cache"]
+
     if err:
         st.error(err)
-    else:
+        st.session_state.pop("_progress_cache", None)  # don't cache errors
+    elif data:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Quizzes",   data.get("total_quizzes", 0))
         c2.metric("Avg Score",       f"{data.get('avg_score_pct', 0):.0f}%")
         c3.metric("Best Score",      f"{data.get('best_score_pct', 0):.0f}%")
         c4.metric("Streak 🔥",       f"{data.get('current_streak_days', 0)}d")
 
-        if data.get("score_history"):
+        history = data.get("score_history", [])
+        if history:
             st.divider()
+            st.markdown('<p style="font-size:12px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:.06em">Quiz History (newest first)</p>',
+                        unsafe_allow_html=True)
             st.dataframe(
+                # score_history is already newest-first from backend; show last 20
                 [{"Date": h["date"][:10], "Topic": h["topic"],
-                  "Score": f"{h['score']}/{h['total']}", "Grade": h["grade"]}
-                 for h in data["score_history"][-20:]],
+                  "Score": f"{h['score']}/{h['total']}",
+                  "%": f"{h['percentage']:.0f}%",
+                  "Grade": h["grade"]}
+                 for h in history[:20]],
                 use_container_width=True,
+                hide_index=True,
             )
+
         col_w, col_s = st.columns(2)
         with col_w:
             if data.get("weak_topics"):
@@ -823,3 +843,27 @@ with tab_progress:
                             unsafe_allow_html=True)
                 for t in data["strong_topics"]:
                     st.progress(t["avg_pct"] / 100, text=f"{t['topic']} ({t['avg_pct']:.0f}%)")
+
+        # Flashcard & Feynman stats
+        fc = data.get("flashcard_stats", {})
+        feynman = data.get("feynman_history", [])
+        if fc.get("total_sessions") or feynman:
+            st.divider()
+            cf1, cf2 = st.columns(2)
+            if fc.get("total_sessions"):
+                with cf1:
+                    st.metric("Flashcard Sessions", fc.get("total_sessions", 0))
+                    st.metric("Flashcards Studied", fc.get("total_cards", 0))
+            if feynman:
+                with cf2:
+                    st.markdown('<p style="font-size:12px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:.06em">Feynman History</p>',
+                                unsafe_allow_html=True)
+                    st.dataframe(
+                        [{"Date": f["date"][:10], "Concept": f["concept"],
+                          "Score": f["score"], "Grade": f["grade"]}
+                         for f in feynman[:10]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+    else:
+        st.info("No quiz data yet — complete a quiz to see your progress here!")
