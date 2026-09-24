@@ -30,17 +30,21 @@ _BACKEND   = _REPO_ROOT / "backend"
 _DATA      = _BACKEND                          # persistent storage root
 _PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
 
-# Import BACKEND_URL from api_client (single source of truth).
-# Ensure streamlit_app/ is on sys.path so `core` is importable.
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
-from core.api_client import BACKEND_URL
+# Resolve BACKEND_URL early using only os.environ (no st.* calls before set_page_config).
+# st.secrets is checked later at runtime inside api_client._get_backend_url() — that
+# runs after set_page_config, inside Streamlit's execution context, which is correct.
+# Here we only need to know if it's remote so we can skip the subprocess.
+def _resolve_backend_url() -> str:
+    """Read BACKEND_URL from env only — safe to call before st.set_page_config()."""
+    return os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+
+_BACKEND_URL_EARLY = _resolve_backend_url()
 
 
 def _is_remote_backend() -> bool:
     """Returns True when BACKEND_URL points to a remote server (not localhost/127.0.0.1)."""
-    return not (BACKEND_URL.startswith("http://localhost") or
-                BACKEND_URL.startswith("http://127.0.0.1"))
+    return not (_BACKEND_URL_EARLY.startswith("http://localhost") or
+                _BACKEND_URL_EARLY.startswith("http://127.0.0.1"))
 
 
 # ── Secret helper ──────────────────────────────────────────────────────────────
@@ -97,7 +101,7 @@ def _wait_for_backend(env: dict) -> None:
     deadline = time.time() + 90
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
+            if requests.get(f"{_BACKEND_URL_EARLY}/health", timeout=3).status_code == 200:
                 _backend_ready_event.set()
                 return
         except Exception:
