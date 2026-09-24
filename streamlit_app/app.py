@@ -84,15 +84,17 @@ def _build_env() -> dict:
 
 def _wait_for_backend(env: dict) -> None:
     """Daemon thread — polls /health; sets the appropriate Event when done."""
-    deadline = time.time() + 90
+    # Streamlit Cloud cold-starts are slow (fastembed model download, ChromaDB init).
+    # Allow 3 minutes total before giving up.
+    deadline = time.time() + 180
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
+            if requests.get(f"{BACKEND_URL}/health", timeout=5).status_code == 200:
                 _backend_ready_event.set()
                 return
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(3)
     _backend_failed_event.set()
 
 
@@ -200,7 +202,7 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
 .sb-loading-title{font-size:1.8rem;font-weight:800;color:#fff;letter-spacing:-.03em}
 .sb-loading-title span{background:linear-gradient(90deg,#a78bfa,#6366f1);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sb-loading-sub{font-size:.85rem;color:rgba(255,255,255,.45)}
+.sb-loading-sub{font-size:.85rem;color:rgba(255,255,255,.55);text-align:center;max-width:320px}
 .sb-dots{display:flex;gap:6px;margin-top:.5rem}
 .sb-dot{width:8px;height:8px;border-radius:50%;background:#6366f1;
   animation:sbDotBounce 1.2s ease-in-out infinite}
@@ -223,7 +225,7 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     </svg>
   </div>
   <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting up — first load takes ~20 s</div>
+  <div class="sb-loading-sub">Starting up — first load takes 1–3 min on Streamlit Cloud.<br>Please wait, do not refresh.</div>
   <div class="sb-dots">
     <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
   </div>
