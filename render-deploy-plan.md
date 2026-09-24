@@ -33,7 +33,7 @@ to launching the backend as a subprocess on `localhost:8000` — local dev uncha
 
 ### Sub-Task 1 — Make BACKEND_URL configurable in `api_client.py`
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 **Intent:**
 `BACKEND_URL` is currently hardcoded to `"http://localhost:8000"` in two places.
