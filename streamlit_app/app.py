@@ -350,16 +350,22 @@ if not _is_logged_in() and not _share_id:
         position="hidden",
     )
 else:
-    pages_common = [
-        st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
-        st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
-        st.Page(_p("classes.py"),   title="Classes",        icon="🏛️"),
-        st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
-    ]
-    pages_admin = (
-        [st.Page(_p("admin.py"), title="Admin Panel", icon="⚙️")]
-        if _is_admin() else []
-    )
-    pg = st.navigation(pages_common + pages_admin)
+    if _is_admin():
+        # Admins get Dashboard, AI Study Tools, Profile + Admin Panel.
+        # "Classes" is a student-only page — admins manage classes inside Admin Panel.
+        pages = [
+            st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
+            st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
+            st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
+            st.Page(_p("admin.py"),     title="Admin Panel",    icon="⚙️"),
+        ]
+    else:
+        pages = [
+            st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
+            st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
+            st.Page(_p("classes.py"),   title="Classes",        icon="🏛️"),
+            st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
+        ]
+    pg = st.navigation(pages)
 
 pg.run()
