@@ -28,6 +28,11 @@ inject_global_css()
 require_login()
 page_enter()
 
+# Admins have their own dedicated panel — redirect them away from this student page
+if is_admin():
+    st.info("👆 You are logged in as **Admin**. Use the **⚙️ Admin Panel** from the navigation menu.")
+    st.stop()
+
 st.markdown("""
 <div style="margin-bottom:1.5rem;animation:fadeUp .4s both">
   <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .25rem;letter-spacing:-.03em">

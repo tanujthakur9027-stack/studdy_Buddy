@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import time
+import threading
 import logging
 from pathlib import Path
 
@@ -23,7 +24,10 @@ logger = logging.getLogger(__name__)
 _HERE      = Path(__file__).resolve().parent   # .../streamlit_app
 _REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
-_DATA      = _REPO_ROOT / "data"
+# All persistent data lives INSIDE backend/ so that every launch
+# (via `streamlit run`, Streamlit Cloud, or a direct uvicorn call)
+# uses the exact same DB file and upload tree — no data loss on reboot.
+_DATA      = _BACKEND                          # persistent storage root
 _PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
 
 BACKEND_URL = "http://localhost:8000"
@@ -40,25 +44,28 @@ def _secret(key: str, default: str = "") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Backend subprocess — ONE launch per worker via @st.cache_resource
 # ─────────────────────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner=False)
-def _launch_backend() -> bool:
-    for sub in [
-        "chroma_db", "uploads", "faiss_indexes",
-        "uploads/assignments", "uploads/submissions",
-        "uploads/notes", "uploads/photos",
-    ]:
-        (_DATA / sub).mkdir(parents=True, exist_ok=True)
+# ── Backend readiness state (shared across threads) ───────────────────────────
+_backend_ready_event = threading.Event()
+_backend_failed_event = threading.Event()
 
-    env = {
+
+def _build_env() -> dict:
+    # All paths are absolute and rooted in _BACKEND (= repo_root/backend/).
+    # This is the same directory the standalone uvicorn launch uses, so the
+    # DB file, uploads, and vector stores are always in one place and survive
+    # every reboot / Streamlit rerun without data loss.
+    _db_path = _BACKEND / "studybuddy.db"
+    return {
         **os.environ,
         "GROQ_API_KEY":                _secret("GROQ_API_KEY"),
         "GROQ_MODEL":                  _secret("GROQ_MODEL", "qwen/qwen3.8-27b"),
         "GROQ_FALLBACK_MODELS":        _secret("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"),
         "OPENAI_API_KEY":              _secret("OPENAI_API_KEY", ""),
-        "DATABASE_URL":                f"sqlite+aiosqlite:///{_DATA}/studybuddy.db",
-        "CHROMA_PERSIST_DIR":          str(_DATA / "chroma_db"),
-        "UPLOAD_DIR":                  str(_DATA / "uploads"),
-        "FAISS_INDEX_DIR":             str(_DATA / "faiss_indexes"),
+        # Absolute path — same file regardless of who launches the process
+        "DATABASE_URL":                f"sqlite+aiosqlite:///{_db_path}",
+        "CHROMA_PERSIST_DIR":          str(_BACKEND / "chroma_db"),
+        "UPLOAD_DIR":                  str(_BACKEND / "uploads"),
+        "FAISS_INDEX_DIR":             str(_BACKEND / "faiss_indexes"),
         "MAX_FILE_SIZE_MB":            "200",
         "CORS_ORIGINS":                "*",
         "RATE_LIMIT_PER_MINUTE":       "60",
@@ -80,6 +87,38 @@ def _launch_backend() -> bool:
         "PYTHONPATH":                  str(_BACKEND),
     }
 
+
+def _wait_for_backend(env: dict) -> None:
+    """Run in a daemon thread — polls backend /health without blocking main thread."""
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        try:
+            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
+                _backend_ready_event.set()
+                return
+        except Exception:
+            pass
+        time.sleep(2)
+    _backend_failed_event.set()
+
+
+@st.cache_resource(show_spinner=False)
+def _launch_backend() -> None:
+    """
+    Launch the FastAPI subprocess ONCE per Streamlit worker process.
+    The health-poll runs on a daemon thread so the Streamlit main thread
+    (which must keep responding to /healthz) is never blocked.
+    """
+    # Pre-create the backend storage tree so uvicorn never fails on first run
+    for sub in [
+        "chroma_db", "uploads", "faiss_indexes",
+        "uploads/assignments", "uploads/submissions",
+        "uploads/notes", "uploads/photos",
+    ]:
+        (_BACKEND / sub).mkdir(parents=True, exist_ok=True)
+
+    env = _build_env()
+
     subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", "8000",
@@ -87,22 +126,15 @@ def _launch_backend() -> bool:
         cwd=str(_BACKEND), env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+    # seed_admin.py is idempotent (INSERT OR IGNORE) — safe to run every startup
     subprocess.Popen(
         [sys.executable, "seed_admin.py"],
-        cwd=str(_BACKEND),
-        env={**env, "DATABASE_URL": f"sqlite+aiosqlite:///{_DATA}/studybuddy.db"},
+        cwd=str(_BACKEND), env=env,   # reuse same env — same DB path
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
-    deadline = time.time() + 90
-    while time.time() < deadline:
-        try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
-                return True
-        except Exception:
-            pass
-        time.sleep(1)
-    return False
+    t = threading.Thread(target=_wait_for_backend, args=(env,), daemon=True)
+    t.start()
 
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -113,11 +145,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Start backend ──────────────────────────────────────────────────────────────
-with st.spinner("⏳ Starting StudyBuddy AI… (first load ~20 s)"):
-    backend_ready = _launch_backend()
+# ── Start backend (non-blocking launch; poll in small Streamlit-friendly steps) ─
+_launch_backend()  # spawns subprocess + daemon poll thread (cached — runs once)
 
-if not backend_ready:
+# Wait for readiness without holding the main thread for more than 2 s at a time.
+# Streamlit re-runs the script every ~2 s via st.rerun(), keeping /healthz alive.
+if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
+    with st.spinner("⏳ Starting StudyBuddy AI… (first load ~30 s)"):
+        # Yield back to Streamlit after 2 s so /healthz remains responsive.
+        time.sleep(2)
+    st.rerun()
+
+if _backend_failed_event.is_set():
     st.error("❌ Backend failed to start. Check that all dependencies are installed.")
     st.stop()
 
@@ -272,9 +311,17 @@ if not st.session_state.get("_splash_done"):
   </div>
 
 </div>""", unsafe_allow_html=True)
-    time.sleep(2.2)
-    st.session_state["_splash_done"] = True
-    st.rerun()
+    # Record when the splash started (first render only).
+    if "_splash_start" not in st.session_state:
+        st.session_state["_splash_start"] = time.monotonic()
+    # Re-run after 2.2 s without blocking the main thread so /healthz stays alive.
+    elapsed = time.monotonic() - st.session_state["_splash_start"]
+    if elapsed < 2.2:
+        time.sleep(min(0.5, 2.2 - elapsed))  # yield in short 0.5 s increments
+        st.rerun()
+    else:
+        st.session_state["_splash_done"] = True
+        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

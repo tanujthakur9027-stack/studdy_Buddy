@@ -21,7 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db_models import QuizResult, QuizSession
+from dependencies.auth import get_current_user_flex
+from models.db_models import QuizResult, QuizSession, User
 from models.schemas import (
     QuizAnswerDetail,
     QuizGenerateRequest,
@@ -33,6 +34,7 @@ from models.schemas import (
 from services.document_service import retrieve_context
 from services.llm_service import chat
 from utils.text_utils import strip_json_fences
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -76,7 +78,11 @@ def _grade(pct: float) -> str:
 
 # ── Generate endpoint ─────────────────────────────────────────────────────────
 
-async def _generate_quiz_core(req: QuizGenerateRequest, db: AsyncSession) -> QuizGenerateResponse:
+async def _generate_quiz_core(
+    req: QuizGenerateRequest,
+    db: AsyncSession,
+    current_user: Optional[User] = None,
+) -> QuizGenerateResponse:
     """Shared implementation used by both route aliases."""
     subject = req.topic or "the uploaded study material"
     n = req.num_questions
@@ -165,6 +171,7 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
     # ── Persist to DB (replaces in-process dict) ──────────────────────────────
     session_row = QuizSession(
         quiz_id=quiz_id,
+        user_id=current_user.id if current_user else None,
         questions_json=json.dumps([q.model_dump() for q in questions]),
         topic=resolved_topic,
         difficulty=req.difficulty,
@@ -193,9 +200,13 @@ Respond ONLY with valid JSON (no markdown fences, no extra keys):
     summary="Generate a quiz (legacy path)",
     tags=["Quiz"],
 )
-async def generate_quiz(req: QuizGenerateRequest, db: AsyncSession = Depends(get_db)) -> QuizGenerateResponse:
+async def generate_quiz(
+    req: QuizGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+) -> QuizGenerateResponse:
     """Generate 3-10 MCQs from a topic or document. Legacy path kept for compatibility."""
-    return await _generate_quiz_core(req, db)
+    return await _generate_quiz_core(req, db, current_user)
 
 
 @router.post(
@@ -211,9 +222,13 @@ async def generate_quiz(req: QuizGenerateRequest, db: AsyncSession = Depends(get
     ),
     tags=["Quiz"],
 )
-async def generate_quiz_api(req: QuizGenerateRequest, db: AsyncSession = Depends(get_db)) -> QuizGenerateResponse:
+async def generate_quiz_api(
+    req: QuizGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+) -> QuizGenerateResponse:
     """Canonical endpoint: POST /api/generate-quiz"""
-    return await _generate_quiz_core(req, db)
+    return await _generate_quiz_core(req, db, current_user)
 
 
 # ── Submit / score endpoint ───────────────────────────────────────────────────
@@ -224,7 +239,11 @@ async def generate_quiz_api(req: QuizGenerateRequest, db: AsyncSession = Depends
     summary="Submit quiz answers and get detailed results",
     tags=["Quiz"],
 )
-async def submit_quiz(req: QuizSubmitRequest, db: AsyncSession = Depends(get_db)) -> QuizSubmitResponse:
+async def submit_quiz(
+    req: QuizSubmitRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+) -> QuizSubmitResponse:
     """
     Score a completed quiz. Returns per-question breakdown, weak/strong topics,
     letter grade, and personalised LLM recommendations.
@@ -310,6 +329,7 @@ async def submit_quiz(req: QuizSubmitRequest, db: AsyncSession = Depends(get_db)
     # ── Persist quiz result to DB ─────────────────────────────────────────────
     result_row = QuizResult(
         quiz_id=req.quiz_id,
+        user_id=current_user.id if current_user else None,
         topic=session_row.topic,
         difficulty=session_row.difficulty,
         score=score,
@@ -341,13 +361,16 @@ async def submit_quiz(req: QuizSubmitRequest, db: AsyncSession = Depends(get_db)
     summary="Get past quiz results",
     tags=["Quiz"],
 )
-async def get_quiz_history(limit: int = 20, db: AsyncSession = Depends(get_db)):
-    """Return the most recent quiz results for the progress dashboard."""
-    result = await db.execute(
-        select(QuizResult)
-        .order_by(QuizResult.completed_at.desc())
-        .limit(min(limit, 50))
-    )
+async def get_quiz_history(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Return the most recent quiz results for the progress dashboard (filtered by user)."""
+    query = select(QuizResult).order_by(QuizResult.completed_at.desc())
+    if current_user:
+        query = query.where(QuizResult.user_id == current_user.id)
+    result = await db.execute(query.limit(min(limit, 50)))
     rows = result.scalars().all()
     return [
         {

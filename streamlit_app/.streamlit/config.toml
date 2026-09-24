@@ -2,6 +2,10 @@
 maxUploadSize = 200
 enableCORS = false
 enableXsrfProtection = false
+# Run headless so Streamlit doesn't try to open a browser tab on startup.
+# This also suppresses the /healthz reset that occurs when the process is
+# blocked during the backend subprocess launch (up to 90 s on first run).
+headless = true
 
 [theme]
 base = "dark"
