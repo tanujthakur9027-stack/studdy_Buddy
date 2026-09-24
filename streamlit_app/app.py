@@ -30,7 +30,17 @@ _BACKEND   = _REPO_ROOT / "backend"
 _DATA      = _BACKEND                          # persistent storage root
 _PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
 
-BACKEND_URL = "http://localhost:8000"
+# Import BACKEND_URL from api_client (single source of truth).
+# Ensure streamlit_app/ is on sys.path so `core` is importable.
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from core.api_client import BACKEND_URL
+
+
+def _is_remote_backend() -> bool:
+    """Returns True when BACKEND_URL points to a remote server (not localhost/127.0.0.1)."""
+    return not (BACKEND_URL.startswith("http://localhost") or
+                BACKEND_URL.startswith("http://127.0.0.1"))
 
 
 # ── Secret helper ──────────────────────────────────────────────────────────────
@@ -124,6 +134,22 @@ def _launch_backend() -> None:
     threading.Thread(target=_wait_for_backend, args=(env,), daemon=True).start()
 
 
+def _start_keepalive() -> None:
+    """Ping the remote backend every 10 min to prevent Render free tier from sleeping."""
+    if not _is_remote_backend():
+        return
+
+    def _ping():
+        while True:
+            time.sleep(600)  # 10 minutes
+            try:
+                requests.get(f"{BACKEND_URL}/health", timeout=5)
+            except Exception:
+                pass
+
+    threading.Thread(target=_ping, daemon=True).start()
+
+
 # ── Page config — MUST be the first st.* call ──────────────────────────────────
 st.set_page_config(
     page_title="StudyBuddy AI",
@@ -176,9 +202,15 @@ else:
         st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
     ])
 
-# ── Backend startup (non-blocking) ─────────────────────────────────────────────
-# Kick off the subprocess + daemon thread (idempotent — cached).
-_launch_backend()
+# ── Backend startup ────────────────────────────────────────────────────────────
+if _is_remote_backend():
+    # Backend is running on Render — no subprocess needed.
+    # Mark as ready immediately and start keep-alive ping thread.
+    _backend_ready_event.set()
+    _start_keepalive()
+else:
+    # Local dev — launch FastAPI as a subprocess (cached, runs once per worker).
+    _launch_backend()
 
 # While the backend is warming up, render a full-screen splash overlay and
 # schedule a rerun via fragment auto-rerun — this keeps /healthz alive AND
