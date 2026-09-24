@@ -71,7 +71,7 @@ This sub-task is safe to roll back independently — it only changes constant re
 
 ### Sub-Task 2 — Make `app.py` skip subprocess when remote `BACKEND_URL` is configured
 
-**Status:** `[x] done`
+**Status:** `[ ] pending`
 
 **Intent:**
 When `BACKEND_URL` points to Render (non-localhost), skip the local subprocess entirely.
