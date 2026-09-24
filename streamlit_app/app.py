@@ -98,13 +98,20 @@ def _wait_for_backend(env: dict) -> None:
 
 def _on_streamlit_cloud() -> bool:
     """Detect Streamlit Cloud environment — subprocess cannot work there."""
-    # Streamlit Cloud sets HOSTNAME like 'streamlit-cloud-...' and always has
-    # the STREAMLIT_SHARING_MODE env var set. We also check the app URL pattern.
+    # Streamlit Cloud always sets STREAMLIT_SHARING_MODE.
+    # Newer Streamlit Cloud also sets IS_RUNNING_IN_STREAMLIT_CLOUD.
+    # Container hostname contains "streamlit" or starts with "runner-".
+    # Home dir on Cloud is /home/appuser (never on a Windows dev machine).
     import socket
-    hostname = socket.gethostname().lower()
     if os.environ.get("STREAMLIT_SHARING_MODE"):
         return True
+    if os.environ.get("IS_RUNNING_IN_STREAMLIT_CLOUD"):
+        return True
+    hostname = socket.gethostname().lower()
     if "streamlit" in hostname or hostname.startswith("runner-"):
+        return True
+    home = os.environ.get("HOME", "")
+    if home == "/home/appuser":
         return True
     return False
 
