@@ -10,7 +10,6 @@ Features:
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
 import requests
@@ -18,17 +17,7 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-def _get_backend_url() -> str:
-    # Resolution order: Streamlit secret → env var → localhost fallback
-    try:
-        url = st.secrets.get("BACKEND_URL", "")  # type: ignore[attr-defined]
-        if url:
-            return url.rstrip("/")
-    except Exception:
-        pass
-    return os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
-
-BACKEND_URL = _get_backend_url()
+BACKEND_URL = "http://localhost:8000"
 TIMEOUT_SHORT = 30
 TIMEOUT_LONG  = 180
 
