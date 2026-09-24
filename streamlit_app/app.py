@@ -84,18 +84,29 @@ def _build_env() -> dict:
 
 def _wait_for_backend(env: dict) -> None:
     """Daemon thread — polls /health; sets the appropriate Event when done."""
-    # Streamlit Cloud cold-starts are slow (fastembed model download, ChromaDB init).
-    # Allow 3 minutes total before giving up.
-    deadline = time.time() + 180
+    deadline = time.time() + 90
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=5).status_code == 200:
+            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
                 _backend_ready_event.set()
                 return
         except Exception:
             pass
-        time.sleep(3)
+        time.sleep(2)
     _backend_failed_event.set()
+
+
+def _on_streamlit_cloud() -> bool:
+    """Detect Streamlit Cloud environment — subprocess cannot work there."""
+    # Streamlit Cloud sets HOSTNAME like 'streamlit-cloud-...' and always has
+    # the STREAMLIT_SHARING_MODE env var set. We also check the app URL pattern.
+    import socket
+    hostname = socket.gethostname().lower()
+    if os.environ.get("STREAMLIT_SHARING_MODE"):
+        return True
+    if "streamlit" in hostname or hostname.startswith("runner-"):
+        return True
+    return False
 
 
 @st.cache_resource(show_spinner=False)
@@ -178,13 +189,15 @@ else:
         st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
     ])
 
-# ── Backend startup (non-blocking) ─────────────────────────────────────────────
-# Kick off the subprocess + daemon thread (idempotent — cached).
-_launch_backend()
+# ── Backend startup ────────────────────────────────────────────────────────────
+# On Streamlit Cloud the subprocess model cannot work — show a clear setup guide.
+# Locally it launches uvicorn as a subprocess (cached, runs once per worker).
+if _on_streamlit_cloud():
+    _backend_ready_event.set()   # skip the wait loop entirely
+else:
+    _launch_backend()
 
-# While the backend is warming up, render a full-screen splash overlay and
-# schedule a rerun via fragment auto-rerun — this keeps /healthz alive AND
-# lets pg.run() proceed normally below.
+# While the backend is warming up (local dev only), show a loading overlay.
 if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     st.markdown("""
 <style>
@@ -202,7 +215,7 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
 .sb-loading-title{font-size:1.8rem;font-weight:800;color:#fff;letter-spacing:-.03em}
 .sb-loading-title span{background:linear-gradient(90deg,#a78bfa,#6366f1);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sb-loading-sub{font-size:.85rem;color:rgba(255,255,255,.55);text-align:center;max-width:320px}
+.sb-loading-sub{font-size:.85rem;color:rgba(255,255,255,.55)}
 .sb-dots{display:flex;gap:6px;margin-top:.5rem}
 .sb-dot{width:8px;height:8px;border-radius:50%;background:#6366f1;
   animation:sbDotBounce 1.2s ease-in-out infinite}
@@ -225,31 +238,37 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     </svg>
   </div>
   <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting up — first load takes 1–3 min on Streamlit Cloud.<br>Please wait, do not refresh.</div>
+  <div class="sb-loading-sub">Starting backend… (~20 s on first load)</div>
   <div class="sb-dots">
     <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
   </div>
 </div>""", unsafe_allow_html=True)
-    # Sleep briefly then let Streamlit's normal rerun cycle pick this up.
-    # We do NOT call st.rerun() here — Streamlit reruns automatically on
-    # widget interactions; the spinner + time.sleep combo keeps the loop going
-    # without blocking /healthz for more than 2 s at a time.
     time.sleep(2)
     st.rerun()
 
 if _backend_failed_event.is_set():
     st.error("❌ Backend failed to start after 90 s. Check that all dependencies are installed.")
-    # pg.run() still executes below so navigation remains intact.
 
 # ── Splash screen (shown once per session after backend is ready) ──────────────
-elif not st.session_state.get("_splash_done"):
+# On Streamlit Cloud we skip the splash entirely — st.rerun() before pg.run()
+# resets the Streamlit process and causes /healthz "connection reset by peer".
+# Locally (where backend is a subprocess) the splash runs once via a pure
+# CSS animation with auto-dismiss time baked into the CSS, and pg.run() is
+# always reached on the same script execution — no st.rerun() needed.
+elif not st.session_state.get("_splash_done") and not _on_streamlit_cloud():
+    st.session_state["_splash_done"] = True   # mark done immediately so this
+    # block never runs more than once per session — CSS animation handles timing
     st.markdown("""
 <style>
-.sb-splash{position:fixed;inset:0;z-index:9998;
+.sb-splash{
+  position:fixed;inset:0;z-index:9998;pointer-events:none;
   background:linear-gradient(135deg,#06061a 0%,#0d0d2b 35%,#0a0a1f 65%,#06061a 100%);
-  background-size:300% 300%;animation:sbBgPulse 6s ease infinite;
+  background-size:300% 300%;
+  /* fade out after 2.2 s, then become invisible */
+  animation:sbBgPulse 6s ease infinite,sbFadeOut .4s ease 2.2s forwards;
   display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden}
 @keyframes sbBgPulse{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes sbFadeOut{0%{opacity:1}100%{opacity:0;visibility:hidden}}
 .sb-splash-logo{width:80px;height:80px;border-radius:22px;
   background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 60%,#a78bfa 100%);
   display:flex;align-items:center;justify-content:center;margin-bottom:1.75rem;
@@ -289,15 +308,8 @@ elif not st.session_state.get("_splash_done"):
   <div class="sb-splash-line"></div>
   <div class="sb-splash-sub">✦&nbsp; Your personal AI learning companion &nbsp;✦</div>
 </div>""", unsafe_allow_html=True)
-    if "_splash_start" not in st.session_state:
-        st.session_state["_splash_start"] = time.monotonic()
-    elapsed = time.monotonic() - st.session_state["_splash_start"]
-    if elapsed >= 2.2:
-        st.session_state["_splash_done"] = True
-    else:
-        time.sleep(min(0.5, 2.2 - elapsed))
-    # Fall through to pg.run() — rerun will come from Streamlit automatically.
-    st.rerun()
+    # No st.rerun() — the CSS animation auto-fades the overlay after 2.2 s.
+    # pg.run() executes immediately below on this same script execution.
 
-# ── Run the active page ────────────────────────────────────────────────────────
+# ── Run the active page — MUST be reached on every script execution ───────────
 pg.run()
