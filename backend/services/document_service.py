@@ -2,7 +2,7 @@
 Document ingestion service
 ==========================
 Responsibilities
-- Parse PDF (pdfplumber → PyPDF2 fallback), TXT/MD, DOCX/DOC, PPT/PPTX, XLSX/XLS, images (OCR).
+- Parse PDF (pdfplumber → pypdf fallback), TXT/MD, DOCX/DOC, PPT/PPTX, XLSX/XLS, images (OCR).
 - Generate a short auto-description from the first ~500 chars of extracted text.
 - Chunk text with LangChain's RecursiveCharacterTextSplitter.
 - Maintain TWO vector stores per document:
@@ -23,7 +23,7 @@ from typing import Optional
 
 import aiofiles
 import pdfplumber
-import PyPDF2
+from pypdf import PdfReader as _PdfReader
 from langchain_core.documents import Document
 
 # ── Heavy LangChain/ML imports are intentionally LAZY ─────────────────────────
@@ -92,7 +92,7 @@ def _extract_pdf_pdfplumber(file_bytes: bytes) -> list[tuple[int, str]]:
 
 def _extract_pdf_pypdf2(file_bytes: bytes) -> list[tuple[int, str]]:
     pages: list[tuple[int, str]] = []
-    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+    reader = _PdfReader(io.BytesIO(file_bytes))
     for i, page in enumerate(reader.pages, start=1):
         raw = page.extract_text() or ""
         pages.append((i, clean_text(raw)))
@@ -106,14 +106,14 @@ def extract_pdf_pages(file_bytes: bytes, filename: str) -> tuple[list[tuple[int,
         if total_chars > 50:
             logger.info("[%s] pdfplumber extracted %d pages, %d chars", filename, len(pages), total_chars)
             return pages, "pdfplumber"
-        logger.warning("[%s] pdfplumber gave sparse output (%d chars) — trying PyPDF2", filename, total_chars)
+        logger.warning("[%s] pdfplumber gave sparse output (%d chars) — trying pypdf", filename, total_chars)
     except Exception as exc:
-        logger.warning("[%s] pdfplumber failed (%s) — falling back to PyPDF2", filename, exc)
+        logger.warning("[%s] pdfplumber failed (%s) — falling back to pypdf", filename, exc)
 
     pages = _extract_pdf_pypdf2(file_bytes)
     total_chars = sum(len(t) for _, t in pages)
-    logger.info("[%s] PyPDF2 extracted %d pages, %d chars", filename, len(pages), total_chars)
-    return pages, "PyPDF2"
+    logger.info("[%s] pypdf extracted %d pages, %d chars", filename, len(pages), total_chars)
+    return pages, "pypdf"
 
 
 # ── Plain-text / Markdown parsing ─────────────────────────────────────────────
