@@ -8,14 +8,16 @@ _ENV_FILE = Path(__file__).parent / ".env"
 
 
 class Settings(BaseSettings):
-    # ── LLM — Groq (primary and only provider) ────────────────────────────────
+    # ── LLM — Groq (primary) ──────────────────────────────────────────────────
     groq_api_key: str = ""
     groq_model: str = "qwen/qwen3-27b"
 
     # ── Groq model rotation (tried in order when the primary is rate-limited) ─
-    # Models verified available on this Groq account via /models endpoint.
-    # qwen/qwen3-27b → openai/gpt-oss-20b → openai/gpt-oss-120b
     groq_fallback_models: str = "openai/gpt-oss-20b,openai/gpt-oss-120b"
+
+    # ── LLM — Gemini (fallback when Groq is unavailable) ─────────────────────
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
 
     # ── Database ──────────────────────────────────────────────────────────────
     # Use SQLite for local dev; swap to PostgreSQL URL in production:
@@ -32,32 +34,23 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
-    # Max LLM-backed requests per minute per IP (free tier default)
     rate_limit_per_minute: int = 20
 
     # ── Observability ─────────────────────────────────────────────────────────
-    # Set SENTRY_DSN to enable Sentry error tracking in production.
-    # Leave empty (default) to disable Sentry — no errors, no traces sent.
     sentry_dsn: str = ""
-    sentry_traces_sample_rate: float = 0.1   # 10% of requests traced
+    sentry_traces_sample_rate: float = 0.1
 
     # ── Chunk tuning ──────────────────────────────────────────────────────────
     chunk_size: int = 800
     chunk_overlap: int = 120
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    # secret_key MUST be set via env var in production; default only used for
-    # local dev. Application startup will refuse to start if this equals the
-    # sentinel string below AND the env says we're in production.
-    secret_key: str = ""   # Fail-secure: empty = no default; env var required
+    secret_key: str = ""
     access_token_expire_minutes: int = 60
     admin_seed_email: str = "admin@studybuddy.com"
     admin_seed_password: str = "Admin@StudyBuddy2024"
 
     # ── Auth feature flag ─────────────────────────────────────────────────────
-    # AUTH_REQUIRED=false → all AI endpoints accept unauthenticated requests
-    # (anonymous user). Keeps the legacy Next.js frontend working without tokens.
-    # AUTH_REQUIRED=true  → every AI endpoint requires a valid JWT.
     auth_required: bool = True
 
     # ── Email / SMTP ──────────────────────────────────────────────────────────
@@ -89,8 +82,17 @@ class Settings(BaseSettings):
 
     @property
     def llm_configured(self) -> bool:
-        """True when a Groq API key is present."""
-        return bool(self.groq_api_key.strip())
+        """True when at least one LLM key is present."""
+        return bool(self.groq_api_key.strip() or self.gemini_api_key.strip())
+
+    @property
+    def llm_provider(self) -> str:
+        """Returns 'groq', 'gemini', or 'none'."""
+        if self.groq_api_key.strip():
+            return "groq"
+        if self.gemini_api_key.strip():
+            return "gemini"
+        return "none"
 
 
 @lru_cache(maxsize=1)
