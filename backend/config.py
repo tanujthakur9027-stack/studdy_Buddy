@@ -8,17 +8,13 @@ _ENV_FILE = Path(__file__).parent / ".env"
 
 
 class Settings(BaseSettings):
-    # ── Primary LLM — OpenAI ─────────────────────────────────────────────────
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
-
-    # ── Fallback LLM — Groq (used when openai_api_key is absent) ─────────────
+    # ── LLM — Groq (primary and only provider) ────────────────────────────────
     groq_api_key: str = ""
-    groq_model: str = "qwen/qwen3.8-27b"
+    groq_model: str = "qwen/qwen3-27b"
 
     # ── Groq model rotation (tried in order when the primary is rate-limited) ─
     # Models verified available on this Groq account via /models endpoint.
-    # qwen/qwen3.8-27b → openai/gpt-oss-20b → openai/gpt-oss-120b
+    # qwen/qwen3-27b → openai/gpt-oss-20b → openai/gpt-oss-120b
     groq_fallback_models: str = "openai/gpt-oss-20b,openai/gpt-oss-120b"
 
     # ── Database ──────────────────────────────────────────────────────────────
@@ -92,13 +88,9 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.groq_fallback_models.split(",") if m.strip()]
 
     @property
-    def llm_provider(self) -> str:
-        """Returns 'openai' or 'groq' based on which key is configured."""
-        if self.openai_api_key.strip():
-            return "openai"
-        if self.groq_api_key.strip():
-            return "groq"
-        return "none"
+    def llm_configured(self) -> bool:
+        """True when a Groq API key is present."""
+        return bool(self.groq_api_key.strip())
 
 
 @lru_cache(maxsize=1)
