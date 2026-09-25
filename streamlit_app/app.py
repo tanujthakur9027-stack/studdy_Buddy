@@ -3,7 +3,8 @@ StudyBuddy AI — Streamlit multipage entry point
 ================================================
 Deploy on Streamlit Cloud:
   Entry point : streamlit_app/app.py
-  Secrets     : GROQ_API_KEY, SECRET_KEY, ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD
+  Secrets     : GROQ_API_KEY, GEMINI_API_KEY (optional), SECRET_KEY,
+                ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD
 """
 from __future__ import annotations
 
@@ -24,10 +25,6 @@ logger = logging.getLogger(__name__)
 _HERE      = Path(__file__).resolve().parent   # .../streamlit_app
 _REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
-# All persistent data lives INSIDE backend/ so that every launch
-# (via `streamlit run`, Streamlit Cloud, or a direct uvicorn call)
-# uses the exact same DB file and upload tree — no data loss on reboot.
-_DATA      = _BACKEND                          # persistent storage root
 _PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
 
 BACKEND_URL = "http://localhost:8000"
@@ -52,42 +49,50 @@ def _build_env() -> dict:
     _db_path = _BACKEND / "studybuddy.db"
     return {
         **os.environ,
+        # ── LLM ──────────────────────────────────────────────────────────────
         "GROQ_API_KEY":                _secret("GROQ_API_KEY"),
-        "GROQ_MODEL":                  _secret("GROQ_MODEL", "qwen/qwen3.8-27b"),
+        "GROQ_MODEL":                  _secret("GROQ_MODEL", "qwen/qwen3-27b"),
         "GROQ_FALLBACK_MODELS":        _secret("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"),
-        "OPENAI_API_KEY":              _secret("OPENAI_API_KEY", ""),
+        "GEMINI_API_KEY":              _secret("GEMINI_API_KEY", ""),
+        "GEMINI_MODEL":                _secret("GEMINI_MODEL", "gemini-2.5-flash"),
+        # ── Database & storage ────────────────────────────────────────────────
         "DATABASE_URL":                f"sqlite+aiosqlite:///{_db_path}",
         "CHROMA_PERSIST_DIR":          str(_BACKEND / "chroma_db"),
         "UPLOAD_DIR":                  str(_BACKEND / "uploads"),
         "FAISS_INDEX_DIR":             str(_BACKEND / "faiss_indexes"),
         "MAX_FILE_SIZE_MB":            "200",
+        # ── Network ───────────────────────────────────────────────────────────
         "CORS_ORIGINS":                "*",
         "RATE_LIMIT_PER_MINUTE":       "60",
+        # ── Auth ──────────────────────────────────────────────────────────────
         "SECRET_KEY":                  _secret("SECRET_KEY", "dev-secret-change-in-prod"),
         "ACCESS_TOKEN_EXPIRE_MINUTES": "1440",
         "ADMIN_SEED_EMAIL":            _secret("ADMIN_SEED_EMAIL", "admin@studybuddy.com"),
         "ADMIN_SEED_PASSWORD":         _secret("ADMIN_SEED_PASSWORD", "Admin@StudyBuddy2024"),
+        # ── Email ─────────────────────────────────────────────────────────────
         "SMTP_HOST":                   _secret("SMTP_HOST", ""),
         "SMTP_PORT":                   _secret("SMTP_PORT", "587"),
         "SMTP_USER":                   _secret("SMTP_USER", ""),
         "SMTP_PASS":                   _secret("SMTP_PASS", ""),
         "SMTP_FROM":                   _secret("SMTP_FROM", "noreply@studybuddy.com"),
         "APP_BASE_URL":                _secret("APP_BASE_URL", "https://studybuddy.streamlit.app"),
+        # ── File limits ───────────────────────────────────────────────────────
         "ASSIGNMENT_FILE_MAX_MB":      "50",
         "NOTE_FILE_MAX_MB":            "50",
         "PROFILE_PHOTO_MAX_MB":        "5",
         "PERIOD_DURATION_MINUTES":     "45",
         "LUNCH_DURATION_MINUTES":      "45",
+        # ── Python path — backend/ must be on sys.path for uvicorn ───────────
         "PYTHONPATH":                  str(_BACKEND),
     }
 
 
 def _wait_for_backend(env: dict) -> None:
-    """Daemon thread — polls /health; sets the appropriate Event when done."""
-    deadline = time.time() + 90
+    """Daemon thread — polls /health every 2 s; sets the appropriate Event when done."""
+    deadline = time.time() + 120   # 2-minute budget for cold starts on Cloud
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
+            if requests.get(f"{BACKEND_URL}/health", timeout=4).status_code == 200:
                 _backend_ready_event.set()
                 return
         except Exception:
@@ -96,29 +101,14 @@ def _wait_for_backend(env: dict) -> None:
     _backend_failed_event.set()
 
 
-def _on_streamlit_cloud() -> bool:
-    """Detect Streamlit Cloud environment — subprocess cannot work there."""
-    # Streamlit Cloud always sets STREAMLIT_SHARING_MODE.
-    # Newer Streamlit Cloud also sets IS_RUNNING_IN_STREAMLIT_CLOUD.
-    # Container hostname contains "streamlit" or starts with "runner-".
-    # Home dir on Cloud is /home/appuser (never on a Windows dev machine).
-    import socket
-    if os.environ.get("STREAMLIT_SHARING_MODE"):
-        return True
-    if os.environ.get("IS_RUNNING_IN_STREAMLIT_CLOUD"):
-        return True
-    hostname = socket.gethostname().lower()
-    if "streamlit" in hostname or hostname.startswith("runner-"):
-        return True
-    home = os.environ.get("HOME", "")
-    if home == "/home/appuser":
-        return True
-    return False
-
-
 @st.cache_resource(show_spinner=False)
 def _launch_backend() -> None:
-    """Launch FastAPI subprocess once per worker. Health-poll runs on a daemon thread."""
+    """
+    Launch the FastAPI/uvicorn subprocess exactly once per Streamlit worker.
+    Works identically on Streamlit Cloud and local dev — the subprocess model
+    is supported on both; the old guard that skipped it on Cloud was wrong.
+    """
+    # Ensure all data directories exist before uvicorn starts
     for sub in [
         "chroma_db", "uploads", "faiss_indexes",
         "uploads/assignments", "uploads/submissions",
@@ -128,6 +118,7 @@ def _launch_backend() -> None:
 
     env = _build_env()
 
+    # Start uvicorn in the background
     subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", "8000",
@@ -135,12 +126,15 @@ def _launch_backend() -> None:
         cwd=str(_BACKEND), env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+
+    # Seed the admin account (no-op if it already exists)
     subprocess.Popen(
         [sys.executable, "seed_admin.py"],
         cwd=str(_BACKEND), env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
+    # Poll /health on a daemon thread — sets event when ready
     threading.Thread(target=_wait_for_backend, args=(env,), daemon=True).start()
 
 
@@ -170,10 +164,9 @@ _share_id = st.query_params.get("share")
 # Navigation — ALWAYS built and ALWAYS run on every script execution.
 #
 # RULE: st.navigation() + pg.run() must be reached on EVERY Streamlit rerun.
-# Calling st.rerun() / st.stop() before pg.run() raises StreamlitAPIException
-# ("Oh no" crash).  All pre-navigation work (backend wait, splash) must NOT
-# call st.rerun() or st.stop() — instead they return early after rendering,
-# and the next Streamlit-triggered rerun will re-evaluate the condition.
+# Calling st.rerun() / st.stop() before pg.run() raises StreamlitAPIException.
+# All pre-navigation work (backend wait, splash) must NOT call st.rerun() or
+# st.stop() — instead they return early and the next rerun re-evaluates.
 # ─────────────────────────────────────────────────────────────────────────────
 
 if not _is_logged_in() and not _share_id:
@@ -196,15 +189,10 @@ else:
         st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
     ])
 
-# ── Backend startup ────────────────────────────────────────────────────────────
-# On Streamlit Cloud the subprocess model cannot work — show a clear setup guide.
-# Locally it launches uvicorn as a subprocess (cached, runs once per worker).
-if _on_streamlit_cloud():
-    _backend_ready_event.set()   # skip the wait loop entirely
-else:
-    _launch_backend()
+# ── Backend startup — always launch subprocess (Cloud and local alike) ─────────
+_launch_backend()
 
-# While the backend is warming up (local dev only), show a loading overlay.
+# ── Loading overlay — shown while uvicorn is warming up ───────────────────────
 if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     st.markdown("""
 <style>
@@ -245,7 +233,7 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     </svg>
   </div>
   <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting backend… (~20 s on first load)</div>
+  <div class="sb-loading-sub">Starting backend… (~30 s on first load)</div>
   <div class="sb-dots">
     <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
   </div>
@@ -254,24 +242,20 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     st.rerun()
 
 if _backend_failed_event.is_set():
-    st.error("❌ Backend failed to start after 90 s. Check that all dependencies are installed.")
+    st.error(
+        "❌ Backend failed to start after 2 minutes. "
+        "Check that GROQ_API_KEY and SECRET_KEY are set in Streamlit Cloud Secrets."
+    )
 
 # ── Splash screen (shown once per session after backend is ready) ──────────────
-# On Streamlit Cloud we skip the splash entirely — st.rerun() before pg.run()
-# resets the Streamlit process and causes /healthz "connection reset by peer".
-# Locally (where backend is a subprocess) the splash runs once via a pure
-# CSS animation with auto-dismiss time baked into the CSS, and pg.run() is
-# always reached on the same script execution — no st.rerun() needed.
-elif not st.session_state.get("_splash_done") and not _on_streamlit_cloud():
-    st.session_state["_splash_done"] = True   # mark done immediately so this
-    # block never runs more than once per session — CSS animation handles timing
+elif not st.session_state.get("_splash_done"):
+    st.session_state["_splash_done"] = True
     st.markdown("""
 <style>
 .sb-splash{
   position:fixed;inset:0;z-index:9998;pointer-events:none;
   background:linear-gradient(135deg,#06061a 0%,#0d0d2b 35%,#0a0a1f 65%,#06061a 100%);
   background-size:300% 300%;
-  /* fade out after 2.2 s, then become invisible */
   animation:sbBgPulse 6s ease infinite,sbFadeOut .4s ease 2.2s forwards;
   display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden}
 @keyframes sbBgPulse{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
@@ -315,8 +299,6 @@ elif not st.session_state.get("_splash_done") and not _on_streamlit_cloud():
   <div class="sb-splash-line"></div>
   <div class="sb-splash-sub">✦&nbsp; Your personal AI learning companion &nbsp;✦</div>
 </div>""", unsafe_allow_html=True)
-    # No st.rerun() — the CSS animation auto-fades the overlay after 2.2 s.
-    # pg.run() executes immediately below on this same script execution.
 
 # ── Run the active page — MUST be reached on every script execution ───────────
 pg.run()
