@@ -26,6 +26,16 @@ _HERE      = Path(__file__).resolve().parent   # .../streamlit_app
 _REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
 _PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
+# Prefer the backend venv's Python/uvicorn so all deps are available.
+# Falls back to sys.executable (Streamlit Cloud uses a single env).
+_VENV_PYTHON  = _BACKEND / ".venv" / "Scripts" / "python.exe"   # Windows
+_VENV_PYTHON_NIX = _BACKEND / ".venv" / "bin" / "python"        # Linux/Mac
+if _VENV_PYTHON.exists():
+    _BACKEND_PYTHON = str(_VENV_PYTHON)
+elif _VENV_PYTHON_NIX.exists():
+    _BACKEND_PYTHON = str(_VENV_PYTHON_NIX)
+else:
+    _BACKEND_PYTHON = sys.executable   # Streamlit Cloud — single shared env
 
 BACKEND_URL = "http://localhost:8000"
 
@@ -88,16 +98,16 @@ def _build_env() -> dict:
 
 
 def _wait_for_backend(env: dict) -> None:
-    """Daemon thread — polls /health every 2 s; sets the appropriate Event when done."""
+    """Daemon thread — polls /health every 1 s; sets the appropriate Event when done."""
     deadline = time.time() + 120   # 2-minute budget for cold starts on Cloud
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=4).status_code == 200:
+            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
                 _backend_ready_event.set()
                 return
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(1)
     _backend_failed_event.set()
 
 
@@ -105,8 +115,8 @@ def _wait_for_backend(env: dict) -> None:
 def _launch_backend() -> None:
     """
     Launch the FastAPI/uvicorn subprocess exactly once per Streamlit worker.
-    Works identically on Streamlit Cloud and local dev — the subprocess model
-    is supported on both; the old guard that skipped it on Cloud was wrong.
+    Uses the backend venv's Python so all deps are available on local dev.
+    Falls back to sys.executable on Streamlit Cloud (single shared env).
     """
     # Ensure all data directories exist before uvicorn starts
     for sub in [
@@ -118,9 +128,9 @@ def _launch_backend() -> None:
 
     env = _build_env()
 
-    # Start uvicorn in the background
+    # Start uvicorn using the backend venv Python
     subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app",
+        [_BACKEND_PYTHON, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", "8000",
          "--workers", "1", "--log-level", "warning"],
         cwd=str(_BACKEND), env=env,
@@ -129,7 +139,7 @@ def _launch_backend() -> None:
 
     # Seed the admin account (no-op if it already exists)
     subprocess.Popen(
-        [sys.executable, "seed_admin.py"],
+        [_BACKEND_PYTHON, "seed_admin.py"],
         cwd=str(_BACKEND), env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
@@ -233,12 +243,12 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     </svg>
   </div>
   <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting backend… (~30 s on first load)</div>
+  <div class="sb-loading-sub">Starting backend… (first load only)</div>
   <div class="sb-dots">
     <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
   </div>
 </div>""", unsafe_allow_html=True)
-    time.sleep(2)
+    time.sleep(1)
     st.rerun()
 
 if _backend_failed_event.is_set():

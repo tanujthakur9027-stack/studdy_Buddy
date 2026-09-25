@@ -25,11 +25,12 @@ import aiofiles
 import pdfplumber
 import PyPDF2
 from langchain_core.documents import Document
-from langchain_community.document_loaders import Docx2txtLoader
-from langchain_community.vectorstores import FAISS
-from langchain_chroma import Chroma
-from langchain_community.embeddings import FastEmbedEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# ── Heavy LangChain/ML imports are intentionally LAZY ─────────────────────────
+# langchain_community.document_loaders → langchain_text_splitters →
+# sentence_transformers → torch/sklearn adds 7-10 s to cold start.
+# Import them only inside the functions that actually need them (ingestion path).
+# The health check, auth, and all read-only endpoints are unaffected.
 
 from config import get_settings
 from utils.text_utils import clean_text, count_tokens
@@ -38,30 +39,32 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # ── Singleton embeddings (fastembed ONNX — no PyTorch, no API key required) ───
-_embeddings: Optional[FastEmbedEmbeddings] = None
+_embeddings = None   # type: ignore[var-annotated]
 
 
-def get_embeddings() -> FastEmbedEmbeddings:
+def get_embeddings():
     global _embeddings
     if _embeddings is None:
+        from langchain_community.embeddings import FastEmbedEmbeddings  # lazy
         _embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
     return _embeddings
 
 
 # ── In-process FAISS registry  ────────────────────────────────────────────────
-_faiss_registry: dict[str, FAISS] = {}
-_faiss_global: Optional[FAISS] = None
+_faiss_registry: dict = {}
+_faiss_global = None   # type: ignore[var-annotated]
 
-def _get_faiss_for_doc(doc_id: str) -> Optional[FAISS]:
+def _get_faiss_for_doc(doc_id: str):
     return _faiss_registry.get(doc_id)
 
 
-def _get_faiss_global() -> Optional[FAISS]:
+def _get_faiss_global():
     return _faiss_global
 
 
 # ── ChromaDB (persisted) ─────────────────────────────────────────────────────
-def get_chroma(collection: str = "studybuddy") -> Chroma:
+def get_chroma(collection: str = "studybuddy"):
+    from langchain_chroma import Chroma  # lazy
     return Chroma(
         collection_name=collection,
         embedding_function=get_embeddings(),
@@ -270,7 +273,8 @@ def generate_description(pages: list[tuple[int, str]], filename: str, parser_use
 
 # ── Chunking ──────────────────────────────────────────────────────────────────
 
-def make_splitter() -> RecursiveCharacterTextSplitter:
+def make_splitter():  # type: ignore[return]
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     return RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
@@ -377,6 +381,7 @@ def _sync_process_and_index(
         pages = extract_txt(file_bytes, is_markdown=True)
         parser_used = "markdown"
     elif ext in (".docx", ".doc"):
+        from langchain_community.document_loaders import Docx2txtLoader  # lazy
         loader = Docx2txtLoader(filepath)
         loaded = loader.load()
         pages = [(i + 1, clean_text(doc.page_content)) for i, doc in enumerate(loaded)]
@@ -412,6 +417,8 @@ def _sync_process_and_index(
     chroma.add_documents(chunks)
 
     # ── 4b. FAISS per-document in-memory index ────────────────────────────────
+    from langchain_community.vectorstores import FAISS  # lazy
+    global _faiss_global
     embeddings = get_embeddings()
     doc_faiss = FAISS.from_documents(chunks, embeddings)
     _faiss_registry[doc_id] = doc_faiss
@@ -550,6 +557,13 @@ def populate_faiss_from_chroma() -> int:
     """
     global _faiss_global
 
+    # Fast-path: if the chroma persist directory is empty / doesn't exist,
+    # skip initialising the embedding model entirely — saves 8+ s on cold start.
+    _chroma_dir = Path(settings.chroma_persist_dir)
+    if not _chroma_dir.exists() or not any(_chroma_dir.iterdir()):
+        logger.info("populate_faiss_from_chroma: chroma_db empty — skipping rebuild")
+        return 0
+
     try:
         chroma = get_chroma()
         # Fetch all stored documents from ChromaDB
@@ -584,6 +598,7 @@ def populate_faiss_from_chroma() -> int:
                 Document(page_content=text, metadata=meta)
                 for _, text, meta in items
             ]
+            from langchain_community.vectorstores import FAISS  # lazy
             doc_faiss = FAISS.from_documents(docs, emb_model)
             _faiss_registry[doc_id] = doc_faiss
             total += doc_faiss.index.ntotal

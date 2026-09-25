@@ -20,8 +20,6 @@
 | | Link | Description |
 |-|------|-------------|
 | 🌐 | **[https://studdybuddy-zenmnfbuwdcdqqqj5kpn5g.streamlit.app/](https://studdybuddy-zenmnfbuwdcdqqqj5kpn5g.streamlit.app/)** | **Primary frontend — open the app here (Streamlit)** |
-| ⚡ | **[https://studdy-buddy-gray.vercel.app](https://studdy-buddy-gray.vercel.app)** | Alternative frontend (Next.js / Vercel) |
-| 🔌 | **[https://studdy-buddy-api.onrender.com/docs](https://studdy-buddy-api.onrender.com/docs)** | Backend API — Swagger UI |
 | 💻 | **[https://github.com/tanujthakur9027-stack/studdy_Buddy](https://github.com/tanujthakur9027-stack/studdy_Buddy)** | Source code (this repo) |
 
 > **⚠️ Note:** The backend runs on Render's **free tier** — it sleeps after 15 minutes of
@@ -594,7 +592,7 @@ studdy_Buddy/
 
 ## 📄 License
 
-MIT © 2024 StudyBuddy AI Team
+MIT © 2026 StudyBuddy AI Team
 
 ---
 
