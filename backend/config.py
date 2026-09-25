@@ -1,5 +1,10 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+# Resolve .env relative to this file so the server works regardless of the
+# working directory it is started from (e.g. project root vs backend/).
+_ENV_FILE = Path(__file__).parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -76,7 +81,7 @@ class Settings(BaseSettings):
     period_duration_minutes: int = 45
     lunch_duration_minutes: int = 45
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
     @property
     def cors_origins_list(self) -> list[str]:
