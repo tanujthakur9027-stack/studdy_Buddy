@@ -47,6 +47,8 @@ pytesseract>=0.3.10
 Pillow>=10.0.0
 
 # ── Database (SQLite async) ───────────────────────────────────────────────────
+# greenlet is required by SQLAlchemy's async extension on Python 3.12+
+greenlet>=3.0.0
 sqlalchemy>=2.0.0
 aiosqlite>=0.20.0
 alembic>=1.13.0
