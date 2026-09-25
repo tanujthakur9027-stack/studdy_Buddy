@@ -121,8 +121,8 @@ async def lifespan(app: FastAPI):
     logger.info(
         "startup",
         extra={
-            "provider": settings.llm_provider,
-            "model": settings.openai_model if settings.llm_provider == "openai" else settings.groq_model,
+            "provider": "groq",
+            "model": settings.groq_model,
             "db": settings.database_url.split("///")[-1],
             "sentry": bool(settings.sentry_dsn),
         },
@@ -260,17 +260,11 @@ async def health():
         pass
 
     indexed = list_indexed_docs()
-    provider = settings.llm_provider
-    active_model = (
-        settings.openai_model if provider == "openai"
-        else settings.groq_model if provider == "groq"
-        else "none"
-    )
 
     return JSONResponse({
         "status": "ok" if db_ok else "degraded",
-        "provider": provider,
-        "model": active_model,
+        "provider": "groq",
+        "model": settings.groq_model,
         "database": "ok" if db_ok else "error",
         "sentry": "enabled" if settings.sentry_dsn else "disabled",
         "indexed_documents": len(indexed),
@@ -283,7 +277,7 @@ async def health():
 async def root():
     return {
         "message": "StudyBuddy API v4 — visit /docs for Swagger UI",
-        "provider": settings.llm_provider,
+        "provider": "groq",
         "endpoints": {
             "upload":         "POST /api/upload",
             "ask":            "POST /api/ask",

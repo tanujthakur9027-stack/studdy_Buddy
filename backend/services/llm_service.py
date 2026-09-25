@@ -1,10 +1,9 @@
 """
-LLM service — async wrapper around OpenAI (primary) and Groq (fallback).
+LLM service — async wrapper around Groq (primary and only provider).
 
-Provider selection:
-  - If OPENAI_API_KEY is set → use OpenAI (gpt-4o-mini by default).
-  - Else if GROQ_API_KEY is set → use Groq (qwen/qwen3.8-27b by default).
-  - Neither set → raises RuntimeError with a helpful message.
+Set GROQ_API_KEY in your .env or deployment environment secrets.
+Model rotation: tries groq_model first, then groq_fallback_models in order
+when rate-limited.
 """
 from __future__ import annotations
 
@@ -19,15 +18,7 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_openai_client: AsyncOpenAI | None = None
-_groq_client:   AsyncOpenAI | None = None
-
-
-def _get_openai() -> AsyncOpenAI:
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=settings.openai_api_key.strip())
-    return _openai_client
+_groq_client: AsyncOpenAI | None = None
 
 
 def _get_groq() -> AsyncOpenAI:
@@ -41,17 +32,13 @@ def _get_groq() -> AsyncOpenAI:
 
 
 def get_client() -> tuple[AsyncOpenAI, str]:
-    provider = settings.llm_provider
-    if provider == "openai":
-        logger.debug("LLM provider: OpenAI (%s)", settings.openai_model)
-        return _get_openai(), settings.openai_model
-    if provider == "groq":
-        logger.debug("LLM provider: Groq (%s)", settings.groq_model)
-        return _get_groq(), settings.groq_model
-    raise RuntimeError(
-        "No LLM API key configured. Set OPENAI_API_KEY (primary) or "
-        "GROQ_API_KEY (free fallback) in your .env or deployment environment."
-    )
+    if not settings.llm_configured:
+        raise RuntimeError(
+            "No LLM API key configured. Set GROQ_API_KEY in your "
+            ".env or deployment environment."
+        )
+    logger.debug("LLM provider: Groq (%s)", settings.groq_model)
+    return _get_groq(), settings.groq_model
 
 
 def _groq_model_rotation() -> list[str]:
@@ -105,13 +92,7 @@ async def chat(
 ) -> str:
     client, default_model = get_client()
 
-    # Build the model list to try: explicit override → rotation list → single model
-    if model:
-        models_to_try = [model]
-    elif settings.llm_provider == "groq":
-        models_to_try = _groq_model_rotation()
-    else:
-        models_to_try = [default_model]
+    models_to_try = [model] if model else _groq_model_rotation()
 
     messages = [
         {"role": "system", "content": system},
@@ -165,8 +146,8 @@ async def chat_with_history(
     temperature: float = 0.7,
     max_tokens: int = 4096,
 ) -> str:
-    client, default_model = get_client()
-    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
+    client, _ = get_client()
+    models_to_try = _groq_model_rotation()
     messages = [{"role": "system", "content": system}] + history
 
     last_exc: Exception | None = None
@@ -219,8 +200,8 @@ async def stream_chat_with_history(
     Yields raw text delta chunks as they arrive from the LLM.
     Caller is responsible for assembling the full response.
     """
-    client, default_model = get_client()
-    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
+    client, _ = get_client()
+    models_to_try = _groq_model_rotation()
     messages = [{"role": "system", "content": system}] + history
 
     for used_model in models_to_try:
@@ -254,8 +235,8 @@ async def stream_chat(
     max_tokens: int = 4096,
 ) -> AsyncIterator[str]:
     """Streaming variant of chat() for single-turn requests."""
-    client, default_model = get_client()
-    models_to_try = _groq_model_rotation() if settings.llm_provider == "groq" else [default_model]
+    client, _ = get_client()
+    models_to_try = _groq_model_rotation()
     messages = [
         {"role": "system", "content": system},
         {"role": "user",   "content": user},
