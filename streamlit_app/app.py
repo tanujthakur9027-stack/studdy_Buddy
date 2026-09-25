@@ -3,8 +3,14 @@ StudyBuddy AI — Streamlit multipage entry point
 ================================================
 Deploy on Streamlit Cloud:
   Entry point : streamlit_app/app.py
-  Secrets     : GROQ_API_KEY, GEMINI_API_KEY (optional), SECRET_KEY,
-                ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD
+  Secrets     : GROQ_API_KEY, SECRET_KEY (required)
+                GEMINI_API_KEY, ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD (optional)
+
+Architecture:
+  Streamlit spawns a FastAPI/uvicorn subprocess on first load using
+  @st.cache_resource so only ONE backend process runs per worker.
+  The backend is polled on /health every second (up to 120 s) before
+  the UI is shown.
 """
 from __future__ import annotations
 
@@ -14,6 +20,7 @@ import sys
 import time
 import threading
 import logging
+import tempfile
 from pathlib import Path
 
 import requests
@@ -21,17 +28,20 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-# ── Absolute paths — derived from __file__, never from CWD ────────────────────
+# ── Absolute paths ─────────────────────────────────────────────────────────────
 _HERE      = Path(__file__).resolve().parent   # .../streamlit_app
 _REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
-_PAGES     = _HERE / "pages"                   # .../streamlit_app/pages
-# Prefer the backend venv's Python/uvicorn so all deps are available.
-# Falls back to sys.executable (Streamlit Cloud uses a single env).
-_VENV_PYTHON  = _BACKEND / ".venv" / "Scripts" / "python.exe"   # Windows
-_VENV_PYTHON_NIX = _BACKEND / ".venv" / "bin" / "python"        # Linux/Mac
-if _VENV_PYTHON.exists():
-    _BACKEND_PYTHON = str(_VENV_PYTHON)
+_PAGES     = _HERE / "pages"
+
+# ── Python executable resolution ───────────────────────────────────────────────
+# On local dev: prefer the backend venv so all deps (fastembed, chromadb…) are
+# available. On Streamlit Cloud there is a single shared environment — sys.executable.
+_VENV_PYTHON_WIN = _BACKEND / ".venv" / "Scripts" / "python.exe"
+_VENV_PYTHON_NIX = _BACKEND / ".venv" / "bin" / "python"
+
+if _VENV_PYTHON_WIN.exists():
+    _BACKEND_PYTHON = str(_VENV_PYTHON_WIN)
 elif _VENV_PYTHON_NIX.exists():
     _BACKEND_PYTHON = str(_VENV_PYTHON_NIX)
 else:
@@ -39,9 +49,15 @@ else:
 
 BACKEND_URL = "http://localhost:8000"
 
+# ── Backend log file (written to a temp dir so it is always writable) ──────────
+_LOG_DIR  = Path(tempfile.gettempdir()) / "studybuddy_logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_BACKEND_LOG = _LOG_DIR / "backend.log"
+
 
 # ── Secret helper ──────────────────────────────────────────────────────────────
 def _secret(key: str, default: str = "") -> str:
+    """Read from st.secrets first, then os.environ, then default."""
     try:
         return st.secrets.get(key, os.environ.get(key, default))  # type: ignore[attr-defined]
     except Exception:
@@ -49,13 +65,14 @@ def _secret(key: str, default: str = "") -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Backend subprocess — ONE launch per worker via @st.cache_resource
+# Backend state — shared across all reruns in this worker process
 # ─────────────────────────────────────────────────────────────────────────────
 _backend_ready_event  = threading.Event()
 _backend_failed_event = threading.Event()
 
 
 def _build_env() -> dict:
+    """Build the environment dict passed to the uvicorn subprocess."""
     _db_path = _BACKEND / "studybuddy.db"
     return {
         **os.environ,
@@ -98,16 +115,34 @@ def _build_env() -> dict:
 
 
 def _wait_for_backend(env: dict) -> None:
-    """Daemon thread — polls /health every 1 s; sets the appropriate Event when done."""
+    """
+    Daemon thread — polls /health every 1 s.
+    Sets _backend_ready_event on success or _backend_failed_event on timeout.
+    Once ready, seeds the admin account (no-op if it already exists).
+    """
     deadline = time.time() + 120   # 2-minute budget for cold starts on Cloud
+
     while time.time() < deadline:
         try:
-            if requests.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200:
+            r = requests.get(f"{BACKEND_URL}/health", timeout=3)
+            if r.status_code == 200:
                 _backend_ready_event.set()
+                # Seed admin AFTER the backend (and its DB) is confirmed up
+                try:
+                    subprocess.run(
+                        [_BACKEND_PYTHON, "seed_admin.py"],
+                        cwd=str(_BACKEND),
+                        env=env,
+                        timeout=30,
+                        capture_output=True,
+                    )
+                except Exception as exc:
+                    logger.warning("seed_admin failed: %s", exc)
                 return
         except Exception:
             pass
         time.sleep(1)
+
     _backend_failed_event.set()
 
 
@@ -115,8 +150,7 @@ def _wait_for_backend(env: dict) -> None:
 def _launch_backend() -> None:
     """
     Launch the FastAPI/uvicorn subprocess exactly once per Streamlit worker.
-    Uses the backend venv's Python so all deps are available on local dev.
-    Falls back to sys.executable on Streamlit Cloud (single shared env).
+    Backend stdout+stderr are written to a log file so errors are inspectable.
     """
     # Ensure all data directories exist before uvicorn starts
     for sub in [
@@ -128,24 +162,25 @@ def _launch_backend() -> None:
 
     env = _build_env()
 
-    # Start uvicorn using the backend venv Python
+    # Open log file in append mode so successive restarts don't clobber history
+    log_fh = open(_BACKEND_LOG, "ab")  # noqa: WPS515 — intentionally left open
+
     subprocess.Popen(
-        [_BACKEND_PYTHON, "-m", "uvicorn", "main:app",
-         "--host", "127.0.0.1", "--port", "8000",
-         "--workers", "1", "--log-level", "warning"],
-        cwd=str(_BACKEND), env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        [
+            _BACKEND_PYTHON, "-m", "uvicorn", "main:app",
+            "--host", "127.0.0.1", "--port", "8000",
+            "--workers", "1", "--log-level", "info",
+        ],
+        cwd=str(_BACKEND),
+        env=env,
+        stdout=log_fh,
+        stderr=log_fh,
     )
 
-    # Seed the admin account (no-op if it already exists)
-    subprocess.Popen(
-        [_BACKEND_PYTHON, "seed_admin.py"],
-        cwd=str(_BACKEND), env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-
-    # Poll /health on a daemon thread — sets event when ready
-    threading.Thread(target=_wait_for_backend, args=(env,), daemon=True).start()
+    # Poll /health on a daemon thread — seeds admin when backend is up
+    threading.Thread(
+        target=_wait_for_backend, args=(env,), daemon=True
+    ).start()
 
 
 # ── Page config — MUST be the first st.* call ──────────────────────────────────
@@ -166,6 +201,7 @@ def _is_admin() -> bool:
 def _p(name: str) -> str:
     """Absolute page path — consistent across st.Page() and st.switch_page()."""
     return str(_PAGES / name)
+
 
 # ── Share param ────────────────────────────────────────────────────────────────
 _share_id = st.query_params.get("share")
@@ -202,7 +238,9 @@ else:
 # ── Backend startup — always launch subprocess (Cloud and local alike) ─────────
 _launch_backend()
 
-# ── Loading overlay — shown while uvicorn is warming up ───────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Loading overlay — shown while uvicorn is warming up
+# ─────────────────────────────────────────────────────────────────────────────
 if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     st.markdown("""
 <style>
@@ -243,7 +281,7 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     </svg>
   </div>
   <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting backend… (first load only)</div>
+  <div class="sb-loading-sub">Starting backend… (first load only, ~60 s)</div>
   <div class="sb-dots">
     <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
   </div>
@@ -251,11 +289,22 @@ if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
     time.sleep(1)
     st.rerun()
 
-if _backend_failed_event.is_set():
+# ── Backend failure — show log tail to help diagnose ──────────────────────────
+elif _backend_failed_event.is_set():
     st.error(
         "❌ Backend failed to start after 2 minutes. "
-        "Check that GROQ_API_KEY and SECRET_KEY are set in Streamlit Cloud Secrets."
+        "Check that **GROQ_API_KEY** and **SECRET_KEY** are set in Streamlit Cloud Secrets."
     )
+    # Show last 40 lines of the backend log to help diagnose
+    if _BACKEND_LOG.exists():
+        try:
+            log_lines = _BACKEND_LOG.read_text(errors="replace").splitlines()
+            tail = "\n".join(log_lines[-40:])
+            with st.expander("🔍 Backend log (last 40 lines)", expanded=True):
+                st.code(tail, language="text")
+        except Exception:
+            pass
+    st.stop()
 
 # ── Splash screen (shown once per session after backend is ready) ──────────────
 elif not st.session_state.get("_splash_done"):
