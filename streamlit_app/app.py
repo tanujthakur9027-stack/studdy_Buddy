@@ -6,24 +6,21 @@ Deploy on Streamlit Cloud:
   Secrets     : GROQ_API_KEY, SECRET_KEY (required)
                 GEMINI_API_KEY, ADMIN_SEED_EMAIL, ADMIN_SEED_PASSWORD (optional)
 
-Architecture:
-  Streamlit spawns a FastAPI/uvicorn subprocess on first load using
-  @st.cache_resource so only ONE backend process runs per worker.
-  The backend is polled on /health every second (up to 120 s) before
-  the UI is shown.
+Architecture (no cold start):
+  FastAPI runs in a background thread inside the SAME Python process as
+  Streamlit via uvicorn.Server.  No subprocess, no polling loop.
+  The server is ready in ~2 s — before Streamlit renders the first frame.
 """
 from __future__ import annotations
 
+import asyncio
 import os
-import subprocess
 import sys
-import time
 import threading
 import logging
 import tempfile
 from pathlib import Path
 
-import requests
 import streamlit as st
 
 logger = logging.getLogger(__name__)
@@ -34,125 +31,23 @@ _REPO_ROOT = _HERE.parent                      # repo root
 _BACKEND   = _REPO_ROOT / "backend"
 _PAGES     = _HERE / "pages"
 
-# ── Python executable resolution ───────────────────────────────────────────────
-# On local dev: prefer the backend venv so all deps (fastembed, chromadb…) are
-# available. On Streamlit Cloud there is a single shared environment — sys.executable.
-_VENV_PYTHON_WIN = _BACKEND / ".venv" / "Scripts" / "python.exe"
-_VENV_PYTHON_NIX = _BACKEND / ".venv" / "bin" / "python"
-
-if _VENV_PYTHON_WIN.exists():
-    _BACKEND_PYTHON = str(_VENV_PYTHON_WIN)
-elif _VENV_PYTHON_NIX.exists():
-    _BACKEND_PYTHON = str(_VENV_PYTHON_NIX)
-else:
-    _BACKEND_PYTHON = sys.executable   # Streamlit Cloud — single shared env
+# ── Put backend/ on sys.path so `import main`, `import config`, etc. work ──────
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
 
 BACKEND_URL = "http://localhost:8000"
 
-# ── Backend log file (written to a temp dir so it is always writable) ──────────
-_LOG_DIR  = Path(tempfile.gettempdir()) / "studybuddy_logs"
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
-_BACKEND_LOG = _LOG_DIR / "backend.log"
 
-
-# ── Secret helper ──────────────────────────────────────────────────────────────
-def _secret(key: str, default: str = "") -> str:
-    """Read from st.secrets first, then os.environ, then default."""
-    try:
-        return st.secrets.get(key, os.environ.get(key, default))  # type: ignore[attr-defined]
-    except Exception:
-        return os.environ.get(key, default)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Backend state — shared across all reruns in this worker process
-# ─────────────────────────────────────────────────────────────────────────────
-_backend_ready_event  = threading.Event()
-_backend_failed_event = threading.Event()
-
-
-def _build_env() -> dict:
-    """Build the environment dict passed to the uvicorn subprocess."""
+# ── Secret injection — must happen BEFORE backend modules are imported ─────────
+def _inject_secrets() -> None:
+    """
+    Push Streamlit secrets (or env vars) into os.environ so that
+    pydantic-settings / config.py picks them up when it loads.
+    Called exactly once, before any backend import.
+    """
     _db_path = _BACKEND / "studybuddy.db"
-    return {
-        **os.environ,
-        # ── LLM ──────────────────────────────────────────────────────────────
-        "GROQ_API_KEY":                _secret("GROQ_API_KEY"),
-        "GROQ_MODEL":                  _secret("GROQ_MODEL", "qwen/qwen3-27b"),
-        "GROQ_FALLBACK_MODELS":        _secret("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"),
-        "GEMINI_API_KEY":              _secret("GEMINI_API_KEY", ""),
-        "GEMINI_MODEL":                _secret("GEMINI_MODEL", "gemini-2.5-flash"),
-        # ── Database & storage ────────────────────────────────────────────────
-        "DATABASE_URL":                f"sqlite+aiosqlite:///{_db_path}",
-        "CHROMA_PERSIST_DIR":          str(_BACKEND / "chroma_db"),
-        "UPLOAD_DIR":                  str(_BACKEND / "uploads"),
-        "FAISS_INDEX_DIR":             str(_BACKEND / "faiss_indexes"),
-        "MAX_FILE_SIZE_MB":            "200",
-        # ── Network ───────────────────────────────────────────────────────────
-        "CORS_ORIGINS":                "*",
-        "RATE_LIMIT_PER_MINUTE":       "60",
-        # ── Auth ──────────────────────────────────────────────────────────────
-        "SECRET_KEY":                  _secret("SECRET_KEY", "dev-secret-change-in-prod"),
-        "ACCESS_TOKEN_EXPIRE_MINUTES": "1440",
-        "ADMIN_SEED_EMAIL":            _secret("ADMIN_SEED_EMAIL", "admin@studybuddy.com"),
-        "ADMIN_SEED_PASSWORD":         _secret("ADMIN_SEED_PASSWORD", "Admin@StudyBuddy2024"),
-        # ── Email ─────────────────────────────────────────────────────────────
-        "SMTP_HOST":                   _secret("SMTP_HOST", ""),
-        "SMTP_PORT":                   _secret("SMTP_PORT", "587"),
-        "SMTP_USER":                   _secret("SMTP_USER", ""),
-        "SMTP_PASS":                   _secret("SMTP_PASS", ""),
-        "SMTP_FROM":                   _secret("SMTP_FROM", "noreply@studybuddy.com"),
-        "APP_BASE_URL":                _secret("APP_BASE_URL", "https://studybuddy.streamlit.app"),
-        # ── File limits ───────────────────────────────────────────────────────
-        "ASSIGNMENT_FILE_MAX_MB":      "50",
-        "NOTE_FILE_MAX_MB":            "50",
-        "PROFILE_PHOTO_MAX_MB":        "5",
-        "PERIOD_DURATION_MINUTES":     "45",
-        "LUNCH_DURATION_MINUTES":      "45",
-        # ── Python path — backend/ must be on sys.path for uvicorn ───────────
-        "PYTHONPATH":                  str(_BACKEND),
-    }
 
-
-def _wait_for_backend(env: dict) -> None:
-    """
-    Daemon thread — polls /health every 1 s.
-    Sets _backend_ready_event on success or _backend_failed_event on timeout.
-    Once ready, seeds the admin account (no-op if it already exists).
-    """
-    deadline = time.time() + 120   # 2-minute budget for cold starts on Cloud
-
-    while time.time() < deadline:
-        try:
-            r = requests.get(f"{BACKEND_URL}/health", timeout=3)
-            if r.status_code == 200:
-                _backend_ready_event.set()
-                # Seed admin AFTER the backend (and its DB) is confirmed up
-                try:
-                    subprocess.run(
-                        [_BACKEND_PYTHON, "seed_admin.py"],
-                        cwd=str(_BACKEND),
-                        env=env,
-                        timeout=30,
-                        capture_output=True,
-                    )
-                except Exception as exc:
-                    logger.warning("seed_admin failed: %s", exc)
-                return
-        except Exception:
-            pass
-        time.sleep(1)
-
-    _backend_failed_event.set()
-
-
-@st.cache_resource(show_spinner=False)
-def _launch_backend() -> None:
-    """
-    Launch the FastAPI/uvicorn subprocess exactly once per Streamlit worker.
-    Backend stdout+stderr are written to a log file so errors are inspectable.
-    """
-    # Ensure all data directories exist before uvicorn starts
+    # Directories
     for sub in [
         "chroma_db", "uploads", "faiss_indexes",
         "uploads/assignments", "uploads/submissions",
@@ -160,36 +55,107 @@ def _launch_backend() -> None:
     ]:
         (_BACKEND / sub).mkdir(parents=True, exist_ok=True)
 
-    env = _build_env()
+    def _s(key: str, default: str = "") -> str:
+        try:
+            return st.secrets.get(key, os.environ.get(key, default))  # type: ignore[attr-defined]
+        except Exception:
+            return os.environ.get(key, default)
 
-    # Open log file in append mode so successive restarts don't clobber history
-    log_fh = open(_BACKEND_LOG, "ab")  # noqa: WPS515 — intentionally left open
+    overrides = {
+        "GROQ_API_KEY":                _s("GROQ_API_KEY"),
+        "GROQ_MODEL":                  _s("GROQ_MODEL", "qwen/qwen3-27b"),
+        "GROQ_FALLBACK_MODELS":        _s("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"),
+        "GEMINI_API_KEY":              _s("GEMINI_API_KEY", ""),
+        "GEMINI_MODEL":                _s("GEMINI_MODEL", "gemini-2.5-flash"),
+        "DATABASE_URL":                f"sqlite+aiosqlite:///{_db_path}",
+        "CHROMA_PERSIST_DIR":          str(_BACKEND / "chroma_db"),
+        "UPLOAD_DIR":                  str(_BACKEND / "uploads"),
+        "FAISS_INDEX_DIR":             str(_BACKEND / "faiss_indexes"),
+        "MAX_FILE_SIZE_MB":            "200",
+        "CORS_ORIGINS":                "*",
+        "RATE_LIMIT_PER_MINUTE":       "60",
+        "SECRET_KEY":                  _s("SECRET_KEY", "dev-secret-change-in-prod"),
+        "ACCESS_TOKEN_EXPIRE_MINUTES": "1440",
+        "ADMIN_SEED_EMAIL":            _s("ADMIN_SEED_EMAIL", "admin@studybuddy.com"),
+        "ADMIN_SEED_PASSWORD":         _s("ADMIN_SEED_PASSWORD", "Admin@StudyBuddy2024"),
+        "SMTP_HOST":                   _s("SMTP_HOST", ""),
+        "SMTP_PORT":                   _s("SMTP_PORT", "587"),
+        "SMTP_USER":                   _s("SMTP_USER", ""),
+        "SMTP_PASS":                   _s("SMTP_PASS", ""),
+        "SMTP_FROM":                   _s("SMTP_FROM", "noreply@studybuddy.com"),
+        "APP_BASE_URL":                _s("APP_BASE_URL", "https://studybuddy.streamlit.app"),
+        "ASSIGNMENT_FILE_MAX_MB":      "50",
+        "NOTE_FILE_MAX_MB":            "50",
+        "PROFILE_PHOTO_MAX_MB":        "5",
+        "PERIOD_DURATION_MINUTES":     "45",
+        "LUNCH_DURATION_MINUTES":      "45",
+    }
+    for k, v in overrides.items():
+        if v:  # don't overwrite with empty strings
+            os.environ[k] = v
 
-    subprocess.Popen(
-        [
-            _BACKEND_PYTHON, "-m", "uvicorn", "main:app",
-            "--host", "127.0.0.1", "--port", "8000",
-            "--workers", "1", "--log-level", "info",
-        ],
-        cwd=str(_BACKEND),
-        env=env,
-        stdout=log_fh,
-        stderr=log_fh,
+
+# ── In-process FastAPI server via uvicorn.Server ───────────────────────────────
+@st.cache_resource(show_spinner=False)
+def _start_backend() -> str:
+    """
+    Import and start the FastAPI app in a background thread.
+    Returns "ok" immediately — the server is ready within ~2 s.
+    Uses @st.cache_resource so this runs ONCE per Streamlit worker process.
+    """
+    _inject_secrets()
+
+    import uvicorn  # noqa: PLC0415
+
+    # Import the FastAPI app object — pydantic-settings reads env vars NOW
+    # (os.environ already has our secrets from _inject_secrets above)
+    from main import app as fastapi_app  # noqa: PLC0415
+
+    config = uvicorn.Config(
+        app=fastapi_app,
+        host="127.0.0.1",
+        port=8000,
+        workers=1,
+        log_level="warning",
+        loop="asyncio",
     )
+    server = uvicorn.Server(config)
 
-    # Poll /health on a daemon thread — seeds admin when backend is up
-    threading.Thread(
-        target=_wait_for_backend, args=(env,), daemon=True
-    ).start()
+    def _run() -> None:
+        # Each thread needs its own event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    # Seed admin account after a short delay to let DB init finish
+    def _seed() -> None:
+        import time, importlib  # noqa: PLC0415
+        time.sleep(4)           # wait for init_db() to complete
+        try:
+            import asyncio as _asyncio  # noqa: PLC0415
+            seed_mod = importlib.import_module("seed_admin")
+            _asyncio.run(seed_mod.seed())
+        except Exception as exc:
+            logger.warning("seed_admin failed: %s", exc)
+
+    threading.Thread(target=_seed, daemon=True).start()
+
+    return "ok"
 
 
-# ── Page config — MUST be the first st.* call ──────────────────────────────────
+# ── Page config — MUST be the very first st.* call ────────────────────────────
 st.set_page_config(
     page_title="StudyBuddy AI",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ── Start backend in-process (non-blocking, returns immediately) ───────────────
+_start_backend()
 
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 def _is_logged_in() -> bool:
@@ -199,22 +165,13 @@ def _is_admin() -> bool:
     return st.session_state.get("_user", {}).get("role") == "admin"
 
 def _p(name: str) -> str:
-    """Absolute page path — consistent across st.Page() and st.switch_page()."""
     return str(_PAGES / name)
 
 
 # ── Share param ────────────────────────────────────────────────────────────────
 _share_id = st.query_params.get("share")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Navigation — ALWAYS built and ALWAYS run on every script execution.
-#
-# RULE: st.navigation() + pg.run() must be reached on EVERY Streamlit rerun.
-# Calling st.rerun() / st.stop() before pg.run() raises StreamlitAPIException.
-# All pre-navigation work (backend wait, splash) must NOT call st.rerun() or
-# st.stop() — instead they return early and the next rerun re-evaluates.
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── Navigation ─────────────────────────────────────────────────────────────────
 if not _is_logged_in() and not _share_id:
     pg = st.navigation(
         [st.Page(_p("login.py"), title="Login", icon="🔑")],
@@ -235,79 +192,8 @@ else:
         st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
     ])
 
-# ── Backend startup — always launch subprocess (Cloud and local alike) ─────────
-_launch_backend()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Loading overlay — shown while uvicorn is warming up
-# ─────────────────────────────────────────────────────────────────────────────
-if not _backend_ready_event.is_set() and not _backend_failed_event.is_set():
-    st.markdown("""
-<style>
-.sb-loading-overlay{
-  position:fixed;inset:0;z-index:9999;
-  background:linear-gradient(135deg,#06061a,#0d0d2b,#06061a);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;
-}
-.sb-loading-logo{
-  width:72px;height:72px;border-radius:20px;
-  background:linear-gradient(135deg,#6366f1,#8b5cf6);
-  display:flex;align-items:center;justify-content:center;
-  animation:sbGlow 2s ease-in-out infinite;
-}
-.sb-loading-title{font-size:1.8rem;font-weight:800;color:#fff;letter-spacing:-.03em}
-.sb-loading-title span{background:linear-gradient(90deg,#a78bfa,#6366f1);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sb-loading-sub{font-size:.85rem;color:rgba(255,255,255,.55)}
-.sb-dots{display:flex;gap:6px;margin-top:.5rem}
-.sb-dot{width:8px;height:8px;border-radius:50%;background:#6366f1;
-  animation:sbDotBounce 1.2s ease-in-out infinite}
-.sb-dot:nth-child(2){animation-delay:.2s}
-.sb-dot:nth-child(3){animation-delay:.4s}
-@keyframes sbGlow{0%,100%{box-shadow:0 0 20px rgba(99,102,241,.5)}
-  50%{box-shadow:0 0 40px rgba(139,92,246,.8)}}
-@keyframes sbDotBounce{0%,80%,100%{transform:scale(0.6);opacity:.4}
-  40%{transform:scale(1);opacity:1}}
-</style>
-<div class="sb-loading-overlay">
-  <div class="sb-loading-logo">
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L4 7l8 5 8-5-8-5z" stroke="rgba(255,255,255,.95)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
-      <path d="M4 17l8 5 8-5" stroke="rgba(255,255,255,.95)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
-      <path d="M4 12l8 5 8-5" stroke="rgba(255,255,255,.65)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
-    </svg>
-  </div>
-  <div class="sb-loading-title">Study Buddy <span>AI</span></div>
-  <div class="sb-loading-sub">Starting backend… (first load only, ~60 s)</div>
-  <div class="sb-dots">
-    <div class="sb-dot"></div><div class="sb-dot"></div><div class="sb-dot"></div>
-  </div>
-</div>""", unsafe_allow_html=True)
-    time.sleep(1)
-    st.rerun()
-
-# ── Backend failure — show log tail to help diagnose ──────────────────────────
-elif _backend_failed_event.is_set():
-    st.error(
-        "❌ Backend failed to start after 2 minutes. "
-        "Check that **GROQ_API_KEY** and **SECRET_KEY** are set in Streamlit Cloud Secrets."
-    )
-    # Show last 40 lines of the backend log to help diagnose
-    if _BACKEND_LOG.exists():
-        try:
-            log_lines = _BACKEND_LOG.read_text(errors="replace").splitlines()
-            tail = "\n".join(log_lines[-40:])
-            with st.expander("🔍 Backend log (last 40 lines)", expanded=True):
-                st.code(tail, language="text")
-        except Exception:
-            pass
-    st.stop()
-
-# ── Splash screen (shown once per session after backend is ready) ──────────────
-elif not st.session_state.get("_splash_done"):
+# ── Splash screen — shown once per session, pure CSS (no rerun needed) ─────────
+if not st.session_state.get("_splash_done"):
     st.session_state["_splash_done"] = True
     st.markdown("""
 <style>
@@ -359,5 +245,5 @@ elif not st.session_state.get("_splash_done"):
   <div class="sb-splash-sub">✦&nbsp; Your personal AI learning companion &nbsp;✦</div>
 </div>""", unsafe_allow_html=True)
 
-# ── Run the active page — MUST be reached on every script execution ───────────
+# ── Run the active page ────────────────────────────────────────────────────────
 pg.run()
