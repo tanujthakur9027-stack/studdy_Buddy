@@ -16,6 +16,8 @@ from core.media_uploader import render_media_uploader
 inject_global_css()
 require_login()
 page_enter()
+from core.header import render_identity_header
+render_identity_header()
 
 user = current_user()
 
