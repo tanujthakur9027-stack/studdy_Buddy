@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -21,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models.db_models import FlashcardSession, Flashcard
+from dependencies.auth import get_current_user_flex
+from models.db_models import FlashcardSession, Flashcard, User
 from services.document_service import retrieve_context
 from services.llm_service import chat
 from utils.text_utils import truncate_to_tokens, strip_json_fences
@@ -86,6 +88,7 @@ async def generate_flashcards(
     request: Request,
     req: FlashcardGenerateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
 ) -> dict:
     """Generate a flashcard deck from the document and persist it."""
     if not req.doc_id:
@@ -123,6 +126,7 @@ async def generate_flashcards(
     # Persist session + cards
     session = FlashcardSession(
         id=str(uuid.uuid4()),
+        user_id=current_user.id if current_user else None,
         doc_id=req.doc_id,
         topic=req.topic.strip() or "General",
     )
@@ -158,13 +162,17 @@ async def generate_flashcards(
 async def list_flashcard_sessions(
     doc_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
 ) -> list[dict]:
     """List all flashcard sessions for a document."""
-    result = await db.execute(
+    q = (
         select(FlashcardSession)
         .where(FlashcardSession.doc_id == doc_id)
         .order_by(FlashcardSession.created_at.desc())
     )
+    if current_user is not None:
+        q = q.where(FlashcardSession.user_id == current_user.id)
+    result = await db.execute(q)
     sessions = result.scalars().all()
     return [
         {

@@ -22,12 +22,23 @@ from httpx import AsyncClient, ASGITransport
 # ── App bootstrap ──────────────────────────────────────────────────────────────
 # We import the app after overriding DATABASE_URL so tests use an in-memory DB.
 import os
+import tempfile
+from pathlib import Path
+
+test_tmp = tempfile.gettempdir()
+test_upload = str(Path(test_tmp, "sb_test_uploads"))
+test_faiss = str(Path(test_tmp, "sb_test_faiss"))
+test_chroma = str(Path(test_tmp, "sb_test_chroma"))
+
+for p in (test_upload, test_faiss, test_chroma):
+    Path(p).mkdir(parents=True, exist_ok=True)
+
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only")
 os.environ.setdefault("GROQ_API_KEY", "test")
-os.environ.setdefault("UPLOAD_DIR", "/tmp/sb_test_uploads")
-os.environ.setdefault("FAISS_INDEX_DIR", "/tmp/sb_test_faiss")
-os.environ.setdefault("CHROMA_PERSIST_DIR", "/tmp/sb_test_chroma")
+os.environ.setdefault("UPLOAD_DIR", test_upload)
+os.environ.setdefault("FAISS_INDEX_DIR", test_faiss)
+os.environ.setdefault("CHROMA_PERSIST_DIR", test_chroma)
 
 from main import app  # noqa: E402  (after env setup)
 from database import engine, Base  # noqa: E402
@@ -208,11 +219,11 @@ def _make_minimal_gif(width: int = 10, height: int = 10, frames: int = 1) -> byt
     from PIL import Image
     buf = io.BytesIO()
     images = []
-    for _ in range(frames):
-        img = Image.new("RGB", (width, height), color=(100, 149, 237))
+    for i in range(frames):
+        img = Image.new("RGBA", (width, height), color=(i * 50, 149, 237, 255)).convert("P", palette=Image.ADAPTIVE)
         images.append(img)
     images[0].save(
-        buf, format="GIF", save_all=True, append_images=images[1:], loop=0
+        buf, format="GIF", save_all=True, append_images=images[1:], duration=100, loop=0
     )
     return buf.getvalue()
 

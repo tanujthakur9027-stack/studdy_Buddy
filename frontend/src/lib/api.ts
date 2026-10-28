@@ -27,6 +27,20 @@ export const api = axios.create({
   timeout: 120_000,
 });
 
+// Auto-inject Authorization header from localStorage on all browser requests
+api.interceptors.request.use((config) => {
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("sb_token");
+    if (token) {
+      config.headers = config.headers || {};
+      if (!config.headers["Authorization"]) {
+        config.headers["Authorization"] = `Bearer ${token}`;
+      }
+    }
+  }
+  return config;
+});
+
 // ── Document Upload ──────────────────────────────────────────────────────────
 export async function uploadDocument(file: File): Promise<{
   doc_id: string;
@@ -420,5 +434,54 @@ export async function solveDoubt(params: {
   conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<{ answer: string; sources: string[]; follow_up_questions: string[] }> {
   const { data } = await api.post("/api/doubt/solve", params);
+  return data;
+}
+
+
+// ── Contact & Notification Access ───────────────────────────────────────────
+export async function contactAdmin(params: {
+  title: string;
+  message: string;
+  category?: string;
+}): Promise<{ message: string; admins_alerted: number; email_sent: boolean }> {
+  const { data } = await api.post("/api/notifications/contact-admin", params);
+  return data;
+}
+
+export async function broadcastNotification(params: {
+  title: string;
+  message: string;
+  target?: string;
+  target_id?: string;
+  send_email?: boolean;
+}): Promise<{ message: string; in_app_count: number; emails_sent: number }> {
+  const { data } = await api.post("/api/notifications/broadcast", params);
+  return data;
+}
+
+export interface AdminContactInquiry {
+  id: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  sender_id?: string;
+  sender_name?: string;
+  sender_email?: string;
+  student_id?: string;
+}
+
+export async function fetchAdminContacts(): Promise<AdminContactInquiry[]> {
+  const { data } = await api.get("/api/notifications/admin/contacts");
+  return data;
+}
+
+
+export async function checkQuizAnswer(params: {
+  quiz_id: string;
+  question_id: string;
+  selected_index: number;
+}): Promise<{ is_correct: boolean; correct_index: number; explanation: string }> {
+  const { data } = await api.post("/quiz/check-answer", params);
   return data;
 }

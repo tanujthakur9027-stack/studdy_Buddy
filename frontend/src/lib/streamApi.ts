@@ -40,9 +40,15 @@ export function streamPost(
   (async () => {
     let response: Response;
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("sb_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       response = await fetch(`${BASE}${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -57,23 +63,26 @@ export function streamPost(
       let msg = "Unknown error";
       try {
         const text = await response.text();
-        // Try to extract a human-readable message from JSON error bodies
         if (text) {
           try {
             const parsed = JSON.parse(text);
             msg = parsed?.detail ?? parsed?.message ?? parsed?.error?.message ?? text;
           } catch {
-            // Not JSON — use raw text but truncate to avoid giant tracebacks
             msg = text.slice(0, 200);
           }
         }
-      } catch { /* ignore read errors */ }
+      } catch {
+        /* ignore read errors */
+      }
       callbacks.onError?.(`HTTP ${response.status}: ${msg}`);
       return;
     }
 
     const reader = response.body?.getReader();
-    if (!reader) { callbacks.onError?.("No response body"); return; }
+    if (!reader) {
+      callbacks.onError?.("No response body");
+      return;
+    }
 
     const decoder = new TextDecoder();
     let buffer = "";
@@ -92,11 +101,11 @@ export function streamPost(
 
       // SSE lines end with \n\n
       const lines = buffer.split("\n\n");
-      buffer = lines.pop() ?? "";   // keep incomplete last chunk
+      buffer = lines.pop() ?? ""; // keep incomplete last chunk
 
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
-        const payload = line.slice(6);  // strip "data: "
+        const payload = line.slice(6); // strip "data: "
 
         if (payload === "[DONE]") {
           callbacks.onDone?.({});

@@ -35,9 +35,11 @@ st.markdown("""
 </div>""", unsafe_allow_html=True)
 
 (students_tab, classes_tab, assignments_tab,
- submissions_tab, marks_tab, timetable_tab, announcements_tab) = st.tabs([
+ submissions_tab, marks_tab, timetable_tab, announcements_tab,
+ broadcast_tab, inquiries_tab) = st.tabs([
     "👨‍🎓 Students", "🏛️ Classes", "📋 Assignments",
     "✅ Submissions", "📊 Marks", "📅 Timetable", "📢 Announcements",
+    "✉️ Broadcast & Email", "📬 Inquiries",
 ])
 
 
@@ -376,3 +378,89 @@ with announcements_tab:
             with col_del:
                 if st.button("🗑️", key=f"del_ann_{ann['id']}"):
                     api_delete(f"/api/admin/announcements/{ann['id']}"); st.rerun()
+
+
+# ── Broadcast & Email ─────────────────────────────────────────────────────────
+with broadcast_tab:
+    _h("✉️ Broadcast Notification & Email")
+    st.markdown("Dispatch high-priority in-app announcements and optional SMTP emails to students.")
+    classes_data, _ = api_get("/api/admin/classes", timeout=10)
+    classes = classes_data or []
+
+    with st.form("broadcast_form"):
+        b_target = st.selectbox("Target Audience", ["All Students", "Specific Class", "Single Student"])
+        b_class_id = None
+        b_student_id = None
+        if b_target == "Specific Class":
+            b_class_id = st.selectbox(
+                "Select Class",
+                [c["id"] for c in classes],
+                format_func=lambda i: next((c["name"] for c in classes if c["id"] == i), i),
+            )
+        elif b_target == "Single Student":
+            b_student_id = st.text_input("Student User ID (UUID)")
+
+        b_title = st.text_input("Title / Subject *", placeholder="Important Announcement")
+        b_message = st.text_area("Message Body *", height=120, placeholder="Write your announcement or notice here...")
+        b_email = st.checkbox("Also dispatch via SMTP Email to student inboxes", value=False)
+
+        if st.form_submit_button("🚀 Send Broadcast", type="primary"):
+            if not b_title or not b_message:
+                st.error("Please provide both a title and message.")
+            else:
+                target_type = "all"
+                target_id = None
+                if b_target == "Specific Class":
+                    target_type = "class"
+                    target_id = b_class_id
+                elif b_target == "Single Student":
+                    target_type = "student"
+                    target_id = b_student_id.strip() if b_student_id else None
+
+                payload = {
+                    "title": b_title.strip(),
+                    "message": b_message.strip(),
+                    "target": target_type,
+                    "target_id": target_id,
+                    "send_email": b_email,
+                }
+                res, err = api_post("/api/notifications/broadcast", json=payload)
+                if err:
+                    st.error(err)
+                else:
+                    st.success(
+                        f"Broadcast dispatched! {res.get('in_app_count', 0)} in-app alert(s) generated. "
+                        f"{res.get('emails_sent', 0)} email(s) sent via SMTP."
+                    )
+
+
+# ── Student Inquiries ─────────────────────────────────────────────────────────
+with inquiries_tab:
+    _h("📬 Student Contact & Support Inquiries")
+    st.markdown("Review inquiries and questions submitted by students through the Contact Staff channel.")
+
+    inquiries_data, inq_err = api_get("/api/notifications/admin/contacts", timeout=15)
+    if inq_err:
+        st.error(inq_err)
+    else:
+        inquiries = inquiries_data or []
+        st.caption(f"{len(inquiries)} total inquiry(ies)")
+        if not inquiries:
+            st.info("No student inquiries at this time.")
+        else:
+            for inq in inquiries:
+                is_read = inq.get("is_read", False)
+                status_icon = "🟢 Read" if is_read else "🔴 New"
+                sender_name = inq.get("sender_name") or "Student"
+                student_id = inq.get("student_id") or ""
+                with st.expander(
+                    f"{status_icon} | {sender_name} ({student_id}) — {inq.get('title', 'No Title')}",
+                    expanded=not is_read,
+                ):
+                    st.markdown(f"**From:** {sender_name} &lt;{inq.get('sender_email')}&gt;")
+                    st.markdown(f"**Date:** {inq.get('created_at', '')[:19].replace('T', ' ')}")
+                    st.text_area("Message", value=inq.get("message", ""), height=100, disabled=True, key=f"msg_{inq['id']}")
+                    if not is_read:
+                        if st.button("Mark as Reviewed", key=f"read_inq_{inq['id']}"):
+                            api_patch(f"/api/notifications/{inq['id']}/read")
+                            st.rerun()

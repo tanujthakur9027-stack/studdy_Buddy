@@ -10,7 +10,7 @@ interface Category {
   max_marks: number; weightage: number; created_at: string;
 }
 interface MarkRow {
-  student_id: string; student_name: string;
+  student_id: string; student_name: string; category?: string;
   obtained: number | null; max: number; percentage: number | null; is_published: boolean;
 }
 interface Student { id: string; full_name: string; email: string; }

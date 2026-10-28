@@ -195,6 +195,7 @@ async def request_instrumentation(request: Request, call_next):
 
 
 # ── Static file serving for uploads ──────────────────────────────────────────
+Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 # ── /api/* routers ────────────────────────────────────────────────────────────
@@ -263,10 +264,11 @@ async def health():
 
     return JSONResponse({
         "status": "ok" if db_ok else "degraded",
-        "provider": "groq",
+        "provider": settings.llm_provider,
         "model": settings.groq_model,
         "database": "ok" if db_ok else "error",
         "sentry": "enabled" if settings.sentry_dsn else "disabled",
+        "smtp": "configured" if settings.smtp_host else "unconfigured",
         "indexed_documents": len(indexed),
         "faiss_vectors": sum(d["vectors"] for d in indexed),
         "rate_limit": f"{settings.rate_limit_per_minute}/minute",

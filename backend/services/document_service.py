@@ -616,3 +616,22 @@ def populate_faiss_from_chroma() -> int:
         len(groups), total,
     )
     return total
+
+
+def delete_document_index(doc_id: str) -> None:
+    """Remove all stored artifacts for a document: FAISS, ChromaDB, and disk file."""
+    global _faiss_global
+    _faiss_registry.pop(doc_id, None)
+    try:
+        chroma = get_chroma()
+        chroma._collection.delete(where={"doc_id": doc_id})
+        logger.info("delete_document_index: deleted Chroma vectors for %s", doc_id)
+    except Exception as exc:
+        logger.warning("delete_document_index: Chroma vector deletion failed for %s: %s", doc_id, exc)
+    try:
+        upload_path = Path(settings.upload_dir)
+        for f in upload_path.glob(f"{doc_id}.*"):
+            f.unlink(missing_ok=True)
+            logger.info("delete_document_index: deleted disk file %s", f.name)
+    except Exception as exc:
+        logger.warning("delete_document_index: file deletion failed for %s: %s", doc_id, exc)

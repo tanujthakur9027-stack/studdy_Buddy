@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
@@ -19,7 +20,8 @@ from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db_models import FeynmanResult
+from dependencies.auth import get_current_user_flex
+from models.db_models import FeynmanResult, User
 from models.schemas import FeynmanRequest, FeynmanResponse, QAPair
 from services.document_service import retrieve_context
 from services.llm_service import chat
@@ -60,6 +62,7 @@ async def evaluate_feynman(
     request: Request,
     req: FeynmanRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
 ) -> FeynmanResponse:
     """Evaluate a student's Feynman-style explanation and return feedback + Q&A pairs."""
     # Optional: enrich with doc context so grading is grounded in actual material
@@ -103,6 +106,7 @@ async def evaluate_feynman(
 
     # Persist for progress tracking
     result = FeynmanResult(
+        user_id=current_user.id if current_user else None,
         concept=req.concept[:255],
         explanation_length=len(req.explanation),
         score=score,

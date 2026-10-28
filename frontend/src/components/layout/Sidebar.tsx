@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, ClipboardList, BarChart2,
   Calendar, Bell, FileText, Users, Settings, GraduationCap,
   Brain, ChevronLeft, ChevronRight, LogOut, Shield,
-  BookMarked, Megaphone, Send, UserCheck, Menu, X,
+  BookMarked, Megaphone, Send, UserCheck, Menu, X, LogIn,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,6 +22,7 @@ const studentNav = [
   { href: "/connections",   label: "Connections",     icon: Users,           color: "text-cyan-400"    },
   { href: "/learn",         label: "AI Study Tools",  icon: Brain,           color: "text-pink-400"    },
   { href: "/profile",       label: "Profile",         icon: Settings,        color: "text-gray-400"    },
+  { href: "/admin/dashboard", label: "Admin Portal",   icon: Shield,          color: "text-amber-400"   },
 ];
 
 const adminNav = [
@@ -141,27 +142,51 @@ export default function Sidebar() {
 
       {/* ── Footer: logout + collapse ── */}
       <div className="border-t border-gray-800 py-2 px-2 space-y-1">
-        <button
-          onClick={logout}
-          title={collapsed ? "Logout" : undefined}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all w-full group"
-        >
-          <LogOut className="w-4 h-4 shrink-0 group-hover:scale-105 transition-transform" />
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span
-                key="logout-text"
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: "auto" }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 0.18 }}
-                className="text-sm whitespace-nowrap overflow-hidden"
-              >
-                Logout
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
+        {!user ? (
+          <Link
+            href="/login"
+            title={collapsed ? "Sign In / Admin Login" : undefined}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-blue-400 hover:text-white hover:bg-blue-600/20 transition-all w-full group border border-blue-500/20"
+          >
+            <LogIn className="w-4 h-4 shrink-0" />
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.span
+                  key="login-btn-text"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="text-sm font-semibold whitespace-nowrap overflow-hidden"
+                >
+                  Sign In / Admin
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </Link>
+        ) : (
+          <button
+            onClick={logout}
+            title={collapsed ? "Logout" : undefined}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all w-full group"
+          >
+            <LogOut className="w-4 h-4 shrink-0 group-hover:scale-105 transition-transform" />
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.span
+                  key="logout-text"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="text-sm whitespace-nowrap overflow-hidden"
+                >
+                  Logout
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </button>
+        )}
 
         {/* Collapse / expand button (desktop) */}
         <button
