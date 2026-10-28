@@ -231,13 +231,9 @@ if not st.session_state.get("_splash_done"):
 </style>
 <div class="sb-splash">
   <div class="sb-splash-logo">
-    <svg width="42" height="42" viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L4 7l8 5 8-5-8-5z" stroke="rgba(255,255,255,.95)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
-      <path d="M4 17l8 5 8-5" stroke="rgba(255,255,255,.95)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
-      <path d="M4 12l8 5 8-5" stroke="rgba(255,255,255,.65)" stroke-width="1.9"
-            stroke-linejoin="round" stroke-linecap="round"/>
+    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+      <path d="M6 2v20"></path>
     </svg>
   </div>
   <div class="sb-splash-title">Study Buddy <span>AI</span></div>
