@@ -25,6 +25,8 @@ from core.api_client import api_get, api_post, api_request, stream_sse, BACKEND_
 inject_global_css()
 require_login()
 page_enter()
+from core.header import render_identity_header
+render_identity_header()
 
 def _tab_head(t, s=""):
     st.markdown(

@@ -19,19 +19,45 @@ inject_global_css()
 require_login()
 page_enter()
 
+from core.header import render_identity_header
+render_identity_header()
+
 if not is_admin():
     st.error("🔒 Admin access required.")
     st.stop()
 
+# System Diagnostics
+health_data, _ = api_get("/health", timeout=5)
+health = health_data or {}
+api_status = health.get("status", "ok").upper()
+db_name = health.get("database", "sqlite")
+provider = health.get("provider", "groq")
+model = health.get("model", "qwen3")
+smtp_status = "Active" if health.get("smtp") == "configured" else "Simulation Mode"
+
+st.markdown(f"""
+<div style="background:rgba(17,24,39,0.9);border:1px solid rgba(31,41,55,0.9);border-radius:14px;
+     padding:0.75rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;
+     flex-wrap:wrap;gap:12px;font-size:12px;color:#9ca3af">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:#10b981;box-shadow:0 0 10px #10b981"></span>
+    <span>API: <strong style="color:#ffffff">{api_status}</strong></span>
+  </div>
+  <div>💾 DB: <strong style="color:#ffffff">{db_name}</strong></div>
+  <div>✨ AI: <strong style="color:#60a5fa">{provider} ({model})</strong></div>
+  <div>✉️ SMTP: <strong style="color:#fbbf24">{smtp_status}</strong></div>
+  <div>⚡ Rate Limit: <strong style="color:#ffffff">{health.get('rate_limit', '60/min')}</strong></div>
+</div>""", unsafe_allow_html=True)
+
 # helpers
-def _h(t): st.markdown(f'<p style="font-size:1rem;font-weight:700;color:#fafafa;margin:.75rem 0 .5rem">{t}</p>', unsafe_allow_html=True)
+def _h(t): st.markdown(f'<p style="font-size:1rem;font-weight:700;color:#ffffff;margin:.75rem 0 .5rem">{t}</p>', unsafe_allow_html=True)
 
 st.markdown("""
-<div style="margin-bottom:1.5rem;animation:fadeUp .4s both">
-  <h1 style="font-size:1.6rem;font-weight:800;color:#fafafa;margin:0 0 .25rem;letter-spacing:-.03em">
-    ⚙️ Admin Panel
+<div style="margin-bottom:1.5rem">
+  <h1 style="font-size:1.6rem;font-weight:800;color:#ffffff;margin:0 0 .25rem;letter-spacing:-.03em">
+    🛡️ Admin Command Center
   </h1>
-  <p style="font-size:.875rem;color:#71717a;margin:0">Manage students, classes, assignments, marks and timetable.</p>
+  <p style="font-size:.875rem;color:#9ca3af;margin:0">Manage student records, batches, assignments, evaluations, schedules, broadcasts, and inquiries.</p>
 </div>""", unsafe_allow_html=True)
 
 (students_tab, classes_tab, assignments_tab,

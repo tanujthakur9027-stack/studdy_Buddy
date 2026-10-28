@@ -151,7 +151,7 @@ st.set_page_config(
     page_title="StudyBuddy AI",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ── Start backend in-process (non-blocking, returns immediately) ───────────────
@@ -171,7 +171,7 @@ def _p(name: str) -> str:
 # ── Share param ────────────────────────────────────────────────────────────────
 _share_id = st.query_params.get("share")
 
-# ── Navigation ─────────────────────────────────────────────────────────────────
+# ── Navigation — 1:1 Parity with Next.js Sidebar ──────────────────────────────
 if not _is_logged_in() and not _share_id:
     pg = st.navigation(
         [st.Page(_p("login.py"), title="Login", icon="🔑")],
@@ -179,17 +179,23 @@ if not _is_logged_in() and not _share_id:
     )
 elif _is_admin():
     pg = st.navigation([
-        st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
-        st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
-        st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
-        st.Page(_p("admin.py"),     title="Admin Panel",    icon="⚙️"),
+        st.Page(_p("dashboard.py"), title="Dashboard",          icon="🏠"),
+        st.Page(_p("admin.py"),     title="Admin Command Hub",  icon="🛡️"),
+        st.Page(_p("learning.py"),  title="AI Study Tools",     icon="🧠"),
+        st.Page(_p("profile.py"),   title="Profile",            icon="👤"),
     ])
 else:
     pg = st.navigation([
-        st.Page(_p("dashboard.py"), title="Dashboard",      icon="🏠"),
-        st.Page(_p("learning.py"),  title="AI Study Tools", icon="🧠"),
-        st.Page(_p("classes.py"),   title="Classes",        icon="🏛️"),
-        st.Page(_p("profile.py"),   title="Profile",        icon="👤"),
+        st.Page(_p("dashboard.py"),     title="Dashboard",      icon="🏠"),
+        st.Page(_p("assignments.py"),   title="Assignments",    icon="📋"),
+        st.Page(_p("marks.py"),         title="Marks",          icon="📊"),
+        st.Page(_p("timetable.py"),     title="Timetable",      icon="📅"),
+        st.Page(_p("notifications.py"), title="Notifications",  icon="🔔"),
+        st.Page(_p("notes.py"),         title="Notes",          icon="📁"),
+        st.Page(_p("connections.py"),   title="Connections",    icon="👥"),
+        st.Page(_p("learning.py"),      title="AI Study Tools", icon="🧠"),
+        st.Page(_p("profile.py"),       title="Profile",        icon="👤"),
+        st.Page(_p("admin.py"),         title="Admin Portal",   icon="🛡️"),
     ])
 
 # ── Splash screen — shown once per session, pure CSS (no rerun needed) ─────────
