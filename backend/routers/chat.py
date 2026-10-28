@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -22,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models.db_models import ChatSession, ChatMessage
+from dependencies.auth import get_current_user_flex
+from models.db_models import ChatSession, ChatMessage, User
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -89,21 +91,35 @@ def _session_out(s: ChatSession, count: int) -> SessionOut:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/chats", response_model=list[SessionOut], tags=["Chat History"])
-async def list_sessions(db: AsyncSession = Depends(get_db)):
-    """Return all chat sessions, newest first, with message counts."""
-    result = await db.execute(
+async def list_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Return all chat sessions for the authenticated user, newest first, with message counts."""
+    q = (
         select(ChatSession)
         .options(selectinload(ChatSession.messages))
         .order_by(ChatSession.updated_at.desc())
     )
+    if current_user is not None:
+        q = q.where(ChatSession.user_id == current_user.id)
+    result = await db.execute(q)
     sessions = result.scalars().all()
     return [_session_out(s, len(s.messages)) for s in sessions]
 
 
 @router.post("/chats", response_model=SessionOut, status_code=201, tags=["Chat History"])
-async def create_session(body: SessionCreate, db: AsyncSession = Depends(get_db)):
-    """Create a new (empty) chat session."""
-    session = ChatSession(title=body.title, doc_id=body.doc_id)
+async def create_session(
+    body: SessionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Create a new (empty) chat session bound to the authenticated user."""
+    session = ChatSession(
+        title=body.title,
+        doc_id=body.doc_id,
+        user_id=current_user.id if current_user else None,
+    )
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -111,9 +127,16 @@ async def create_session(body: SessionCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.delete("/chats/{session_id}", status_code=204, tags=["Chat History"])
-async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete a chat session and all its messages (CASCADE)."""
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+async def delete_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Delete a chat session and all its messages (CASCADE, owner only)."""
+    q = select(ChatSession).where(ChatSession.id == session_id)
+    if current_user is not None:
+        q = q.where(ChatSession.user_id == current_user.id)
+    result = await db.execute(q)
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -126,8 +149,20 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
     response_model=list[MessageOut],
     tags=["Chat History"],
 )
-async def get_messages(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Return all messages in a session, in chronological order."""
+async def get_messages(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
+    """Return all messages in a session (owner only), in chronological order."""
+    # Verify ownership
+    sq = select(ChatSession).where(ChatSession.id == session_id)
+    if current_user is not None:
+        sq = sq.where(ChatSession.user_id == current_user.id)
+    s_res = await db.execute(sq)
+    if not s_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
@@ -146,11 +181,15 @@ async def append_message(
     session_id: str,
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
 ):
-    """Append a message to a session and bump session.updated_at."""
-    # Verify session exists
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-    session = result.scalar_one_or_none()
+    """Append a message to a session and bump session.updated_at (owner only)."""
+    # Verify session exists and belongs to caller
+    sq = select(ChatSession).where(ChatSession.id == session_id)
+    if current_user is not None:
+        sq = sq.where(ChatSession.user_id == current_user.id)
+    s_res = await db.execute(sq)
+    session = s_res.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
@@ -184,13 +223,13 @@ async def rename_session(
     session_id: str,
     body: TitleUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
 ):
-    """Rename a chat session."""
-    result = await db.execute(
-        select(ChatSession)
-        .options(selectinload(ChatSession.messages))
-        .where(ChatSession.id == session_id)
-    )
+    """Rename a chat session (owner only)."""
+    sq = select(ChatSession).options(selectinload(ChatSession.messages)).where(ChatSession.id == session_id)
+    if current_user is not None:
+        sq = sq.where(ChatSession.user_id == current_user.id)
+    result = await db.execute(sq)
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")

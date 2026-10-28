@@ -132,6 +132,18 @@ class QuizSubmitResponse(BaseModel):
     grade: str                  # "S", "A", "B", "C", "D"
 
 
+class QuizCheckAnswerRequest(BaseModel):
+    quiz_id: str
+    question_id: str
+    selected_index: int
+
+
+class QuizCheckAnswerResponse(BaseModel):
+    is_correct: bool
+    correct_index: int
+    explanation: str
+
+
 # ── Revision Planner ─────────────────────────────────────────────────────────
 class RevisionPlanRequest(BaseModel):
     # Core inputs

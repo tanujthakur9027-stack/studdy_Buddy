@@ -1,4 +1,4 @@
-﻿# ── Python ────────────────────────────────────────────────────────────────────
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -53,3 +53,7 @@ backend/_init_db.py
 backend_err.txt
 backend_test_err.txt
 backend_test_out.txt
+
+# Temporary/legacy project directory
+dropout_predictor_tmp/
+dropout_predictor_tmp

@@ -8,14 +8,25 @@ export interface AuthUser {
   full_name: string;
   role: "admin" | "student";
   is_active: boolean;
+  student_id?: string;
+  phone?: string;
+  course?: string;
+  branch?: string;
+  semester?: string;
+  section?: string;
+  academic_year?: string;
+  dob?: string | null;
+  profile_photo_url?: string | null;
+  class_id?: string | null;
+  class_name?: string | null;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (_email: string, _password: string) => Promise<void>;
   logout: () => Promise<void>;
-  register: (data: Record<string, string>) => Promise<void>;
+  register: (_data: Record<string, string>) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -27,34 +38,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data } = await api.get("/api/auth/me", { withCredentials: true });
+      const token = typeof window !== "undefined" ? localStorage.getItem("sb_token") : null;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const { data } = await api.get("/api/auth/me", { withCredentials: true, headers });
       setUser(data);
-      localStorage.setItem("sb_user", JSON.stringify(data));
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sb_user", JSON.stringify(data));
+      }
     } catch {
       setUser(null);
-      localStorage.removeItem("sb_user");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("sb_user");
+        localStorage.removeItem("sb_token");
+      }
+      delete api.defaults.headers.common["Authorization"];
     }
   };
 
   useEffect(() => {
-    // Try to restore user from cookie/localStorage
-    const saved = localStorage.getItem("sb_user");
+    // Restore session and auth token on mount
+    const token = typeof window !== "undefined" ? localStorage.getItem("sb_token") : null;
+    const saved = typeof window !== "undefined" ? localStorage.getItem("sb_user") : null;
+
+    if (token) {
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }
+
     if (saved) {
       try {
         setUser(JSON.parse(saved));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore parsing error */
+      }
     }
-    refreshUser().finally(() => setLoading(false));
+
+    if (token) {
+      refreshUser().finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
   }, []);
 
-  // Add auth header interceptor
+  // Response interceptor to catch 401s and clean up
   useEffect(() => {
     const id = api.interceptors.response.use(
       (res) => res,
       (err) => {
         if (err.response?.status === 401) {
           setUser(null);
-          localStorage.removeItem("sb_user");
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("sb_user");
+            localStorage.removeItem("sb_token");
+          }
+          delete api.defaults.headers.common["Authorization"];
           if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
             window.location.href = "/login";
           }
@@ -72,17 +111,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       { withCredentials: true }
     );
     setUser(data.user);
-    localStorage.setItem("sb_user", JSON.stringify(data.user));
-    // Set token for future requests
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sb_token", data.access_token);
+      localStorage.setItem("sb_user", JSON.stringify(data.user));
+    }
     api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
   };
 
   const logout = async () => {
     try {
       await api.post("/api/auth/logout", {}, { withCredentials: true });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setUser(null);
-    localStorage.removeItem("sb_user");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sb_token");
+      localStorage.removeItem("sb_user");
+    }
     delete api.defaults.headers.common["Authorization"];
   };
 
@@ -93,7 +139,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       { withCredentials: true }
     );
     setUser(data.user);
-    localStorage.setItem("sb_user", JSON.stringify(data.user));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sb_token", data.access_token);
+      localStorage.setItem("sb_user", JSON.stringify(data.user));
+    }
     api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
   };
 

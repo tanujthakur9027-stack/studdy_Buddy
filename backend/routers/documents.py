@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from dependencies.auth import get_current_user_flex
 from models.db_models import Document, SavedAnswer, User
+from services.document_service import delete_document_index
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,7 +65,7 @@ async def delete_document(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_flex),
 ):
-    """Remove document metadata from the DB (owner only)."""
+    """Remove document metadata from DB and evict from ChromaDB, FAISS, and disk (owner only)."""
     q = select(Document).where(Document.doc_id == doc_id)
     if current_user is not None:
         q = q.where(Document.user_id == current_user.id)
@@ -72,6 +73,11 @@ async def delete_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    # 1. Purge from ChromaDB, FAISS, and disk file
+    delete_document_index(doc_id)
+
+    # 2. Delete row from database
     await db.delete(doc)
     await db.commit()
     return {"deleted": doc_id}

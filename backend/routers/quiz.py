@@ -30,6 +30,8 @@ from models.schemas import (
     QuizQuestion,
     QuizSubmitRequest,
     QuizSubmitResponse,
+    QuizCheckAnswerRequest,
+    QuizCheckAnswerResponse,
 )
 from services.document_service import retrieve_context
 from services.llm_service import chat
@@ -387,3 +389,36 @@ async def get_quiz_history(
         }
         for r in rows
     ]
+
+
+
+@router.post(
+    "/quiz/check-answer",
+    response_model=QuizCheckAnswerResponse,
+    summary="Verify a single answer securely against persisted session",
+    tags=["Quiz"],
+)
+async def check_single_answer(
+    req: QuizCheckAnswerRequest,
+    db: AsyncSession = Depends(get_db),
+) -> QuizCheckAnswerResponse:
+    """Verify a chosen option against the server's session record without leaking remaining answers."""
+    result = await db.execute(select(QuizSession).where(QuizSession.quiz_id == req.quiz_id))
+    session_row = result.scalar_one_or_none()
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Quiz session not found")
+    try:
+        questions = json.loads(session_row.questions_json)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Corrupt session data")
+
+    target_q = next((q for q in questions if q.get("id") == req.question_id), None)
+    if not target_q:
+        raise HTTPException(status_code=404, detail="Question not found in quiz session")
+
+    corr = int(target_q.get("correct_index", 0))
+    return QuizCheckAnswerResponse(
+        is_correct=(req.selected_index == corr),
+        correct_index=corr,
+        explanation=target_q.get("explanation", ""),
+    )
