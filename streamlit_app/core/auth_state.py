@@ -86,3 +86,8 @@ def do_logout() -> None:
     api_post("/api/auth/logout")
     for k in ["_token", "_user", "documents_loaded", "documents", "active_doc"]:
         st.session_state.pop(k, None)
+
+
+# Alias for compatibility
+logout = do_logout
+

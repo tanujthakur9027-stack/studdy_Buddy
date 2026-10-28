@@ -11,7 +11,7 @@ Matches the Next.js header banner (Header.tsx) 1:1:
 """
 from __future__ import annotations
 import streamlit as st
-from core.auth_state import current_user, is_admin, logout, _p
+from core.auth_state import current_user, is_admin, do_logout, _p
 from core.api_client import api_get, api_post
 
 
@@ -105,15 +105,15 @@ def render_identity_header() -> None:
                 st.switch_page(_p("notifications.py"))
         with cols[3]:
             if st.button("🚪 Logout", key="hdr_logout_btn", use_container_width=True):
-                logout()
+                do_logout()
                 st.rerun()
     else:
         with cols[1]:
             if st.button("⚙️ Admin Hub", key="hdr_admin_hub_btn", use_container_width=True):
                 st.switch_page(_p("admin.py"))
         with cols[2]:
-            if st.button("🚪 Logout", key="hdr_logout_btn", use_container_width=True):
-                logout()
+            if st.button("🚪 Logout", key="hdr_admin_logout_btn", use_container_width=True):
+                do_logout()
                 st.rerun()
 
     # ── Interactive Contact Staff Dialog ──
