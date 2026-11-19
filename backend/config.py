@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     #   postgresql+asyncpg://user:pass@host/dbname
     database_url: str = "sqlite+aiosqlite:///./studybuddy.db"
 
+    # ── Cloud Object Storage (S3 / Cloudflare R2 / MinIO) ─────────────────────
+    storage_backend: str = "auto"   # "auto" | "local" | "s3"
+    s3_endpoint_url: str = ""       # e.g. https://<account_id>.r2.cloudflarestorage.com
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_bucket_name: str = ""
+    s3_region_name: str = "auto"
+    s3_public_url: str = ""         # e.g. https://pub-xxx.r2.dev or https://bucket.s3.amazonaws.com
+
     # ── Vector store & file storage ───────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_db"
     faiss_index_dir: str = "./faiss_indexes"
@@ -93,6 +102,49 @@ class Settings(BaseSettings):
         if self.gemini_api_key.strip():
             return "gemini"
         return "none"
+
+    @property
+    def is_s3_configured(self) -> bool:
+        """True when S3/R2 bucket credentials are configured."""
+        if self.storage_backend == "local":
+            return False
+        return bool(self.s3_bucket_name.strip() and self.s3_access_key_id.strip() and self.s3_secret_access_key.strip())
+
+    @property
+    def resolved_database_url(self) -> str:
+        """
+        Normalizes database URL:
+        - postgres:// or postgresql:// -> postgresql+asyncpg://
+        - handles sslmode parameters for asyncpg
+        - ensures relative SQLite URLs resolve to the persistent backend/ directory
+        """
+        url = self.database_url.strip()
+        if not url:
+            backend_dir = Path(__file__).resolve().parent
+            return f"sqlite+aiosqlite:///{(backend_dir / 'studybuddy.db').resolve().as_posix()}"
+
+        # PostgreSQL normalization
+        if url.startswith("postgres://"):
+            url = "postgresql+asyncpg://" + url[len("postgres://"):]
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+
+        if "asyncpg" in url:
+            # asyncpg accepts ssl=... rather than sslmode=...
+            url = (
+                url.replace("sslmode=require", "ssl=require")
+                .replace("sslmode=prefer", "ssl=prefer")
+                .replace("sslmode=disable", "ssl=disable")
+            )
+
+        # SQLite normalization to guaranteed absolute path
+        if "sqlite" in url and ":///:memory:" not in url:
+            if ":///./" in url or (url.startswith("sqlite+aiosqlite:///") and not Path(url[len("sqlite+aiosqlite:///"):].split("?")[0]).is_absolute()):
+                backend_dir = Path(__file__).resolve().parent
+                db_file = (backend_dir / "studybuddy.db").resolve().as_posix()
+                url = f"sqlite+aiosqlite:///{db_file}"
+
+        return url
 
 
 @lru_cache(maxsize=1)

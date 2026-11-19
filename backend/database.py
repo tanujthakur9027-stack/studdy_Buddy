@@ -15,7 +15,7 @@ from config import get_settings
 
 settings = get_settings()
 
-_is_sqlite = "sqlite" in settings.database_url
+_is_sqlite = "sqlite" in settings.resolved_database_url
 
 # Create async engine — echo=False in prod; set echo=True to debug SQL
 # SQLite uses NullPool (one connection, no pooling) — pool_size/max_overflow must NOT be passed.
@@ -29,7 +29,7 @@ if not _is_sqlite:
     _engine_kwargs["pool_size"] = 5
     _engine_kwargs["max_overflow"] = 10
 
-engine = create_async_engine(settings.database_url, **_engine_kwargs)
+engine = create_async_engine(settings.resolved_database_url, **_engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

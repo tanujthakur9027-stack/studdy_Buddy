@@ -33,7 +33,8 @@ from routers.progress import router as progress_router
 from routers.share import router as share_router
 from routers.notifications import router as notifications_router
 from routers.admin_students import router as admin_students_router
-from routers.student_profile import router as student_profile_router
+from routers.student_profile import router as student_profile_router, profile_alias_router
+from routers.admin_attrition import router as admin_attrition_router
 from routers.admin_classes import router as admin_classes_router
 from routers.admin_classes import student_router as student_classes_router
 from routers.admin_assignments import router as admin_assignments_router
@@ -226,8 +227,10 @@ app.include_router(admin_submissions_router,  prefix="/api")
 app.include_router(admin_marks_router,        prefix="/api")
 app.include_router(admin_timetable_router,    prefix="/api")
 app.include_router(admin_announcements_router, prefix="/api")
+app.include_router(admin_attrition_router,     prefix="/api")
 # New: Student features
 app.include_router(student_profile_router,    prefix="/api")
+app.include_router(profile_alias_router,      prefix="/api")
 app.include_router(student_classes_router,    prefix="/api")
 app.include_router(student_assignments_router, prefix="/api")
 app.include_router(student_marks_router,      prefix="/api")

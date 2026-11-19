@@ -33,12 +33,12 @@ test_chroma = str(Path(test_tmp, "sb_test_chroma"))
 for p in (test_upload, test_faiss, test_chroma):
     Path(p).mkdir(parents=True, exist_ok=True)
 
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only")
-os.environ.setdefault("GROQ_API_KEY", "test")
-os.environ.setdefault("UPLOAD_DIR", test_upload)
-os.environ.setdefault("FAISS_INDEX_DIR", test_faiss)
-os.environ.setdefault("CHROMA_PERSIST_DIR", test_chroma)
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["SECRET_KEY"] = "test-secret-key-for-pytest-only"
+os.environ["GROQ_API_KEY"] = "test"
+os.environ["UPLOAD_DIR"] = test_upload
+os.environ["FAISS_INDEX_DIR"] = test_faiss
+os.environ["CHROMA_PERSIST_DIR"] = test_chroma
 
 from main import app  # noqa: E402  (after env setup)
 from database import engine, Base  # noqa: E402
@@ -278,3 +278,60 @@ async def test_health(client: AsyncClient):
     resp = await client.get("/health")
     assert resp.status_code == 200
     assert resp.json().get("status") == "ok"
+
+
+# ── EduGuard AI Attrition Tests ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_eduguard_attrition_prediction():
+    from services.eduguard_service import predict_attrition_risk
+    # High risk profile: failing grade (5/20), low attendance (50%), debtor
+    critical = predict_attrition_risk(
+        debtor=1,
+        scholarship_holder=0,
+        age_at_enrollment=26.0,
+        gender=1,
+        first_sem_grade=5.0,
+        attendance_rate=50.0,
+    )
+    assert critical["risk_level"] == "CRITICAL"
+    assert critical["risk_probability"] >= 70.0
+    assert len(critical["recommendations"]) > 0
+    assert "factor_impacts" in critical
+
+    # Safe profile: high grade (17/20), 95% attendance, scholarship
+    safe = predict_attrition_risk(
+        debtor=0,
+        scholarship_holder=1,
+        age_at_enrollment=19.0,
+        gender=0,
+        first_sem_grade=17.0,
+        attendance_rate=95.0,
+    )
+    assert safe["risk_level"] == "LOW"
+    assert safe["risk_probability"] < 35.0
+
+
+@pytest.mark.asyncio
+async def test_profile_aliases(client: AsyncClient):
+    reg = await client.post("/api/auth/register", json=_reg_payload("profile_test"))
+    assert reg.status_code == 201
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Test /api/students/profile
+    p1 = await client.get("/api/students/profile", headers=headers)
+    assert p1.status_code == 200
+    assert p1.json()["email"] == "test_profile_test@example.com"
+
+    # Test /api/profile alias
+    p2 = await client.get("/api/profile", headers=headers)
+    assert p2.status_code == 200
+    assert p2.json()["email"] == "test_profile_test@example.com"
+
+    # Test updating via /api/profile
+    up = await client.patch("/api/profile", json={"full_name": "Updated Name", "phone": "9998887777"}, headers=headers)
+    assert up.status_code == 200
+    assert up.json()["full_name"] == "Updated Name"
+    assert up.json()["phone"] == "9998887777"
+

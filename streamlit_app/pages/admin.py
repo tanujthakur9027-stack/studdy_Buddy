@@ -60,10 +60,10 @@ st.markdown("""
   <p style="font-size:.875rem;color:#9ca3af;margin:0">Manage student records, batches, assignments, evaluations, schedules, broadcasts, and inquiries.</p>
 </div>""", unsafe_allow_html=True)
 
-(students_tab, classes_tab, assignments_tab,
+(students_tab, attrition_tab, classes_tab, assignments_tab,
  submissions_tab, marks_tab, timetable_tab, announcements_tab,
  broadcast_tab, inquiries_tab) = st.tabs([
-    "👨‍🎓 Students", "🏛️ Classes", "📋 Assignments",
+    "👨‍🎓 Students", "🎯 EduGuard AI", "🏛️ Classes", "📋 Assignments",
     "✅ Submissions", "📊 Marks", "📅 Timetable", "📢 Announcements",
     "✉️ Broadcast & Email", "📬 Inquiries",
 ])
@@ -71,28 +71,194 @@ st.markdown("""
 
 # ── Students ──────────────────────────────────────────────────────────────────
 with students_tab:
-    _h("👨‍🎓 Registered Students")
+    _h("👨‍🎓 Registered Students & Roster Management")
     search = st.text_input("Search by name, email or student ID", key="admin_student_search")
     data, err = api_get(f"/api/admin/students?search={search}" if search else "/api/admin/students", timeout=15)
     if err:
         st.error(err)
     else:
         students = data or []
-        st.caption(f"{len(students)} student(s)")
+        st.caption(f"{len(students)} student(s) registered in system")
         for s in students:
-            with st.expander(f"{'🟢' if s.get('is_active') else '🔴'} {s.get('full_name','?')} — {s.get('student_id','?')}", expanded=False):
+            status_icon = "🟢" if s.get("is_active") else "🔴"
+            with st.expander(f"{status_icon} {s.get('full_name','?')} — {s.get('student_id','?')} ({s.get('email','?')})", expanded=False):
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Email",    s.get("email", "?"))
-                c2.metric("Course",   s.get("course", "—") or "—")
-                c3.metric("Semester", s.get("semester", "—") or "—")
-                c4.metric("Section",  s.get("section", "—") or "—")
-                col_a, col_b = st.columns([3, 1])
-                with col_b:
-                    btn_label = "Deactivate" if s.get("is_active") else "Activate"
+                c1.metric("Email",       s.get("email", "—"))
+                c2.metric("Course",      s.get("course", "—") or "—")
+                c3.metric("Semester",    s.get("semester", "—") or "—")
+                c4.metric("Section",     s.get("section", "—") or "—")
+
+                st.markdown("---")
+                st.markdown("**✏️ Edit Student Profile Details**")
+                with st.form(f"edit_student_{s['id']}"):
+                    ec1, ec2, ec3 = st.columns(3)
+                    e_name = ec1.text_input("Full Name", value=s.get("full_name", ""))
+                    e_email = ec2.text_input("Email", value=s.get("email", ""))
+                    e_sid = ec3.text_input("Student ID", value=s.get("student_id", ""))
+
+                    ec4, ec5, ec6 = st.columns(3)
+                    e_course = ec4.text_input("Course", value=s.get("course", ""))
+                    e_sem = ec5.text_input("Semester", value=s.get("semester", ""))
+                    e_sec = ec6.text_input("Section", value=s.get("section", ""))
+
+                    if st.form_submit_button("💾 Save Profile Changes", type="primary"):
+                        up_payload = {
+                            "full_name": e_name.strip(),
+                            "email": e_email.strip(),
+                            "student_id": e_sid.strip(),
+                            "course": e_course.strip(),
+                            "semester": e_sem.strip(),
+                            "section": e_sec.strip(),
+                        }
+                        _, u_err = api_patch(f"/api/admin/students/{s['id']}", json=up_payload)
+                        if u_err:
+                            st.error(u_err)
+                        else:
+                            st.success("Student details updated successfully!")
+                            st.rerun()
+
+                st.markdown("---")
+                col_act, col_del = st.columns([1, 1])
+                with col_act:
+                    btn_label = "🔴 Deactivate Student Account" if s.get("is_active") else "🟢 Activate Student Account"
                     if st.button(btn_label, key=f"toggle_{s['id']}"):
                         api_patch(f"/api/admin/students/{s['id']}/status",
                                   json={"is_active": not s.get("is_active")})
                         st.rerun()
+
+                with col_del:
+                    del_conf = st.checkbox("Confirm permanent deletion", key=f"del_chk_{s['id']}")
+                    if st.button("🗑️ Permanently Delete Student", key=f"del_btn_{s['id']}", disabled=not del_conf):
+                        _, d_err = api_delete(f"/api/admin/students/{s['id']}?permanent=true")
+                        if d_err:
+                            st.error(d_err)
+                        else:
+                            st.success("Student record permanently deleted.")
+                            st.rerun()
+
+
+# ── EduGuard AI Attrition Hub ─────────────────────────────────────────────────
+with attrition_tab:
+    _h("🎯 EduGuard AI: Student Attrition Early Warning & Retention Center")
+    st.markdown("""
+    Powered by the **EduGuard AI Machine Learning Engine** — analyzing holistic retention telemetry 
+    (1st semester grades, class attendance rate, fee/debtor status, scholarship aid, and enrollment age) 
+    with **Explainable AI (XAI)** factor attribution.
+    """)
+
+    sub_roster, sub_sim = st.tabs(["📊 Live Student Roster Monitor", "🧪 What-If Attrition Simulator"])
+
+    with sub_roster:
+        st.markdown("#### Real-Time Cohort Attrition Analytics")
+        if st.button("🔄 Refresh Attrition Telemetry"):
+            st.rerun()
+
+        att_data, att_err = api_get("/api/admin/attrition/students", timeout=20)
+        if att_err:
+            st.error(f"Failed to load attrition telemetry: {att_err}")
+        else:
+            records = att_data or []
+            crit_count = sum(1 for r in records if r.get("risk_level") == "CRITICAL")
+            mon_count = sum(1 for r in records if r.get("risk_level") == "MONITOR")
+            low_count = sum(1 for r in records if r.get("risk_level") == "LOW")
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Students Evaluated", len(records))
+            m2.metric("Critical Risk (>=70%)", crit_count, delta=f"{crit_count} Alert(s)" if crit_count else None, delta_color="inverse")
+            m3.metric("Moderate Monitor", mon_count)
+            m4.metric("Low Retention Risk", low_count)
+
+            if not records:
+                st.info("No registered students found to analyze.")
+            else:
+                for r in records:
+                    badge_color = r.get("alert_color", "#10B981")
+                    with st.expander(f"{r.get('status_text')} — {r.get('full_name')} ({r.get('student_id')})", expanded=(r.get("risk_level") == "CRITICAL")):
+                        rc1, rc2, rc3 = st.columns(3)
+                        rc1.metric("Calculated 1st Sem Grade", f"{r.get('calculated_grade_scale_20', 0)} / 20")
+                        rc2.metric("Calculated Attendance", f"{r.get('calculated_attendance', 0)}%")
+                        rc3.metric("Retention Risk Score", f"{r.get('risk_probability', 0)}%")
+
+                        st.markdown("**🔬 Explainable AI (XAI) Contributing Factors:**")
+                        impacts = r.get("factor_impacts", {})
+                        for factor, pct in impacts.items():
+                            st.write(f"• **{factor}**: {pct}% impact")
+                            st.progress(min(1.0, max(0.0, float(pct) / 100.0)))
+
+                        if r.get("recommendations"):
+                            st.markdown("**📋 Counselor Recommended Action Items:**")
+                            for rec in r.get("recommendations", []):
+                                st.markdown(f"- {rec}")
+
+                        st.markdown("---")
+                        st.markdown("**🚨 Counselor Proactive Intervention Dispatch**")
+                        c_col1, c_col2 = st.columns([3, 1])
+                        custom_c_msg = c_col1.text_input("Custom counseling note (optional)", key=f"cmsg_{r['id']}", placeholder="e.g. Please meet Prof. Sharma for tutoring support...")
+                        if c_col2.button("Dispatch Alert", key=f"disp_{r['id']}", type="primary"):
+                            dispatch_payload = {
+                                "student_id": r["id"],
+                                "custom_message": custom_c_msg.strip() if custom_c_msg else None,
+                            }
+                            res, d_err = api_post("/api/admin/attrition/dispatch-alert", json=dispatch_payload)
+                            if d_err:
+                                st.error(d_err)
+                            else:
+                                st.success(f"Support check-in notification dispatched to {r.get('full_name')}!")
+
+    with sub_sim:
+        st.markdown("#### Test Custom Student Attrition Scenario")
+        sim_col1, sim_col2 = st.columns([1, 1], gap="large")
+
+        with sim_col1:
+            st.markdown("**Student Metrics & Telemetry Matrix**")
+            s_age = st.slider("Enrollment Age Metric", 15, 60, 20, key="sim_age")
+            s_att = st.slider("Class Attendance Rate (%)", 0, 100, 85, key="sim_att")
+            s_grd = st.slider("1st Semester Term Grades (0-20 scale)", 0.0, 20.0, 14.0, step=0.5, key="sim_grd")
+
+            sc1, sc2, sc3 = st.columns(3)
+            with sc1:
+                s_debt_choice = st.radio("Institutional Debtor", ["No", "Yes"], index=0, key="sim_debt")
+                s_debt = 1 if s_debt_choice == "Yes" else 0
+            with sc2:
+                s_sch_choice = st.radio("Scholarship Holder", ["No", "Yes"], index=0, key="sim_sch")
+                s_sch = 1 if s_sch_choice == "Yes" else 0
+            with sc3:
+                s_gen_choice = st.radio("Gender Profile", ["Female", "Male"], index=0, key="sim_gen")
+                s_gen = 1 if s_gen_choice == "Male" else 0
+
+        with sim_col2:
+            st.markdown("**Calculated Machine Learning Intelligence**")
+            eval_req = {
+                "debtor": s_debt,
+                "scholarship_holder": s_sch,
+                "age_at_enrollment": float(s_age),
+                "gender": s_gen,
+                "first_sem_grade": float(s_grd),
+                "attendance_rate": float(s_att),
+            }
+            eval_res, eval_err = api_post("/api/admin/attrition/evaluate", json=eval_req)
+            if eval_err:
+                st.error(eval_err)
+            else:
+                sim_res = eval_res or {}
+                alert_c = sim_res.get("alert_color", "#10B981")
+                st.markdown(f"""
+                <div style="background:#111827;border:2px solid {alert_c};border-radius:14px;padding:20px;margin-bottom:15px">
+                    <p style="color:#9ca3af;font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:.05em">Predictive Retention Risk Classification</p>
+                    <p style="font-size:24px;font-weight:800;color:{alert_c};margin:0">{sim_res.get('status_text')}</p>
+                    <p style="color:#d1d5db;font-size:13px;margin:8px 0 0">{sim_res.get('description')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("**🔬 Feature Impact Attribution (XAI):**")
+                for f_name, f_pct in sim_res.get("factor_impacts", {}).items():
+                    st.write(f"• **{f_name}**: {f_pct}%")
+                    st.progress(min(1.0, max(0.0, float(f_pct) / 100.0)))
+
+                if sim_res.get("recommendations"):
+                    st.markdown("**Recommended Counselor Interventions:**")
+                    for rec in sim_res.get("recommendations", []):
+                        st.markdown(f"- {rec}")
 
 
 # ── Classes ───────────────────────────────────────────────────────────────────
