@@ -123,21 +123,32 @@ def do_register(payload: dict) -> Optional[str]:
 
 def do_register_admin(payload: dict) -> Optional[str]:
     """Attempt admin registration with any email format. Returns None on success, error string on failure."""
+    email = payload.get("email", "").strip().lower()
+    prefix = email.split("@")[0] if "@" in email else "ADMIN"
+    clean_prefix = "".join(c for c in prefix if c.isalnum()).upper()[:6] or "ADMIN"
+    admin_sid = f"ADM-{clean_prefix}"
+
+    # Ensure student_id and role are always present so older backend instances never fail with 422
+    full_payload = {
+        "student_id": admin_sid,
+        "role": "admin",
+        **payload,
+    }
+
     # 1. Try dedicated endpoint /api/auth/register-admin
-    data, err = api_post("/api/auth/register-admin", json=payload)
-    # 2. If 404 (e.g. backend running older commit or cached server), try standard /api/auth/register with role=admin
-    if err and "404" in str(err):
-        data, err = api_post("/api/auth/register", json={**payload, "role": "admin"})
+    data, err = api_post("/api/auth/register-admin", json=full_payload)
+    # 2. If 404 or 422, fallback to /api/auth/register with full_payload
+    if err and ("404" in str(err) or "422" in str(err)):
+        data, err = api_post("/api/auth/register", json=full_payload)
     # 3. If still 404, try un-prefixed /auth/register-admin
     if err and "404" in str(err):
-        data, err = api_post("/auth/register-admin", json=payload)
+        data, err = api_post("/auth/register-admin", json=full_payload)
+
     if err:
-        if "404" in str(err):
-            return "Server update in progress (HTTP 404). Please reboot the app in Streamlit Cloud ('Manage app' -> 'Reboot') to load new endpoints."
         return err
     if data and data.get("otp_required"):
         st.session_state["_otp_pending"] = True
-        st.session_state["_otp_email"] = data.get("email") or payload.get("email")
+        st.session_state["_otp_email"] = data.get("email") or email
         st.session_state["_otp_sim"] = data.get("simulation_otp")
         st.session_state["_otp_msg"] = data.get("message", "Enter OTP verification code")
         return None

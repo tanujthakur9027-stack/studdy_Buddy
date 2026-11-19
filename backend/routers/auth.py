@@ -71,6 +71,8 @@ class RegisterAdminRequest(BaseModel):
     full_name: str
     admin_key: Optional[str] = None
     phone: Optional[str] = ""
+    student_id: Optional[str] = ""
+    role: Optional[str] = "admin"
 
     @field_validator("password")
     @classmethod
