@@ -59,7 +59,7 @@ TYPE_ICON = {
     "general": "🔔",
 }
 
-def _render_list(items):
+def _render_list(items, key_prefix="all"):
     if not items:
         st.info("No notifications to display.")
         return
@@ -84,12 +84,12 @@ def _render_list(items):
 """, unsafe_allow_html=True)
         with col_btn:
             if not is_read:
-                if st.button("Read", key=f"read_notif_{n['id']}", use_container_width=True):
+                if st.button("Read", key=f"read_notif_{key_prefix}_{n['id']}", use_container_width=True):
                     api_patch(f"/api/notifications/{n['id']}/read")
                     st.rerun()
 
 with tab_all:
-    _render_list(notifications)
+    _render_list(notifications, key_prefix="all")
 
 with tab_unread:
-    _render_list(unread_items)
+    _render_list(unread_items, key_prefix="unread")
