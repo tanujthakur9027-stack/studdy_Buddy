@@ -1,18 +1,22 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel, EmailStr, field_validator
+from datetime import datetime, timezone, timedelta
+import re
+import secrets
 from typing import Optional
-from database import get_db
-from models.db_models import User, StudentProfile, Class
-from services.auth_service import hash_password, verify_password, create_access_token
-from dependencies.auth import get_current_user
-from config import get_settings
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, EmailStr, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from fastapi import Request
-import re
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import get_settings
+from database import get_db
+from dependencies.auth import get_current_user
+from models.db_models import AuthOTP, Class, StudentProfile, User
+from services.auth_service import create_access_token, hash_password, verify_password
+from services.email_service import send_email
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -62,6 +66,16 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    otp_code: Optional[str] = None
+
+
+class VerifyOTPRequest(BaseModel):
+    email: str
+    otp_code: str
+
+
+class ResendOTPRequest(BaseModel):
+    email: str
 
 
 class UserResponse(BaseModel):
@@ -125,9 +139,13 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
 
 
 class AuthResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
-    user: UserResponse
+    user: Optional[UserResponse] = None
+    otp_required: bool = False
+    email: Optional[str] = None
+    message: Optional[str] = None
+    simulation_otp: Optional[str] = None
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -187,11 +205,148 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
+    # If an OTP code was provided directly in login payload
+    if body.otp_code:
+        now_utc = datetime.now(timezone.utc)
+        otp_res = await db.execute(
+            select(AuthOTP)
+            .where(
+                AuthOTP.email == user.email,
+                AuthOTP.is_used == False,
+                AuthOTP.expires_at > now_utc,
+            )
+            .order_by(AuthOTP.created_at.desc())
+        )
+        otp_rec = otp_res.scalar_one_or_none()
+        if not otp_rec or otp_rec.otp_code != body.otp_code.strip():
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
+        otp_rec.is_used = True
+        await db.commit()
+
+        token = create_access_token({"sub": user.id, "role": user.role})
+        response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
+        user_resp = await _build_user_response(user, db)
+        return AuthResponse(access_token=token, user=user_resp, otp_required=False)
+
+    # 2-Step OTP Authentication Flow
+    if settings.otp_auth_enabled:
+        await db.execute(
+            update(AuthOTP)
+            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
+            .values(is_used=True)
+        )
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
+        db.add(new_otp)
+        await db.commit()
+
+        email_html = f"""
+        <p>Hello <b>{user.full_name}</b>,</p>
+        <p>Your one-time security verification code (OTP) for StudyBuddy is:</p>
+        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes. Please do not share this code with anyone.</p>
+        """
+        await send_email(to=user.email, subject="[StudyBuddy] Your Login Verification Code", body=email_html)
+
+        return AuthResponse(
+            access_token=None,
+            user=None,
+            otp_required=True,
+            email=user.email,
+            message="OTP verification code dispatched to your registered email.",
+            simulation_otp=code if not settings.smtp_host else None,
+        )
+
+    # Direct login if OTP auth is turned off
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
 
     user_resp = await _build_user_response(user, db)
-    return AuthResponse(access_token=token, user=user_resp)
+    return AuthResponse(access_token=token, user=user_resp, otp_required=False)
+
+
+@router.post("/verify-otp", response_model=AuthResponse)
+@limiter.limit("15/minute")
+async def verify_otp(
+    request: Request,
+    body: VerifyOTPRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    email = body.email.strip().lower()
+    code = body.otp_code.strip()
+
+    user_result = await db.execute(select(User).where(User.email == email))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    now_utc = datetime.now(timezone.utc)
+    otp_result = await db.execute(
+        select(AuthOTP)
+        .where(
+            AuthOTP.email == email,
+            AuthOTP.is_used == False,
+            AuthOTP.expires_at > now_utc,
+        )
+        .order_by(AuthOTP.created_at.desc())
+    )
+    otp_row = otp_result.scalar_one_or_none()
+    if not otp_row or otp_row.otp_code != code:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP verification code.")
+
+    otp_row.is_used = True
+    await db.commit()
+
+    token = create_access_token({"sub": user.id, "role": user.role})
+    response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
+
+    user_resp = await _build_user_response(user, db)
+    return AuthResponse(access_token=token, user=user_resp, otp_required=False)
+
+
+@router.post("/resend-otp")
+@limiter.limit("5/minute")
+async def resend_otp(
+    request: Request,
+    body: ResendOTPRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    email = body.email.strip().lower()
+    user_result = await db.execute(select(User).where(User.email == email))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    await db.execute(
+        update(AuthOTP)
+        .where(AuthOTP.email == email, AuthOTP.is_used == False)
+        .values(is_used=True)
+    )
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+    new_otp = AuthOTP(email=email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
+    db.add(new_otp)
+    await db.commit()
+
+    email_html = f"""
+    <p>Hello <b>{user.full_name}</b>,</p>
+    <p>Your new StudyBuddy one-time security code is:</p>
+    <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
+    <p style="font-size:13px;color:#9ca3af;">Valid for {settings.otp_expire_minutes} minutes.</p>
+    """
+    await send_email(to=email, subject="[StudyBuddy] Resent OTP Verification Code", body=email_html)
+
+    return {
+        "message": "A fresh OTP verification code has been dispatched to your email.",
+        "simulation_otp": code if not settings.smtp_host else None,
+    }
 
 
 @router.post("/logout")

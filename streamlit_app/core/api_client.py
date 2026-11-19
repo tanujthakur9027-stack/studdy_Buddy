@@ -71,6 +71,19 @@ def api_post(path: str, timeout: int = TIMEOUT_LONG, **kw):
 def api_patch(path: str, timeout: int = TIMEOUT_SHORT, **kw):
     return api_request("PATCH", path, timeout, **kw)
 
+def api_download(path: str, timeout: int = TIMEOUT_SHORT) -> tuple[Optional[bytes], Optional[str]]:
+    """Download binary content (e.g. Excel / CSV files). Returns (bytes, error)."""
+    url = f"{BACKEND_URL}{path}"
+    headers = _auth_headers()
+    try:
+        resp = requests.get(url, timeout=timeout, headers=headers)
+        if resp.status_code == 200:
+            return resp.content, None
+        return None, f"HTTP {resp.status_code}: {resp.text}"
+    except Exception as exc:
+        return None, str(exc)
+
+
 def api_delete(path: str, timeout: int = TIMEOUT_SHORT, **kw):
     return api_request("DELETE", path, timeout, **kw)
 

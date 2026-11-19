@@ -12,7 +12,7 @@ import streamlit as st
 from core.styles import inject_global_css, badge, card
 from core.animations import page_enter
 from core.auth_state import require_login, current_user, is_admin
-from core.api_client import api_get, api_post, api_patch, api_delete, api_request, BACKEND_URL
+from core.api_client import api_get, api_post, api_patch, api_delete, api_request, api_download, BACKEND_URL
 
 
 inject_global_css()
@@ -72,7 +72,33 @@ st.markdown("""
 # ── Students ──────────────────────────────────────────────────────────────────
 with students_tab:
     _h("👨‍🎓 Registered Students & Roster Management")
-    search = st.text_input("Search by name, email or student ID", key="admin_student_search")
+    c_s1, c_s2, c_s3 = st.columns([2, 1, 1])
+    with c_s1:
+        search = st.text_input("Search by name, email or student ID", key="admin_student_search")
+    with c_s2:
+        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+        excel_bytes, _ = api_download(f"/api/admin/students/export/excel?search={search}" if search else "/api/admin/students/export/excel")
+        if excel_bytes:
+            st.download_button(
+                "📥 Export Excel (.xlsx)",
+                data=excel_bytes,
+                file_name="studybuddy_students.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="btn_export_excel",
+            )
+    with c_s3:
+        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+        csv_bytes, _ = api_download(f"/api/admin/students/export/csv?search={search}" if search else "/api/admin/students/export/csv")
+        if csv_bytes:
+            st.download_button(
+                "📄 Export CSV (.csv)",
+                data=csv_bytes,
+                file_name="studybuddy_students.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="btn_export_csv",
+            )
     data, err = api_get(f"/api/admin/students?search={search}" if search else "/api/admin/students", timeout=15)
     if err:
         st.error(err)

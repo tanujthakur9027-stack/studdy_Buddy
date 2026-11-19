@@ -15,7 +15,7 @@ import streamlit as st
 
 from core.styles import inject_global_css
 from core.animations import login_card_css, shake_anim, success_checkmark, page_enter
-from core.auth_state import is_logged_in, do_login, do_register
+from core.auth_state import is_logged_in, do_login, do_register, do_verify_otp, do_resend_otp
 
 inject_global_css()
 login_card_css()
@@ -29,7 +29,10 @@ if is_logged_in():
 if "_portal" not in st.session_state:
     st.session_state["_portal"] = "student"  # "student" | "admin"
 if "_auth_mode" not in st.session_state:
-    st.session_state["_auth_mode"] = "login"  # "login" | "register"
+    st.session_state["_auth_mode"] = "login"  # "login" | "register" | "otp_verify"
+
+if st.session_state.get("_otp_pending"):
+    st.session_state["_auth_mode"] = "otp_verify"
 
 portal = st.session_state["_portal"]
 auth_mode = st.session_state["_auth_mode"]
@@ -277,6 +280,9 @@ if auth_mode == "login" and portal == "student":
                 st.session_state["_login_shake"] = True
                 st.error(f"❌ {err}")
                 st.rerun()
+            elif st.session_state.get("_otp_pending"):
+                st.session_state["_auth_mode"] = "otp_verify"
+                st.rerun()
             else:
                 success_checkmark(f"Welcome back, {st.session_state['_user'].get('full_name', '')}!")
                 st.session_state["_login_shake"] = False
@@ -356,6 +362,9 @@ elif auth_mode == "login" and portal == "admin":
                 st.session_state["_login_shake"] = True
                 st.error(f"❌ {err}")
                 st.rerun()
+            elif st.session_state.get("_otp_pending"):
+                st.session_state["_auth_mode"] = "otp_verify"
+                st.rerun()
             else:
                 success_checkmark("Welcome to Admin Command Hub!")
                 st.session_state["_login_shake"] = False
@@ -384,6 +393,81 @@ elif auth_mode == "login" and portal == "admin":
     with col_bk:
         if st.button("🎓 Switch to Student Login →", key="goto_stud", use_container_width=True):
             st.session_state["_portal"] = "student"
+            st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2.5 TWO-FACTOR OTP VERIFICATION FORM
+# ═══════════════════════════════════════════════════════════════════════════════
+elif auth_mode == "otp_verify":
+    if st.session_state.get("_login_shake"):
+        shake_anim()
+        st.session_state["_login_shake"] = False
+
+    target_email = st.session_state.get("_otp_email", "")
+    sim_code = st.session_state.get("_otp_sim")
+
+    masked_email = target_email
+    if "@" in target_email:
+        u_part, d_part = target_email.split("@", 1)
+        prefix = u_part[:2] if len(u_part) >= 2 else u_part
+        masked_email = f"{prefix}***@{d_part}"
+
+    with st.form("otp_verification_form"):
+        st.markdown(f"""
+        <div style="margin-bottom: 1.15rem;">
+          <span style="display:inline-flex; align-items:center; gap:6px;
+                background:rgba(99,102,241,0.15); color:#818cf8;
+                border:1px solid rgba(99,102,241,0.3); padding:3px 11px;
+                border-radius:99px; font-size:10px; font-weight:800;
+                letter-spacing:0.06em; text-transform:uppercase;">
+            🛡️ TWO-FACTOR OTP VERIFICATION
+          </span>
+          <h2 style="font-size:22px; font-weight:800; color:#ffffff; margin:10px 0 4px 0;">Verify Your Identity</h2>
+          <p style="font-size:12.5px; color:#9ca3af; margin:0;">
+            A 6-digit verification code has been dispatched to <strong style="color:#e0e7ff;">{masked_email}</strong>.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if sim_code:
+            st.info(f"🛠️ **Simulation Mode (SMTP unconfigured)**: Code is **`{sim_code}`**", icon="ℹ️")
+
+        otp_val = st.text_input("Enter 6-Digit Verification PIN", max_chars=6, placeholder="••••••", key="otp_val_field")
+
+        submitted_otp = st.form_submit_button("Verify Code & Access StudyBuddy →", type="primary", use_container_width=True)
+
+    if submitted_otp:
+        if not otp_val or len(otp_val.strip()) < 6:
+            st.error("Please enter the complete 6-digit code.")
+        else:
+            ver_err = do_verify_otp(target_email, otp_val.strip())
+            if ver_err:
+                st.session_state["_login_shake"] = True
+                st.error(f"❌ {ver_err}")
+                st.rerun()
+            else:
+                user_name = st.session_state.get("_user", {}).get("full_name", "Student")
+                success_checkmark(f"Welcome back, {user_name}!")
+                st.session_state["_login_shake"] = False
+                time.sleep(0.8)
+                st.rerun()
+
+    c_resend, c_back = st.columns(2)
+    with c_resend:
+        if st.button("🔄 Resend OTP Code", key="btn_resend_otp", use_container_width=True):
+            msg, r_err = do_resend_otp(target_email)
+            if r_err:
+                st.error(r_err)
+            else:
+                st.success(msg or "Fresh code dispatched!")
+                st.rerun()
+    with c_back:
+        if st.button("← Back to Sign In", key="btn_cancel_otp", use_container_width=True):
+            st.session_state.pop("_otp_pending", None)
+            st.session_state.pop("_otp_email", None)
+            st.session_state.pop("_otp_sim", None)
+            st.session_state["_auth_mode"] = "login"
             st.rerun()
 
 

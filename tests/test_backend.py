@@ -39,6 +39,7 @@ os.environ["GROQ_API_KEY"] = "test"
 os.environ["UPLOAD_DIR"] = test_upload
 os.environ["FAISS_INDEX_DIR"] = test_faiss
 os.environ["CHROMA_PERSIST_DIR"] = test_chroma
+os.environ["OTP_AUTH_ENABLED"] = "false"
 
 from main import app  # noqa: E402  (after env setup)
 from database import engine, Base  # noqa: E402
@@ -334,4 +335,78 @@ async def test_profile_aliases(client: AsyncClient):
     assert up.status_code == 200
     assert up.json()["full_name"] == "Updated Name"
     assert up.json()["phone"] == "9998887777"
+
+
+@pytest.mark.asyncio
+async def test_otp_verification_flow(client: AsyncClient):
+    from config import get_settings
+    settings = get_settings()
+    orig = settings.otp_auth_enabled
+    settings.otp_auth_enabled = True
+    try:
+        reg_payload = _reg_payload("otp_user")
+        await client.post("/api/auth/register", json=reg_payload)
+
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"email": reg_payload["email"], "password": "Password123"},
+        )
+        assert login_resp.status_code == 200
+        data = login_resp.json()
+        assert data.get("otp_required") is True
+        assert "simulation_otp" in data
+        otp_code = data["simulation_otp"]
+
+        bad_resp = await client.post(
+            "/api/auth/verify-otp",
+            json={"email": reg_payload["email"], "otp_code": "000000"},
+        )
+        assert bad_resp.status_code == 400
+
+        good_resp = await client.post(
+            "/api/auth/verify-otp",
+            json={"email": reg_payload["email"], "otp_code": otp_code},
+        )
+        assert good_resp.status_code == 200
+        good_data = good_resp.json()
+        assert "access_token" in good_data
+        assert good_data["user"]["email"] == reg_payload["email"]
+    finally:
+        settings.otp_auth_enabled = orig
+
+
+@pytest.mark.asyncio
+async def test_admin_student_export(client: AsyncClient):
+    from models.db_models import User
+    from services.auth_service import hash_password, create_access_token
+    from database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        admin_user = User(
+            email="test_export_admin@studybuddy.com",
+            password_hash=hash_password("AdminPass123"),
+            full_name="Export Admin",
+            role="admin",
+            is_active=True,
+        )
+        session.add(admin_user)
+        await session.commit()
+        await session.refresh(admin_user)
+        admin_token = create_access_token({"sub": admin_user.id, "role": "admin"})
+
+    resp = await client.get(
+        "/api/admin/students/export/excel",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 200
+    assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in resp.headers["content-type"]
+    assert len(resp.content) > 100
+
+    resp_csv = await client.get(
+        "/api/admin/students/export/csv",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp_csv.status_code == 200
+    assert "text/csv" in resp_csv.headers["content-type"]
+    assert "Student ID,Full Name,Email Address" in resp_csv.text
 

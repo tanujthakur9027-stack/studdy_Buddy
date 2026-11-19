@@ -215,6 +215,21 @@ class SharedResource(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+# ── Auth OTP Verification ─────────────────────────────────────────────────────
+
+class AuthOTP(Base):
+    """Temporary One-Time Password (OTP) for login and registration verification."""
+    __tablename__ = "auth_otps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    otp_code: Mapped[str] = mapped_column(String(10))
+    purpose: Mapped[str] = mapped_column(String(20), default="login")  # "login" | "register"
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 # ── Users (authentication) ────────────────────────────────────────────────────
 
 class User(Base):

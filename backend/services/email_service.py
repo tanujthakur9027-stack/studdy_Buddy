@@ -1,8 +1,8 @@
 """
-services/email_service.py — Async email via SMTP using Jinja2 templates.
+services/email_service.py — Async email via SMTP using Jinja2 templates or direct HTML/text.
 
 Reads SMTP credentials from environment variables.
-If SMTP_HOST is not configured, all send calls are no-ops (log warning only).
+If SMTP_HOST is not configured, logs the message and returns False cleanly (simulation mode).
 """
 from __future__ import annotations
 
@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "email"
-
-# Lazy-initialise Jinja2 environment (Jinja2 is a FastAPI/Starlette dependency)
 _jinja_env = None
 
 
@@ -31,7 +29,7 @@ def _get_jinja_env():
                 autoescape=select_autoescape(["html"]),
             )
         except ImportError:
-            _jinja_env = None  # Jinja2 not available — fallback to plain text
+            _jinja_env = None
     return _jinja_env
 
 
@@ -47,9 +45,7 @@ def _render_template(name: str, context: dict[str, Any]) -> str:
         except Exception as exc:
             logger.warning("email_template_render_error", extra={"name": name, "error": str(exc)})
 
-    # Plain-text fallback
     if template_path.exists():
-        # Try simple {{key}} replacement as last resort
         html = template_path.read_text(encoding="utf-8")
         for key, value in context.items():
             html = html.replace(f"{{{{{key}}}}}", str(value) if value is not None else "")
@@ -58,27 +54,74 @@ def _render_template(name: str, context: dict[str, Any]) -> str:
     return "\n".join(f"{k}: {v}" for k, v in context.items())
 
 
+def wrap_html_email(title: str, content: str) -> str:
+    """Wrap raw message content into a branded StudyBuddy responsive email design."""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#090d16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#090d16;padding:30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:580px;background:#111827;border:1px solid #1f2937;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.4);" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="padding:28px 32px;background:linear-gradient(135deg,#1e1b4b 0%,#0f172a 100%);border-bottom:1px solid #1f2937;">
+              <div style="display:flex;align-items:center;">
+                <span style="font-size:24px;margin-right:10px;">🎓</span>
+                <span style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.03em;">StudyBuddy <span style="color:#818cf8;">AI</span></span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 32px 24px;">
+              <h2 style="margin:0 0 16px;font-size:18px;font-weight:700;color:#ffffff;">{title}</h2>
+              <div style="font-size:14px;line-height:1.6;color:#d1d5db;margin-bottom:24px;">
+                {content.replace(chr(10), '<br>')}
+              </div>
+              <div style="border-top:1px solid #1f2937;padding-top:20px;font-size:12px;color:#6b7280;">
+                Sent via StudyBuddy AI Automated Notification Relay &bull; Mangalayatan University
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
 async def send_email(
     to: str | list[str],
     subject: str,
-    template_name: str,
+    template_name: str = "",
     context: dict[str, Any] | None = None,
+    body: str = "",
 ) -> bool:
     """
-    Send an HTML email using a Jinja2 template.
+    Send an HTML email using a Jinja2 template or direct body.
     Returns True on success, False on failure.
-    Silently skips (returns False) if SMTP_HOST is not configured.
+    If SMTP_HOST is not configured, logs in simulation mode and returns False.
     """
-    if not settings.smtp_host:
-        logger.debug("email_skipped_no_smtp", extra={"to": to, "subject": subject})
-        return False
-
+    recipients = [to] if isinstance(to, str) else to
     context = context or {}
     context.setdefault("app_name", "Study Buddy")
     context.setdefault("app_url", settings.app_base_url)
 
-    html_body = _render_template(template_name, context)
-    recipients = [to] if isinstance(to, str) else to
+    if body:
+        html_body = body if ("<html" in body.lower() or "<body" in body.lower()) else wrap_html_email(subject, body)
+    elif template_name:
+        html_body = _render_template(template_name, context)
+    else:
+        html_body = wrap_html_email(subject, "\n".join(f"{k}: {v}" for k, v in context.items()))
+
+    if not settings.smtp_host:
+        logger.info("[SMTP SIMULATION] Email to %s | Subject: '%s' | Body Preview: %s", recipients, subject, html_body[:120].replace('\n', ' '))
+        return False
 
     try:
         import aiosmtplib

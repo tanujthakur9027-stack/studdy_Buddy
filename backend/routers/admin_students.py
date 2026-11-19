@@ -3,9 +3,16 @@ routers/admin_students.py — Admin: student management.
 """
 from __future__ import annotations
 
+import csv
+from datetime import datetime, timezone
+import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,6 +110,159 @@ async def student_count(admin=Depends(require_admin), db: AsyncSession = Depends
         select(func.count()).where(User.role == "student", User.is_active == True)  # noqa: E712
     )
     return {"total": total.scalar_one(), "active": active.scalar_one()}
+
+
+@router.get("/export/excel")
+async def export_students_excel(
+    search: str = "",
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and download a styled Excel spreadsheet (.xlsx) of all registered students."""
+    q = (
+        select(User, StudentProfile)
+        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+        .where(User.role == "student")
+    )
+    if search:
+        q = q.where(
+            User.full_name.ilike(f"%{search}%")
+            | User.email.ilike(f"%{search}%")
+            | StudentProfile.student_id.ilike(f"%{search}%")
+        )
+    q = q.order_by(User.created_at.desc())
+    result = await db.execute(q)
+    rows = result.all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Students Roster"
+
+    headers = [
+        "Student ID", "Full Name", "Email Address", "Phone",
+        "Course", "Branch", "Semester", "Section",
+        "Academic Year", "Date of Birth", "Account Status", "Registered Date"
+    ]
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin", color="D1D5DB"),
+        right=Side(style="thin", color="D1D5DB"),
+        top=Side(style="thin", color="D1D5DB"),
+        bottom=Side(style="thin", color="D1D5DB"),
+    )
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    ws.row_dimensions[1].height = 26
+
+    alt_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+
+    for row_idx, (user, prof) in enumerate(rows, start=2):
+        row_data = [
+            prof.student_id if prof and prof.student_id else f"STU-{user.id[:6].upper()}",
+            user.full_name or "",
+            user.email,
+            prof.phone if prof and prof.phone else "",
+            prof.course if prof and prof.course else "",
+            prof.branch if prof and prof.branch else "",
+            prof.semester if prof and prof.semester else "",
+            prof.section if prof and prof.section else "",
+            prof.academic_year if prof and prof.academic_year else "",
+            prof.dob if prof and prof.dob else "",
+            "Active" if user.is_active else "Inactive",
+            user.created_at.strftime("%Y-%m-%d %H:%M") if user.created_at else "",
+        ]
+        ws.append(row_data)
+        fill = alt_fill if row_idx % 2 == 0 else white_fill
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = thin_border
+            cell.fill = fill
+            cell.alignment = Alignment(vertical="center")
+
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or "")
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"studybuddy_students_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/csv")
+async def export_students_csv(
+    search: str = "",
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and download a CSV file of all registered students."""
+    q = (
+        select(User, StudentProfile)
+        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+        .where(User.role == "student")
+    )
+    if search:
+        q = q.where(
+            User.full_name.ilike(f"%{search}%")
+            | User.email.ilike(f"%{search}%")
+            | StudentProfile.student_id.ilike(f"%{search}%")
+        )
+    q = q.order_by(User.created_at.desc())
+    result = await db.execute(q)
+    rows = result.all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Student ID", "Full Name", "Email Address", "Phone",
+        "Course", "Branch", "Semester", "Section",
+        "Academic Year", "Date of Birth", "Status", "Registered At"
+    ])
+    for user, prof in rows:
+        writer.writerow([
+            prof.student_id if prof and prof.student_id else f"STU-{user.id[:6].upper()}",
+            user.full_name or "",
+            user.email,
+            prof.phone if prof and prof.phone else "",
+            prof.course if prof and prof.course else "",
+            prof.branch if prof and prof.branch else "",
+            prof.semester if prof and prof.semester else "",
+            prof.section if prof and prof.section else "",
+            prof.academic_year if prof and prof.academic_year else "",
+            prof.dob if prof and prof.dob else "",
+            "Active" if user.is_active else "Inactive",
+            str(user.created_at),
+        ])
+
+    buf.seek(0)
+    filename = f"studybuddy_students_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/{student_id}", response_model=StudentProfileOut)

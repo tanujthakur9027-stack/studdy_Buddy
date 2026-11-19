@@ -65,10 +65,41 @@ def do_login(email: str, password: str) -> Optional[str]:
     data, err = api_post("/api/auth/login", json={"email": email, "password": password})
     if err:
         return err
+    if data and data.get("otp_required"):
+        st.session_state["_otp_pending"] = True
+        st.session_state["_otp_email"] = data.get("email") or email
+        st.session_state["_otp_sim"] = data.get("simulation_otp")
+        st.session_state["_otp_msg"] = data.get("message", "Enter OTP verification code")
+        return None
     st.session_state["_token"] = data["access_token"]
     st.session_state["_user"]  = data["user"]
     st.session_state["documents_loaded"] = False
     return None
+
+
+def do_verify_otp(email: str, otp_code: str) -> Optional[str]:
+    """Verify 6-digit OTP code. Returns None on success, error string on failure."""
+    data, err = api_post("/api/auth/verify-otp", json={"email": email, "otp_code": otp_code})
+    if err:
+        return err
+    st.session_state["_token"] = data["access_token"]
+    st.session_state["_user"] = data["user"]
+    st.session_state["documents_loaded"] = False
+    st.session_state.pop("_otp_pending", None)
+    st.session_state.pop("_otp_email", None)
+    st.session_state.pop("_otp_sim", None)
+    st.session_state.pop("_otp_msg", None)
+    return None
+
+
+def do_resend_otp(email: str) -> tuple[Optional[str], Optional[str]]:
+    """Resend OTP code. Returns (message, error)."""
+    data, err = api_post("/api/auth/resend-otp", json={"email": email})
+    if err:
+        return None, err
+    if data and data.get("simulation_otp"):
+        st.session_state["_otp_sim"] = data["simulation_otp"]
+    return data.get("message", "A new OTP code has been dispatched."), None
 
 
 def do_register(payload: dict) -> Optional[str]:
@@ -84,7 +115,7 @@ def do_register(payload: dict) -> Optional[str]:
 
 def do_logout() -> None:
     api_post("/api/auth/logout")
-    for k in ["_token", "_user", "documents_loaded", "documents", "active_doc"]:
+    for k in ["_token", "_user", "documents_loaded", "documents", "active_doc", "_otp_pending", "_otp_email", "_otp_sim", "_otp_msg"]:
         st.session_state.pop(k, None)
 
 
