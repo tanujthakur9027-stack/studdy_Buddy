@@ -410,3 +410,58 @@ async def test_admin_student_export(client: AsyncClient):
     assert "text/csv" in resp_csv.headers["content-type"]
     assert "Student ID,Full Name,Email Address" in resp_csv.text
 
+
+@pytest.mark.asyncio
+async def test_admin_register_and_otp_login(client: AsyncClient):
+    from config import get_settings
+    settings = get_settings()
+    orig = settings.otp_auth_enabled
+    settings.otp_auth_enabled = True
+    try:
+        admin_email = "custom_admin_faculty@gmail.com"
+        reg_resp = await client.post(
+            "/api/auth/register-admin",
+            json={
+                "email": admin_email,
+                "password": "AdminPassword123",
+                "full_name": "Prof. Custom Admin",
+                "admin_key": "Admin@StudyBuddy2024",
+            },
+        )
+        assert reg_resp.status_code == 201
+        reg_data = reg_resp.json()
+        assert reg_data.get("otp_required") is True
+        assert "simulation_otp" in reg_data
+
+        otp_code = reg_data["simulation_otp"]
+        ver_resp = await client.post(
+            "/api/auth/verify-otp",
+            json={"email": admin_email, "otp_code": otp_code},
+        )
+        assert ver_resp.status_code == 200
+        ver_data = ver_resp.json()
+        assert ver_data["user"]["role"] == "admin"
+        assert ver_data["user"]["email"] == admin_email
+
+        login_resp = await client.post(
+            "/api/auth/login",
+            json={"email": admin_email, "password": "AdminPassword123"},
+        )
+        assert login_resp.status_code == 200
+        l_data = login_resp.json()
+        assert l_data.get("otp_required") is True
+        login_otp = l_data["simulation_otp"]
+
+        ver_login = await client.post(
+            "/api/auth/verify-otp",
+            json={"email": admin_email, "otp_code": login_otp},
+        )
+        assert ver_login.status_code == 200
+        token = ver_login.json()["access_token"]
+
+        me_resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me_resp.status_code == 200
+        assert me_resp.json()["role"] == "admin"
+    finally:
+        settings.otp_auth_enabled = orig
+

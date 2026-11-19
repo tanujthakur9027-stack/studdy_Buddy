@@ -53,6 +53,7 @@ class StudentAdminUpdate(BaseModel):
     section: Optional[str] = None
     academic_year: Optional[str] = None
     is_active: Optional[bool] = None
+    role: Optional[str] = None
 
 
 @router.get("", response_model=list[StudentProfileOut])
@@ -344,6 +345,8 @@ async def update_student(
         user.email = body.email.strip().lower()
     if body.is_active is not None:
         user.is_active = body.is_active
+    if body.role is not None and body.role in ("admin", "student"):
+        user.role = body.role
 
     if body.student_id is not None:
         profile.student_id = body.student_id

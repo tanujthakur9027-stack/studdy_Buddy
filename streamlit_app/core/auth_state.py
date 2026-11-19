@@ -84,6 +84,8 @@ def do_verify_otp(email: str, otp_code: str) -> Optional[str]:
         return err
     st.session_state["_token"] = data["access_token"]
     st.session_state["_user"] = data["user"]
+    role = (data.get("user") or {}).get("role", "student")
+    st.session_state["_portal"] = "admin" if role == "admin" else "student"
     st.session_state["documents_loaded"] = False
     st.session_state.pop("_otp_pending", None)
     st.session_state.pop("_otp_email", None)
@@ -103,12 +105,36 @@ def do_resend_otp(email: str) -> tuple[Optional[str], Optional[str]]:
 
 
 def do_register(payload: dict) -> Optional[str]:
-    """Attempt registration. Returns None on success, error string on failure."""
+    """Attempt student registration. Returns None on success, error string on failure."""
     data, err = api_post("/api/auth/register", json=payload)
     if err:
         return err
+    if data and data.get("otp_required"):
+        st.session_state["_otp_pending"] = True
+        st.session_state["_otp_email"] = data.get("email") or payload.get("email")
+        st.session_state["_otp_sim"] = data.get("simulation_otp")
+        st.session_state["_otp_msg"] = data.get("message", "Enter OTP verification code")
+        return None
     st.session_state["_token"] = data["access_token"]
     st.session_state["_user"]  = data["user"]
+    st.session_state["documents_loaded"] = False
+    return None
+
+
+def do_register_admin(payload: dict) -> Optional[str]:
+    """Attempt admin registration with any email format. Returns None on success, error string on failure."""
+    data, err = api_post("/api/auth/register-admin", json=payload)
+    if err:
+        return err
+    if data and data.get("otp_required"):
+        st.session_state["_otp_pending"] = True
+        st.session_state["_otp_email"] = data.get("email") or payload.get("email")
+        st.session_state["_otp_sim"] = data.get("simulation_otp")
+        st.session_state["_otp_msg"] = data.get("message", "Enter OTP verification code")
+        return None
+    st.session_state["_token"] = data["access_token"]
+    st.session_state["_user"]  = data["user"]
+    st.session_state["_portal"] = "admin"
     st.session_state["documents_loaded"] = False
     return None
 

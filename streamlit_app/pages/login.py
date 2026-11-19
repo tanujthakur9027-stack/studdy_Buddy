@@ -15,7 +15,7 @@ import streamlit as st
 
 from core.styles import inject_global_css
 from core.animations import login_card_css, shake_anim, success_checkmark, page_enter
-from core.auth_state import is_logged_in, do_login, do_register, do_verify_otp, do_resend_otp
+from core.auth_state import is_logged_in, do_login, do_register, do_register_admin, do_verify_otp, do_resend_otp
 
 inject_global_css()
 login_card_css()
@@ -315,7 +315,6 @@ elif auth_mode == "login" and portal == "admin":
         shake_anim()
         st.session_state["_login_shake"] = False
 
-    # Quick fill admin credentials if requested
     admin_default_email = "admin@studybuddy.com"
     admin_default_pwd   = "Admin@StudyBuddy2024"
 
@@ -332,15 +331,15 @@ elif auth_mode == "login" and portal == "admin":
           </span>
           <h2 style="font-size:22px; font-weight:800; color:#ffffff; margin:10px 0 4px 0;">Administrator Sign In</h2>
           <p style="font-size:12.5px; color:#9ca3af; margin:0;">
-            Manage classes, student enrollments, exam marks, timetables &amp; broadcasts.
+            Sign in with <strong>any registered administrator email</strong> (Gmail, Outlook, Yahoo, University, or Institution domain).
           </p>
         </div>
         """, unsafe_allow_html=True)
 
         a_email = st.text_input(
-            "Admin Staff Email",
+            "Administrator Email Address",
             value=st.session_state.get("_admin_autofill_email", ""),
-            placeholder="admin@studybuddy.com",
+            placeholder="e.g. yourname@gmail.com, admin@school.edu, faculty@domain.com",
             key="a_email_inp",
         )
         a_password = st.text_input(
@@ -371,33 +370,31 @@ elif auth_mode == "login" and portal == "admin":
                 time.sleep(0.8)
                 st.rerun()
 
-    # Demo Credentials helper card
-    st.markdown(f"""
-    <div style="background:rgba(24,24,27,0.8); border:1px solid rgba(245,158,11,0.25);
-         border-radius:14px; padding:12px 14px; margin-top:0.75rem;">
-      <p style="margin:0; font-size:11px; font-weight:700; color:#f59e0b;">✨ Default Administrator Credentials</p>
-      <p style="margin:4px 0 0; font-size:11.5px; font-family:monospace; color:#cbd5e1;">
-        Email: <strong style="color:#ffffff;">{admin_default_email}</strong><br>
-        Password: <strong style="color:#ffffff;">{admin_default_pwd}</strong>
-      </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_af, col_bk = st.columns(2)
-    with col_af:
-        if st.button("⚡ Fill Demo Credentials", key="btn_fill_adm", use_container_width=True):
-            st.session_state["_admin_autofill_email"] = admin_default_email
-            st.session_state["_admin_autofill_pwd"]   = admin_default_pwd
+    col_new_adm, col_bk = st.columns(2)
+    with col_new_adm:
+        if st.button("✨ Register New Admin Account", key="goto_reg_adm", use_container_width=True):
+            st.session_state["_auth_mode"] = "register_admin"
             st.rerun()
-
     with col_bk:
         if st.button("🎓 Switch to Student Login →", key="goto_stud", use_container_width=True):
             st.session_state["_portal"] = "student"
             st.rerun()
 
+    with st.expander("⚡ Quick Demo Admin Credentials (Optional)", expanded=False):
+        st.markdown(f"""
+        <p style="margin:0; font-size:12px; font-family:monospace; color:#cbd5e1;">
+          Email: <strong style="color:#ffffff;">{admin_default_email}</strong><br>
+          Password: <strong style="color:#ffffff;">{admin_default_pwd}</strong>
+        </p>
+        """, unsafe_allow_html=True)
+        if st.button("Fill Demo Admin Credentials", key="btn_fill_adm", use_container_width=True):
+            st.session_state["_admin_autofill_email"] = admin_default_email
+            st.session_state["_admin_autofill_pwd"]   = admin_default_pwd
+            st.rerun()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 2.5 TWO-FACTOR OTP VERIFICATION FORM
+# 2.5 TWO-FACTOR OTP VERIFICATION FORM (STUDENT & ADMIN)
 # ═══════════════════════════════════════════════════════════════════════════════
 elif auth_mode == "otp_verify":
     if st.session_state.get("_login_shake"):
@@ -447,8 +444,15 @@ elif auth_mode == "otp_verify":
                 st.error(f"❌ {ver_err}")
                 st.rerun()
             else:
-                user_name = st.session_state.get("_user", {}).get("full_name", "Student")
-                success_checkmark(f"Welcome back, {user_name}!")
+                user_obj = st.session_state.get("_user", {})
+                role = user_obj.get("role", "student")
+                user_name = user_obj.get("full_name", "User")
+                if role == "admin":
+                    st.session_state["_portal"] = "admin"
+                    success_checkmark(f"Identity Verified! Welcome to Admin Command Hub, {user_name}!")
+                else:
+                    st.session_state["_portal"] = "student"
+                    success_checkmark(f"Identity Verified! Welcome back, {user_name}!")
                 st.session_state["_login_shake"] = False
                 time.sleep(0.8)
                 st.rerun()
@@ -468,6 +472,89 @@ elif auth_mode == "otp_verify":
             st.session_state.pop("_otp_email", None)
             st.session_state.pop("_otp_sim", None)
             st.session_state["_auth_mode"] = "login"
+            st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2.7 REGISTER ADMINISTRATOR ACCOUNT (ANY EMAIL FORMAT)
+# ═══════════════════════════════════════════════════════════════════════════════
+elif auth_mode == "register_admin":
+    with st.form("register_admin_form"):
+        st.markdown("""
+        <div style="margin-bottom: 1.15rem;">
+          <span style="display:inline-flex; align-items:center; gap:6px;
+                background:rgba(245,158,11,0.12); color:#fcd34d;
+                border:1px solid rgba(245,158,11,0.3); padding:3px 11px;
+                border-radius:99px; font-size:10px; font-weight:800;
+                letter-spacing:0.06em; text-transform:uppercase;">
+            🛡️ FACULTY &amp; STAFF ONBOARDING
+          </span>
+          <h2 style="font-size:22px; font-weight:800; color:#ffffff; margin:10px 0 4px 0;">Create Administrator Account</h2>
+          <p style="font-size:12.5px; color:#9ca3af; margin:0;">
+            Register as faculty or system administrator with <strong>any email address format</strong> (Gmail, Outlook, Yahoo, University, Institutional).
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        adm_name = st.text_input("Full Name *", placeholder="e.g. Dr. Tanuj Singh", key="adm_reg_name")
+        adm_email = st.text_input("Administrator Email Address *", placeholder="e.g. yourname@gmail.com, prof@university.edu", key="adm_reg_email")
+
+        c_p1, c_p2 = st.columns(2)
+        adm_pwd1 = c_p1.text_input("Password *", type="password", placeholder="At least 8 characters", key="adm_reg_pwd1")
+        adm_pwd2 = c_p2.text_input("Confirm Password *", type="password", placeholder="Repeat password", key="adm_reg_pwd2")
+
+        adm_key = st.text_input(
+            "Administrator Setup Key",
+            value="Admin@StudyBuddy2024",
+            help="Security key authorizing administrator account creation. Default is 'Admin@StudyBuddy2024'.",
+            key="adm_reg_key",
+        )
+        adm_phone = st.text_input("Phone Number (optional)", placeholder="+91 9876543210", key="adm_reg_phone")
+
+        submitted_adm_reg = st.form_submit_button("Complete Administrator Registration →", type="primary", use_container_width=True)
+
+    if submitted_adm_reg:
+        errs = []
+        if not adm_name.strip():
+            errs.append("Full name is required.")
+        if not adm_email.strip() or "@" not in adm_email or "." not in adm_email.split("@")[-1]:
+            errs.append("A valid email address is required.")
+        if not adm_pwd1 or len(adm_pwd1) < 8:
+            errs.append("Password must be at least 8 characters.")
+        elif adm_pwd1 != adm_pwd2:
+            errs.append("Passwords do not match.")
+
+        if errs:
+            for er in errs:
+                st.error(er)
+        else:
+            r_err = do_register_admin({
+                "full_name": adm_name.strip(),
+                "email": adm_email.strip().lower(),
+                "password": adm_pwd1,
+                "admin_key": adm_key.strip(),
+                "phone": adm_phone.strip(),
+            })
+            if r_err:
+                st.error(f"❌ {r_err}")
+            elif st.session_state.get("_otp_pending"):
+                st.session_state["_auth_mode"] = "otp_verify"
+                st.rerun()
+            else:
+                success_checkmark("Administrator account created!")
+                time.sleep(0.8)
+                st.rerun()
+
+    c_abk1, c_abk2 = st.columns(2)
+    with c_abk1:
+        if st.button("← Back to Administrator Sign In", key="btn_back_adm_sign", use_container_width=True):
+            st.session_state["_auth_mode"] = "login"
+            st.session_state["_portal"] = "admin"
+            st.rerun()
+    with c_abk2:
+        if st.button("🎓 Student Sign In / Register", key="btn_goto_stud_reg", use_container_width=True):
+            st.session_state["_auth_mode"] = "login"
+            st.session_state["_portal"] = "student"
             st.rerun()
 
 
@@ -592,12 +679,21 @@ elif auth_mode == "register":
             })
             if err:
                 st.error(f"❌ {err}")
+            elif st.session_state.get("_otp_pending"):
+                st.session_state["_auth_mode"] = "otp_verify"
+                st.rerun()
             else:
                 success_checkmark(f"Account created! Welcome, {full_name.strip().split()[0]}! 🎉")
                 time.sleep(1.0)
                 st.rerun()
 
-    if st.button("← Already have an account? Back to Student Sign In", key="back_to_login", use_container_width=True):
-        st.session_state["_auth_mode"] = "login"
-        st.session_state["_portal"] = "student"
-        st.rerun()
+    c_ret1, c_ret2 = st.columns(2)
+    with c_ret1:
+        if st.button("← Back to Student Sign In", key="back_to_login", use_container_width=True):
+            st.session_state["_auth_mode"] = "login"
+            st.session_state["_portal"] = "student"
+            st.rerun()
+    with c_ret2:
+        if st.button("🛡️ Register as Administrator instead", key="goto_reg_adm_from_s", use_container_width=True):
+            st.session_state["_auth_mode"] = "register_admin"
+            st.rerun()

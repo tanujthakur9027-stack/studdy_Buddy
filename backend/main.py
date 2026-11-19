@@ -112,6 +112,11 @@ async def lifespan(app: FastAPI):
     for folder in ["assignments", "submissions", "notes", "photos"]:
         Path(settings.upload_dir, folder).mkdir(parents=True, exist_ok=True)
     await init_db()
+    try:
+        from seed_admin import seed
+        await seed()
+    except Exception as exc:
+        logger.debug("admin_seed_startup_skipped", extra={"reason": str(exc)})
     # Rebuild FAISS indexes from persisted ChromaDB so vector search works
     # immediately after a worker restart without requiring re-uploads.
     try:

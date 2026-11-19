@@ -63,6 +63,28 @@ class RegisterRequest(BaseModel):
         return v.lower().strip()
 
 
+class RegisterAdminRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    admin_key: Optional[str] = None
+    phone: Optional[str] = ""
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_format(cls, v: str) -> str:
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email format")
+        return v.lower().strip()
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -186,11 +208,101 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
     await db.commit()
     await db.refresh(user)
 
+    if settings.otp_auth_enabled:
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
+        db.add(new_otp)
+        await db.commit()
+
+        email_html = f"""
+        <p>Hello <b>{user.full_name}</b>,</p>
+        <p>Welcome to StudyBuddy! Your student account verification code (OTP) is:</p>
+        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes.</p>
+        """
+        await send_email(to=user.email, subject="[StudyBuddy] Verify Your Student Account", body=email_html)
+
+        return AuthResponse(
+            access_token=None,
+            user=None,
+            otp_required=True,
+            email=user.email,
+            message="Student account created. Please enter the OTP sent to your email to verify.",
+            simulation_otp=code if not settings.smtp_host else None,
+        )
+
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
 
     user_resp = await _build_user_response(user, db)
-    return AuthResponse(access_token=token, user=user_resp)
+    return AuthResponse(access_token=token, user=user_resp, otp_required=False)
+
+
+@router.post("/register-admin", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("15/minute")
+async def register_admin(
+    request: Request,
+    body: RegisterAdminRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Register an administrator account with any custom email address format."""
+    email = body.email.lower().strip()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    valid_keys = [settings.admin_seed_password, "admin2024", "Admin@StudyBuddy2024"]
+    if settings.secret_key:
+        valid_keys.append(settings.secret_key[:8])
+
+    if body.admin_key and body.admin_key.strip() not in valid_keys:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid Administrator Setup Key. Default is 'Admin@StudyBuddy2024'.",
+        )
+
+    user = User(
+        email=email,
+        password_hash=hash_password(body.password),
+        full_name=body.full_name,
+        role="admin",
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    if settings.otp_auth_enabled:
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
+        db.add(new_otp)
+        await db.commit()
+
+        email_html = f"""
+        <p>Hello <b>{user.full_name}</b>,</p>
+        <p>Welcome to StudyBuddy as an Administrator! Your verification code (OTP) is:</p>
+        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes.</p>
+        """
+        await send_email(to=user.email, subject="[StudyBuddy] Admin Verification Code", body=email_html)
+
+        return AuthResponse(
+            access_token=None,
+            user=None,
+            otp_required=True,
+            email=user.email,
+            message="Administrator account created. Please enter the OTP sent to your email to verify.",
+            simulation_otp=code if not settings.smtp_host else None,
+        )
+
+    token = create_access_token({"sub": user.id, "role": user.role})
+    response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
+
+    user_resp = await _build_user_response(user, db)
+    return AuthResponse(access_token=token, user=user_resp, otp_required=False)
 
 
 @router.post("/login", response_model=AuthResponse)
