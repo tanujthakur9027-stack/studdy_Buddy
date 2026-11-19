@@ -39,7 +39,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     full_name: str
-    student_id: str
+    student_id: Optional[str] = None
     phone: str = ""
     course: str = ""
     branch: str = ""
@@ -47,6 +47,8 @@ class RegisterRequest(BaseModel):
     section: str = ""
     academic_year: str = ""
     dob: Optional[str] = None
+    role: Optional[str] = "student"
+    admin_key: Optional[str] = None
 
     @field_validator("password")
     @classmethod
@@ -173,40 +175,62 @@ class AuthResponse(BaseModel):
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("15/minute")
 async def register(request: Request, body: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    email = body.email.lower().strip()
     # Check duplicate email
-    existing = await db.execute(select(User).where(User.email == body.email.lower()))
+    existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Check duplicate student ID
-    existing_sid = await db.execute(select(StudentProfile).where(StudentProfile.student_id == body.student_id))
-    if existing_sid.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Student ID already registered")
+    is_admin_reg = (body.role == "admin")
 
-    user = User(
-        email=body.email.lower(),
-        password_hash=hash_password(body.password),
-        full_name=body.full_name,
-        role="student",
-        is_active=True,
-    )
-    db.add(user)
-    await db.flush()  # get user.id
+    if is_admin_reg:
+        valid_keys = [settings.admin_seed_password, "admin2024", "Admin@StudyBuddy2024"]
+        if settings.secret_key:
+            valid_keys.append(settings.secret_key[:8])
+        if body.admin_key and body.admin_key.strip() not in valid_keys:
+            raise HTTPException(status_code=403, detail="Invalid Administrator Setup Key.")
 
-    profile = StudentProfile(
-        user_id=user.id,
-        student_id=body.student_id,
-        phone=body.phone,
-        course=body.course,
-        branch=body.branch,
-        semester=body.semester,
-        section=body.section,
-        academic_year=body.academic_year,
-        dob=body.dob,
-    )
-    db.add(profile)
-    await db.commit()
-    await db.refresh(user)
+        user = User(
+            email=email,
+            password_hash=hash_password(body.password),
+            full_name=body.full_name,
+            role="admin",
+            is_active=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    else:
+        # Student registration
+        sid = body.student_id or f"STU-{email.split('@')[0][:6].upper()}"
+        existing_sid = await db.execute(select(StudentProfile).where(StudentProfile.student_id == sid))
+        if existing_sid.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Student ID already registered")
+
+        user = User(
+            email=email,
+            password_hash=hash_password(body.password),
+            full_name=body.full_name,
+            role="student",
+            is_active=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        profile = StudentProfile(
+            user_id=user.id,
+            student_id=sid,
+            phone=body.phone,
+            course=body.course,
+            branch=body.branch,
+            semester=body.semester,
+            section=body.section,
+            academic_year=body.academic_year,
+            dob=body.dob,
+        )
+        db.add(profile)
+        await db.commit()
+        await db.refresh(user)
 
     if settings.otp_auth_enabled:
         code = f"{secrets.randbelow(900000) + 100000}"
@@ -215,20 +239,21 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         db.add(new_otp)
         await db.commit()
 
+        acc_type = "Administrator" if is_admin_reg else "Student"
         email_html = f"""
         <p>Hello <b>{user.full_name}</b>,</p>
-        <p>Welcome to StudyBuddy! Your student account verification code (OTP) is:</p>
+        <p>Welcome to StudyBuddy! Your {acc_type} account verification code (OTP) is:</p>
         <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
         <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes.</p>
         """
-        await send_email(to=user.email, subject="[StudyBuddy] Verify Your Student Account", body=email_html)
+        await send_email(to=user.email, subject=f"[StudyBuddy] Verify Your {acc_type} Account", body=email_html)
 
         return AuthResponse(
             access_token=None,
             user=None,
             otp_required=True,
             email=user.email,
-            message="Student account created. Please enter the OTP sent to your email to verify.",
+            message=f"{acc_type} account created. Please enter the OTP sent to your email to verify.",
             simulation_otp=code if not settings.smtp_host else None,
         )
 

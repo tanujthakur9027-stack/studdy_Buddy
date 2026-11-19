@@ -123,8 +123,17 @@ def do_register(payload: dict) -> Optional[str]:
 
 def do_register_admin(payload: dict) -> Optional[str]:
     """Attempt admin registration with any email format. Returns None on success, error string on failure."""
+    # 1. Try dedicated endpoint /api/auth/register-admin
     data, err = api_post("/api/auth/register-admin", json=payload)
+    # 2. If 404 (e.g. backend running older commit or cached server), try standard /api/auth/register with role=admin
+    if err and "404" in str(err):
+        data, err = api_post("/api/auth/register", json={**payload, "role": "admin"})
+    # 3. If still 404, try un-prefixed /auth/register-admin
+    if err and "404" in str(err):
+        data, err = api_post("/auth/register-admin", json=payload)
     if err:
+        if "404" in str(err):
+            return "Server update in progress (HTTP 404). Please reboot the app in Streamlit Cloud ('Manage app' -> 'Reboot') to load new endpoints."
         return err
     if data and data.get("otp_required"):
         st.session_state["_otp_pending"] = True

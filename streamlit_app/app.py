@@ -104,7 +104,7 @@ def _inject_secrets() -> None:
 
 # ── In-process FastAPI server via uvicorn.Server ───────────────────────────────
 @st.cache_resource(show_spinner=False)
-def _start_backend() -> str:
+def _start_backend(build_tag: str = "v4_universal_admin_otp") -> str:
     """
     Import and start the FastAPI app in a background thread.
     Returns "ok" immediately — the server is ready within ~2 s.
@@ -162,7 +162,7 @@ st.set_page_config(
 )
 
 # ── Start backend in-process (non-blocking, returns immediately) ───────────────
-_start_backend()
+_start_backend("v4_universal_admin_otp")
 
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 def _is_logged_in() -> bool:

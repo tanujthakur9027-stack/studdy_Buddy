@@ -207,6 +207,7 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 # ── /api/* routers ────────────────────────────────────────────────────────────
 # Auth
 app.include_router(auth_router,               prefix="/api")
+app.include_router(auth_router)
 # Existing AI tools
 app.include_router(upload.router,             prefix="/api")
 app.include_router(ask.router,                prefix="/api")

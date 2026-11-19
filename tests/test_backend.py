@@ -465,3 +465,22 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
     finally:
         settings.otp_auth_enabled = orig
 
+
+@pytest.mark.asyncio
+async def test_admin_register_via_standard_endpoint(client: AsyncClient):
+    # Test registering an admin via /api/auth/register with role="admin"
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "faculty_standard_reg@gmail.com",
+            "password": "AdminPassword123",
+            "full_name": "Faculty Standard",
+            "role": "admin",
+            "admin_key": "Admin@StudyBuddy2024",
+        },
+    )
+    assert reg_resp.status_code == 201
+    data = reg_resp.json()
+    assert data["user"]["role"] == "admin"
+    assert data["user"]["email"] == "faculty_standard_reg@gmail.com"
+
