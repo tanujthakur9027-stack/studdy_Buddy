@@ -127,11 +127,24 @@ async def send_email(
         import aiosmtplib
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
+        from email.utils import formatdate, make_msgid
+        import re
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = settings.smtp_from
         msg["To"] = ", ".join(recipients)
+        msg["Date"] = formatdate(localtime=True)
+        try:
+            domain = settings.smtp_host.split(".")[-2] + "." + settings.smtp_host.split(".")[-1]
+        except Exception:
+            domain = "studybuddy.ai"
+        msg["Message-ID"] = make_msgid(domain=domain)
+
+        # Plain-text alternative reduces spam scores significantly
+        plain_text = re.sub(r"<[^>]+>", " ", html_body)
+        plain_text = re.sub(r"\s+", " ", plain_text).strip()
+        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
         use_tls = settings.smtp_port == 465
@@ -147,7 +160,9 @@ async def send_email(
             start_tls=start_tls,
         )
         logger.info("email_sent", extra={"to": recipients, "subject": subject})
+        print(f"📧 [EMAIL DISPATCH SUCCESS] Real email sent to {recipients} | Subject: '{subject}'", flush=True)
         return True
     except Exception as exc:
         logger.warning("email_failed", extra={"error": str(exc), "to": to})
+        print(f"❌ [EMAIL DISPATCH FAILED] Real email failed for {recipients}: {exc}", flush=True)
         return False

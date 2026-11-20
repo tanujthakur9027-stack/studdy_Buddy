@@ -183,13 +183,18 @@ class AuthResponse(BaseModel):
     simulation_otp: Optional[str] = None
 
 
-def _get_otp_dispatch_message(email_sent: bool, acc_desc: str = "") -> str:
+def _get_otp_dispatch_message(email_sent: bool, acc_desc: str = "", sim_active: bool = False) -> str:
     prefix = f"{acc_desc} " if acc_desc else ""
+    if sim_active:
+        if email_sent:
+            return f"{prefix}Security code sent! (Dev Auto-fill also enabled below; please check inbox and spam folder)."
+        return f"{prefix}Security code generated below for instant access (Development Mode)."
     if email_sent:
-        return f"{prefix}Security verification code dispatched to your registered email inbox."
-    if not settings.smtp_host:
-        return f"{prefix}Notice: Real email sending is active, but SMTP_HOST is not configured in backend/.env. Please configure SMTP to receive verification emails."
-    return f"{prefix}Security code sent. Please check your inbox or spam folder."
+        return f"{prefix}Security verification code dispatched! Please check your email inbox and Spam/Junk folder."
+    current_settings = get_settings()
+    if not current_settings.smtp_host:
+        return f"{prefix}Notice: Real email sending is active, but SMTP_HOST is not configured in backend/.env. Security code provided below."
+    return f"{prefix}Email dispatch issue detected. Backup security code provided below for instant verification."
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -263,9 +268,10 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         await db.commit()
         await db.refresh(user)
 
-    if settings.otp_auth_enabled:
+    current_settings = get_settings()
+    if current_settings.otp_auth_enabled:
         code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
         new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
         db.add(new_otp)
         await db.commit()
@@ -275,17 +281,19 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         <p>Hello <b>{user.full_name}</b>,</p>
         <p>Welcome to StudyBuddy! Your {acc_type} account verification code (OTP) is:</p>
         <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes.</p>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
         """
         email_sent = await send_email(to=user.email, subject=f"[StudyBuddy] Verify Your {acc_type} Account", body=email_html)
+        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Registration code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
+        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
         return AuthResponse(
             access_token=None,
             user=None,
             otp_required=True,
             email=user.email,
-            message=_get_otp_dispatch_message(email_sent, f"{acc_type} account created."),
-            simulation_otp=code if (settings.otp_simulation_mode and not settings.smtp_host) else None,
+            message=_get_otp_dispatch_message(email_sent, f"{acc_type} account created.", sim_active=is_sim),
+            simulation_otp=code if is_sim else None,
         )
 
     token = create_access_token({"sub": user.id, "role": user.role})
@@ -341,9 +349,10 @@ async def register_admin(
     await db.commit()
     await db.refresh(user)
 
-    if settings.otp_auth_enabled:
+    current_settings = get_settings()
+    if current_settings.otp_auth_enabled:
         code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
         new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
         db.add(new_otp)
         await db.commit()
@@ -352,17 +361,19 @@ async def register_admin(
         <p>Hello <b>{user.full_name}</b>,</p>
         <p>Welcome to StudyBuddy as an Administrator! Your verification code (OTP) is:</p>
         <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes.</p>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
         """
         email_sent = await send_email(to=user.email, subject="[StudyBuddy] Admin Verification Code", body=email_html)
+        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Admin Registration code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
+        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
         return AuthResponse(
             access_token=None,
             user=None,
             otp_required=True,
             email=user.email,
-            message=_get_otp_dispatch_message(email_sent, "Administrator account created."),
-            simulation_otp=code if (settings.otp_simulation_mode and not settings.smtp_host) else None,
+            message=_get_otp_dispatch_message(email_sent, "Administrator account created.", sim_active=is_sim),
+            simulation_otp=code if is_sim else None,
         )
 
     token = create_access_token({"sub": user.id, "role": user.role})
@@ -407,15 +418,16 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
         user_resp = await _build_user_response(user, db)
         return AuthResponse(access_token=token, user=user_resp, otp_required=False)
 
+    current_settings = get_settings()
     # 2-Step OTP Authentication Flow
-    if settings.otp_auth_enabled:
+    if current_settings.otp_auth_enabled:
         await db.execute(
             update(AuthOTP)
             .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
             .values(is_used=True)
         )
         code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
         new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
         db.add(new_otp)
         await db.commit()
@@ -424,17 +436,19 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
         <p>Hello <b>{user.full_name}</b>,</p>
         <p>Your one-time security verification code (OTP) for StudyBuddy is:</p>
         <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {settings.otp_expire_minutes} minutes. Please do not share this code with anyone.</p>
+        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes. Please do not share this code with anyone.</p>
         """
         email_sent = await send_email(to=user.email, subject="[StudyBuddy] Your Login Verification Code", body=email_html)
+        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Login code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
+        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
         return AuthResponse(
             access_token=None,
             user=None,
             otp_required=True,
             email=user.email,
-            message=_get_otp_dispatch_message(email_sent),
-            simulation_otp=code if (settings.otp_simulation_mode and not settings.smtp_host) else None,
+            message=_get_otp_dispatch_message(email_sent, sim_active=is_sim),
+            simulation_otp=code if is_sim else None,
         )
 
     # Direct login if OTP auth is turned off
@@ -508,8 +522,9 @@ async def resend_otp(
         .values(is_used=True)
     )
 
+    current_settings = get_settings()
     code = f"{secrets.randbelow(900000) + 100000}"
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
     new_otp = AuthOTP(email=email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
     db.add(new_otp)
     await db.commit()
@@ -518,13 +533,15 @@ async def resend_otp(
     <p>Hello <b>{user.full_name}</b>,</p>
     <p>Your new StudyBuddy one-time security code is:</p>
     <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-    <p style="font-size:13px;color:#9ca3af;">Valid for {settings.otp_expire_minutes} minutes.</p>
+    <p style="font-size:13px;color:#9ca3af;">Valid for {current_settings.otp_expire_minutes} minutes.</p>
     """
     email_sent = await send_email(to=email, subject="[StudyBuddy] Resent OTP Verification Code", body=email_html)
+    print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Resent code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
+    is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
     return {
-        "message": _get_otp_dispatch_message(email_sent, "Fresh code:"),
-        "simulation_otp": code if (settings.otp_simulation_mode and not settings.smtp_host) else None,
+        "message": _get_otp_dispatch_message(email_sent, "Fresh code:", sim_active=is_sim),
+        "simulation_otp": code if is_sim else None,
     }
 
 
