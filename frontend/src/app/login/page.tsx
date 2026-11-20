@@ -73,9 +73,9 @@ export default function LoginPage() {
 
   // Quick fill default admin credentials
   const fillAdminCredentials = () => {
-    setEmail("admin@studybuddy.com");
+    setEmail("tanujthakur3646@gmail.com");
     setPassword("Admin@StudyBuddy2024");
-    toast.success("Default admin credentials filled!");
+    toast.success("Admin credentials filled!");
   };
 
   const handlePortalSwitch = (type: "student" | "admin") => {
@@ -476,7 +476,7 @@ export default function LoginPage() {
                       </button>
                     </div>
                     <div className="font-mono text-[11px] text-gray-300 space-y-0.5">
-                      <p>Email: <span className="text-white">admin@studybuddy.com</span></p>
+                      <p>Email: <span className="text-white">tanujthakur3646@gmail.com</span></p>
                       <p>Password: <span className="text-white">Admin@StudyBuddy2024</span></p>
                     </div>
                     <div className="pt-2 text-center space-y-1.5 border-t border-gray-800/60">
