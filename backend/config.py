@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────────
     secret_key: str = ""
     access_token_expire_minutes: int = 60
-    admin_seed_email: str = "admin@studybuddy.com"
+    admin_seed_email: str = "tanujthakur3646@gmail.com"
     admin_seed_password: str = "Admin@StudyBuddy2024"
 
     # ── Auth feature flag ─────────────────────────────────────────────────────
@@ -66,11 +66,11 @@ class Settings(BaseSettings):
     otp_simulation_mode: bool = False
 
     # ── Email / SMTP ──────────────────────────────────────────────────────────
-    smtp_host: str = ""
+    smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_pass: str = ""
-    smtp_from: str = "noreply@studybuddy.com"
+    smtp_user: str = "tanujthakur3646@gmail.com"
+    smtp_pass: str = "REDACTED"
+    smtp_from: str = "StudyBuddy <tanujthakur3646@gmail.com>"
     app_base_url: str = "http://localhost:3000"
 
     # ── File limits ───────────────────────────────────────────────────────────

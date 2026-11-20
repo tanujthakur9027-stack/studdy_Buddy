@@ -315,7 +315,7 @@ elif auth_mode == "login" and portal == "admin":
         shake_anim()
         st.session_state["_login_shake"] = False
 
-    admin_default_email = "admin@studybuddy.com"
+    admin_default_email = "tanujthakur3646@gmail.com"
     admin_default_pwd   = "Admin@StudyBuddy2024"
 
     with st.form("admin_login_form"):

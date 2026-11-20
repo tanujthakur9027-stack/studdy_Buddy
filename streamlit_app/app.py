@@ -83,13 +83,15 @@ def _inject_secrets() -> None:
         "RATE_LIMIT_PER_MINUTE":       "60",
         "SECRET_KEY":                  _s("SECRET_KEY", "dev-secret-change-in-prod"),
         "ACCESS_TOKEN_EXPIRE_MINUTES": "1440",
-        "ADMIN_SEED_EMAIL":            _s("ADMIN_SEED_EMAIL", "admin@studybuddy.com"),
+        "ADMIN_SEED_EMAIL":            _s("ADMIN_SEED_EMAIL", "tanujthakur3646@gmail.com"),
         "ADMIN_SEED_PASSWORD":         _s("ADMIN_SEED_PASSWORD", "Admin@StudyBuddy2024"),
-        "SMTP_HOST":                   _s("SMTP_HOST", ""),
+        "OTP_AUTH_ENABLED":            _s("OTP_AUTH_ENABLED", "true"),
+        "OTP_SIMULATION_MODE":         _s("OTP_SIMULATION_MODE", "false"),
+        "SMTP_HOST":                   _s("SMTP_HOST", "smtp.gmail.com"),
         "SMTP_PORT":                   _s("SMTP_PORT", "587"),
-        "SMTP_USER":                   _s("SMTP_USER", ""),
-        "SMTP_PASS":                   _s("SMTP_PASS", ""),
-        "SMTP_FROM":                   _s("SMTP_FROM", "noreply@studybuddy.com"),
+        "SMTP_USER":                   _s("SMTP_USER", "tanujthakur3646@gmail.com"),
+        "SMTP_PASS":                   _s("SMTP_PASS", "REDACTED"),
+        "SMTP_FROM":                   _s("SMTP_FROM", "StudyBuddy <tanujthakur3646@gmail.com>"),
         "APP_BASE_URL":                _s("APP_BASE_URL", "https://studybuddy.streamlit.app"),
         "ASSIGNMENT_FILE_MAX_MB":      "50",
         "NOTE_FILE_MAX_MB":            "50",
@@ -104,7 +106,7 @@ def _inject_secrets() -> None:
 
 # ── In-process FastAPI server via uvicorn.Server ───────────────────────────────
 @st.cache_resource(show_spinner=False)
-def _start_backend(build_tag: str = "v4_universal_admin_otp") -> str:
+def _start_backend(build_tag: str = "v5_real_gmail_smtp_otp") -> str:
     """
     Import and start the FastAPI app in a background thread.
     Returns "ok" immediately — the server is ready within ~2 s.

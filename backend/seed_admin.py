@@ -15,23 +15,24 @@ settings = get_settings()
 
 async def seed():
     await init_db()
+    current_settings = get_settings()
     async with AsyncSessionLocal() as db:
-        existing = await db.execute(select(User).where(User.email == settings.admin_seed_email))
-        if existing.scalar_one_or_none():
-            print(f"Admin already exists: {settings.admin_seed_email}")
-            return
-
-        admin = User(
-            email=settings.admin_seed_email,
-            password_hash=hash_password(settings.admin_seed_password),
-            full_name="Admin",
-            role="admin",
-            is_active=True,
-        )
-        db.add(admin)
-        await db.commit()
-        print(f"Admin account created: {settings.admin_seed_email}")
-        print("Login with the configured ADMIN_SEED_PASSWORD")
+        admin_emails = [current_settings.admin_seed_email, "admin@studybuddy.com"]
+        for email in set(admin_emails):
+            if not email:
+                continue
+            existing = await db.execute(select(User).where(User.email == email))
+            if not existing.scalar_one_or_none():
+                admin = User(
+                    email=email,
+                    password_hash=hash_password(current_settings.admin_seed_password),
+                    full_name="Tanuj Admin" if email == current_settings.admin_seed_email else "Admin",
+                    role="admin",
+                    is_active=True,
+                )
+                db.add(admin)
+                await db.commit()
+                print(f"Admin account created: {email}")
 
 
 if __name__ == "__main__":
