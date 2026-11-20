@@ -107,10 +107,11 @@ async def send_email(
     Returns True on success, False on failure.
     If SMTP_HOST is not configured, logs in simulation mode and returns False.
     """
+    current_settings = get_settings()
     recipients = [to] if isinstance(to, str) else to
     context = context or {}
     context.setdefault("app_name", "Study Buddy")
-    context.setdefault("app_url", settings.app_base_url)
+    context.setdefault("app_url", current_settings.app_base_url)
 
     if body:
         html_body = body if ("<html" in body.lower() or "<body" in body.lower()) else wrap_html_email(subject, body)
@@ -119,7 +120,7 @@ async def send_email(
     else:
         html_body = wrap_html_email(subject, "\n".join(f"{k}: {v}" for k, v in context.items()))
 
-    if not settings.smtp_host:
+    if not current_settings.smtp_host:
         logger.info("[SMTP SIMULATION] Email to %s | Subject: '%s' | Body Preview: %s", recipients, subject, html_body[:120].replace('\n', ' '))
         return False
 
@@ -132,11 +133,11 @@ async def send_email(
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = settings.smtp_from
+        msg["From"] = current_settings.smtp_from
         msg["To"] = ", ".join(recipients)
         msg["Date"] = formatdate(localtime=True)
         try:
-            domain = settings.smtp_host.split(".")[-2] + "." + settings.smtp_host.split(".")[-1]
+            domain = current_settings.smtp_host.split(".")[-2] + "." + current_settings.smtp_host.split(".")[-1]
         except Exception:
             domain = "studybuddy.ai"
         msg["Message-ID"] = make_msgid(domain=domain)
@@ -147,15 +148,15 @@ async def send_email(
         msg.attach(MIMEText(plain_text, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-        use_tls = settings.smtp_port == 465
-        start_tls = settings.smtp_port == 587 or (not use_tls and settings.smtp_port != 25)
+        use_tls = current_settings.smtp_port == 465
+        start_tls = current_settings.smtp_port == 587 or (not use_tls and current_settings.smtp_port != 25)
 
         await aiosmtplib.send(
             msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_user or None,
-            password=settings.smtp_pass or None,
+            hostname=current_settings.smtp_host,
+            port=current_settings.smtp_port,
+            username=current_settings.smtp_user or None,
+            password=current_settings.smtp_pass or None,
             use_tls=use_tls,
             start_tls=start_tls,
         )

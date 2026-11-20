@@ -186,15 +186,13 @@ class AuthResponse(BaseModel):
 def _get_otp_dispatch_message(email_sent: bool, acc_desc: str = "", sim_active: bool = False) -> str:
     prefix = f"{acc_desc} " if acc_desc else ""
     if sim_active:
-        if email_sent:
-            return f"{prefix}Security code sent! (Dev Auto-fill also enabled below; please check inbox and spam folder)."
         return f"{prefix}Security code generated below for instant access (Development Mode)."
     if email_sent:
-        return f"{prefix}Security verification code dispatched! Please check your email inbox and Spam/Junk folder."
+        return f"{prefix}A 6-digit verification code has been dispatched to your email. Please check your inbox."
     current_settings = get_settings()
     if not current_settings.smtp_host:
-        return f"{prefix}Notice: Real email sending is active, but SMTP_HOST is not configured in backend/.env. Security code provided below."
-    return f"{prefix}Email dispatch issue detected. Backup security code provided below for instant verification."
+        return f"{prefix}Notice: SMTP_HOST is not configured in backend/.env."
+    return f"{prefix}Email dispatch issue detected. Backup security code provided below for verification."
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
