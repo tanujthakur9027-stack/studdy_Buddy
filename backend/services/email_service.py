@@ -134,13 +134,17 @@ async def send_email(
         msg["To"] = ", ".join(recipients)
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+        use_tls = settings.smtp_port == 465
+        start_tls = settings.smtp_port == 587 or (not use_tls and settings.smtp_port != 25)
+
         await aiosmtplib.send(
             msg,
             hostname=settings.smtp_host,
             port=settings.smtp_port,
             username=settings.smtp_user or None,
             password=settings.smtp_pass or None,
-            start_tls=settings.smtp_port == 587,
+            use_tls=use_tls,
+            start_tls=start_tls,
         )
         logger.info("email_sent", extra={"to": recipients, "subject": subject})
         return True

@@ -28,6 +28,10 @@ async def run_e2e():
     await init_db()
     print("✓ Database initialized.")
 
+    from config import get_settings
+    settings = get_settings()
+    settings.otp_simulation_mode = True
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # ------------------------------------------------------------------

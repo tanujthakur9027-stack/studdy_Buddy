@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     auth_required: bool = True
     otp_auth_enabled: bool = True
     otp_expire_minutes: int = 5
+    otp_simulation_mode: bool = False
 
     # ── Email / SMTP ──────────────────────────────────────────────────────────
     smtp_host: str = ""

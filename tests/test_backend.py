@@ -342,7 +342,9 @@ async def test_otp_verification_flow(client: AsyncClient):
     from config import get_settings
     settings = get_settings()
     orig = settings.otp_auth_enabled
+    orig_sim = settings.otp_simulation_mode
     settings.otp_auth_enabled = True
+    settings.otp_simulation_mode = True
     try:
         reg_payload = _reg_payload("otp_user")
         await client.post("/api/auth/register", json=reg_payload)
@@ -373,6 +375,7 @@ async def test_otp_verification_flow(client: AsyncClient):
         assert good_data["user"]["email"] == reg_payload["email"]
     finally:
         settings.otp_auth_enabled = orig
+        settings.otp_simulation_mode = orig_sim
 
 
 @pytest.mark.asyncio
@@ -416,7 +419,9 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
     from config import get_settings
     settings = get_settings()
     orig = settings.otp_auth_enabled
+    orig_sim = settings.otp_simulation_mode
     settings.otp_auth_enabled = True
+    settings.otp_simulation_mode = True
     try:
         admin_email = "custom_admin_faculty@gmail.com"
         reg_resp = await client.post(
@@ -464,6 +469,7 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
         assert me_resp.json()["role"] == "admin"
     finally:
         settings.otp_auth_enabled = orig
+        settings.otp_simulation_mode = orig_sim
 
 
 @pytest.mark.asyncio
