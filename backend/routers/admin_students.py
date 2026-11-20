@@ -266,21 +266,30 @@ async def export_students_csv(
     )
 
 
+async def _resolve_student(db: AsyncSession, identifier: str) -> tuple[Optional[User], Optional[StudentProfile]]:
+    result = await db.execute(
+        select(User, StudentProfile)
+        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+        .where(
+            (User.id == identifier) | (StudentProfile.student_id == identifier),
+            User.role == "student",
+        )
+    )
+    row = result.first()
+    if not row:
+        return None, None
+    return row[0], row[1]
+
+
 @router.get("/{student_id}", response_model=StudentProfileOut)
 async def get_student(
     student_id: str,
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(User, StudentProfile)
-        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-        .where(User.id == student_id, User.role == "student")
-    )
-    row = result.first()
-    if not row:
+    user, profile = await _resolve_student(db, student_id)
+    if not user:
         raise HTTPException(status_code=404, detail="Student not found")
-    user, profile = row
     return StudentProfileOut(
         id=user.id,
         email=user.email,
@@ -311,8 +320,7 @@ async def update_status(
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == student_id, User.role == "student"))
-    user = result.scalar_one_or_none()
+    user, _ = await _resolve_student(db, student_id)
     if not user:
         raise HTTPException(status_code=404, detail="Student not found")
     user.is_active = body.is_active
@@ -328,15 +336,12 @@ async def update_student(
     db: AsyncSession = Depends(get_db),
 ):
     """Admin update student details (name, email, course, semester, etc.)."""
-    user_res = await db.execute(select(User).where(User.id == student_id, User.role == "student"))
-    user = user_res.scalar_one_or_none()
+    user, profile = await _resolve_student(db, student_id)
     if not user:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_id))
-    profile = profile_res.scalar_one_or_none()
     if not profile:
-        profile = StudentProfile(user_id=student_id, student_id=f"STU-{student_id[:6].upper()}")
+        profile = StudentProfile(user_id=user.id, student_id=f"STU-{user.id[:6].upper()}")
         db.add(profile)
 
     if body.full_name is not None:
@@ -398,8 +403,7 @@ async def delete_student(
     permanent=false -> soft delete (is_active = False)
     permanent=true -> hard delete from database
     """
-    result = await db.execute(select(User).where(User.id == student_id, User.role == "student"))
-    user = result.scalar_one_or_none()
+    user, _ = await _resolve_student(db, student_id)
     if not user:
         raise HTTPException(status_code=404, detail="Student not found")
 
@@ -425,10 +429,8 @@ async def assign_student_to_class(
     db: AsyncSession = Depends(get_db),
 ):
     """Assign or unassign a student to/from a class."""
-    user_result = await db.execute(
-        select(User).where(User.id == student_id, User.role == "student")
-    )
-    if not user_result.scalar_one_or_none():
+    user, profile = await _resolve_student(db, student_id)
+    if not user:
         raise HTTPException(status_code=404, detail="Student not found")
 
     if body.class_id:
@@ -436,12 +438,8 @@ async def assign_student_to_class(
         if not class_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Class not found")
 
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == student_id)
-    )
-    profile = profile_result.scalar_one_or_none()
     if not profile:
-        profile = StudentProfile(user_id=student_id, student_id=f"STU-{student_id[:6].upper()}")
+        profile = StudentProfile(user_id=user.id, student_id=f"STU-{user.id[:6].upper()}")
         db.add(profile)
 
     profile.class_id = body.class_id

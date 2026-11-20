@@ -180,7 +180,10 @@ async def dispatch_counselor_alert(
     user_res = await db.execute(
         select(User, StudentProfile)
         .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-        .where(User.id == body.student_id, User.role == "student")
+        .where(
+            (User.id == body.student_id) | (StudentProfile.student_id == body.student_id),
+            User.role == "student",
+        )
     )
     row = user_res.first()
     if not row:

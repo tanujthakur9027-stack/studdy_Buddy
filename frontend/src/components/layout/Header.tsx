@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   Bell, X, Shield, GraduationCap, User, LogOut, Send,
-  ChevronDown, AlertCircle, LogIn
+  ChevronDown, AlertCircle
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api, contactAdmin } from "@/lib/api";

@@ -171,12 +171,11 @@ async def contact_admin(
             email_dispatched = await send_email(
                 to=admin_emails,
                 subject=f"[StudyBuddy Support] {full_subject}",
-                template_name="registration_confirmation.html",
+                template_name="announcement.html",
                 context={
+                    "title": full_subject,
+                    "message": full_message,
                     "app_name": "StudyBuddy Administration",
-                    "student_name": current_user.full_name,
-                    "message": body.message,
-                    "student_email": current_user.email,
                 },
             )
         except Exception:
@@ -209,7 +208,14 @@ async def broadcast_notification(
     recipient_users: list[User] = []
 
     if body.target == "student" and body.target_id:
-        res = await db.execute(select(User).where(User.id == body.target_id, User.is_active == True))  # noqa: E712
+        res = await db.execute(
+            select(User)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .where(
+                (User.id == body.target_id) | (StudentProfile.student_id == body.target_id),
+                User.is_active == True,
+            )
+        )
         user = res.scalar_one_or_none()
         if user:
             recipient_users = [user]
@@ -250,8 +256,12 @@ async def broadcast_notification(
                 sent = await send_email(
                     to=em,
                     subject=f"[StudyBuddy Notice] {body.title}",
-                    template_name="registration_confirmation.html",
-                    context={"app_name": "StudyBuddy", "message": body.message},
+                    template_name="announcement.html",
+                    context={
+                        "title": body.title,
+                        "message": body.message,
+                        "app_name": "StudyBuddy",
+                    },
                 )
                 if sent:
                     email_sent_count += 1

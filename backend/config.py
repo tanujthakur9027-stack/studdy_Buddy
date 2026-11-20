@@ -34,9 +34,9 @@ class Settings(BaseSettings):
     s3_public_url: str = ""         # e.g. https://pub-xxx.r2.dev or https://bucket.s3.amazonaws.com
 
     # ── Vector store & file storage ───────────────────────────────────────────
-    chroma_persist_dir: str = "./chroma_db"
-    faiss_index_dir: str = "./faiss_indexes"
-    upload_dir: str = "./uploads"
+    chroma_persist_dir: str = str((Path(__file__).resolve().parent / "chroma_db"))
+    faiss_index_dir: str = str((Path(__file__).resolve().parent / "faiss_indexes"))
+    upload_dir: str = str((Path(__file__).resolve().parent / "uploads"))
     max_file_size_mb: int = 200
 
     # ── CORS ──────────────────────────────────────────────────────────────────

@@ -1,118 +1,668 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { BookOpen } from "lucide-react";
+import {
+  GraduationCap,
+  Shield,
+  KeyRound,
+  Sparkles,
+  ShieldCheck,
+  ArrowLeft,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  User,
+  Mail,
+  Lock,
+  Building2,
+  FileBadge,
+} from "lucide-react";
 
-export default function RegisterPage() {
-  const { register } = useAuth();
+function RegisterContent() {
+  const { register, verifyOtp, resendOtp } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Active portal tab: "student" | "admin"
+  const initialRole = searchParams.get("role") === "admin" ? "admin" : "student";
+  const [portal, setPortal] = useState<"student" | "admin">(initialRole);
+
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Common and Role-specific form fields
   const [form, setForm] = useState({
-    full_name: "", email: "", password: "", student_id: "",
-    phone: "", course: "", branch: "", semester: "", section: "",
-    academic_year: "", dob: "",
+    full_name: "",
+    email: "",
+    password: "",
+    phone: "",
+    // Student specific
+    student_id: "",
+    course: "",
+    branch: "",
+    semester: "",
+    section: "",
+    academic_year: "",
+    dob: "",
+    // Admin specific
+    admin_key: "",
+    designation: "",
+    department: "",
   });
+
+  // OTP Verification States
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [simOtp, setSimOtp] = useState<string | null>(null);
+  const [otpMessage, setOtpMessage] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setInterval(() => {
+      setCountdown((c) => c - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const handlePortalSwitch = (role: "student" | "admin") => {
+    setPortal(role);
+    setShowOtp(false);
+    setOtpCode("");
+    setSimOtp(null);
+  };
+
+  const fillDefaultAdminKey = () => {
+    setForm((f) => ({ ...f, admin_key: "Admin@StudyBuddy2024" }));
+    toast.success("Administrator setup key filled!");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+    if (form.password.length < 8) {
+      toast.error("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (portal === "admin" && !form.admin_key.trim()) {
+      toast.error("Please enter the Administrator Setup Key (Default: Admin@StudyBuddy2024).");
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(form);
-      toast.success("Account created successfully!");
-      router.push("/dashboard");
+      const payload: Record<string, string> = {
+        role: portal,
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim(),
+      };
+
+      if (portal === "admin") {
+        payload.admin_key = form.admin_key.trim();
+        payload.student_id = form.designation.trim() || form.student_id.trim();
+        payload.branch = form.department.trim() || "Academic Staff";
+      } else {
+        payload.student_id = form.student_id.trim();
+        payload.course = form.course.trim();
+        payload.branch = form.branch.trim();
+        payload.semester = form.semester.trim();
+        payload.section = form.section.trim();
+        payload.academic_year = form.academic_year.trim();
+        payload.dob = form.dob.trim();
+      }
+
+      const res = await register(payload);
+
+      if (res.otp_required) {
+        setShowOtp(true);
+        setOtpEmail(res.email || form.email.trim().toLowerCase());
+        setSimOtp(res.simulation_otp || null);
+        setOtpMessage(res.message || "Please enter the 6-digit verification code sent to your email.");
+        setCountdown(30);
+        toast.success("Security verification code generated!");
+      } else {
+        toast.success(`Account created successfully as ${portal === "admin" ? "Administrator" : "Student"}!`);
+        if (portal === "admin") {
+          router.push("/admin/dashboard");
+        } else {
+          router.push("/dashboard");
+        }
+      }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Registration failed";
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Registration failed. Please check your inputs.";
       toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const inputClass = "w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors";
-  const labelClass = "block text-sm font-medium text-gray-300 mb-1.5";
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.trim().length < 4) {
+      toast.error("Please enter the 6-digit OTP verification code.");
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const verifiedUser = await verifyOtp(otpEmail, otpCode.trim());
+      toast.success(`Welcome to StudyBuddy, ${verifiedUser.full_name || "User"}!`);
+      if (verifiedUser.role === "admin" || portal === "admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (err as Error)?.message ||
+        "Invalid or expired OTP code.";
+      toast.error(msg);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (countdown > 0 || resending) return;
+    setResending(true);
+    try {
+      const res = await resendOtp(otpEmail);
+      if (res.simulation_otp) {
+        setSimOtp(res.simulation_otp);
+      }
+      setCountdown(45);
+      toast.success(res.message || "New OTP dispatched to your registered email.");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Failed to resend OTP.";
+      toast.error(msg);
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const inputClass =
+    "w-full px-4 py-3 bg-gray-900/90 border border-gray-700/80 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors text-sm";
+  const labelClass = "block text-xs font-semibold text-gray-300 mb-1.5";
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        <div className="text-center mb-8">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 py-12 relative overflow-hidden">
+      {/* Background radial gradient glow */}
+      <div
+        className={`absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[450px] rounded-full blur-[140px] pointer-events-none transition-colors duration-700 opacity-20 ${
+          portal === "admin" ? "bg-amber-500" : "bg-blue-600"
+        }`}
+      />
+
+      <div className="w-full max-w-2xl relative z-10 space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-white" />
+            <div
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-all ${
+                portal === "admin"
+                  ? "bg-gradient-to-tr from-amber-600 to-yellow-500 text-black shadow-amber-500/20"
+                  : "bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-blue-500/20"
+              }`}
+            >
+              {portal === "admin" ? (
+                <Shield className="w-6 h-6" />
+              ) : (
+                <GraduationCap className="w-6 h-6" />
+              )}
             </div>
-            <span className="text-2xl font-bold text-white">Study Buddy</span>
+            <div className="text-left">
+              <h1 className="text-2xl font-black text-white tracking-tight">StudyBuddy AI</h1>
+              <span
+                className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider border ${
+                  portal === "admin"
+                    ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                    : "bg-blue-500/10 text-blue-300 border-blue-500/30"
+                }`}
+              >
+                {portal === "admin" ? "Faculty & Administrator Portal" : "Student Learning Portal"}
+              </span>
+            </div>
           </div>
-          <p className="text-gray-400 mt-2">Create your student account</p>
+          <p className="text-gray-400 text-sm">
+            {showOtp
+              ? "Verify your identity with 2-Factor authentication"
+              : `Register a new ${portal === "admin" ? "Administrator" : "Student"} account`}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <label className={labelClass}>Full Name *</label>
-              <input className={inputClass} required placeholder="John Doe" value={form.full_name} onChange={set("full_name")} />
-            </div>
-            <div>
-              <label className={labelClass}>Email *</label>
-              <input className={inputClass} type="email" required placeholder="you@example.com" value={form.email} onChange={set("email")} />
-            </div>
-            <div>
-              <label className={labelClass}>Password *</label>
-              <input className={inputClass} type="password" required placeholder="Min 8 characters" value={form.password} onChange={set("password")} />
-            </div>
-            <div>
-              <label className={labelClass}>Student ID / Roll Number *</label>
-              <input className={inputClass} required placeholder="CS2024001" value={form.student_id} onChange={set("student_id")} />
-            </div>
-            <div>
-              <label className={labelClass}>Phone</label>
-              <input className={inputClass} placeholder="+91 9876543210" value={form.phone} onChange={set("phone")} />
-            </div>
-            <div>
-              <label className={labelClass}>Course</label>
-              <input className={inputClass} placeholder="B.Tech, MCA, etc." value={form.course} onChange={set("course")} />
-            </div>
-            <div>
-              <label className={labelClass}>Branch</label>
-              <input className={inputClass} placeholder="Computer Science" value={form.branch} onChange={set("branch")} />
-            </div>
-            <div>
-              <label className={labelClass}>Semester</label>
-              <input className={inputClass} placeholder="3rd Semester" value={form.semester} onChange={set("semester")} />
-            </div>
-            <div>
-              <label className={labelClass}>Section</label>
-              <input className={inputClass} placeholder="A" value={form.section} onChange={set("section")} />
-            </div>
-            <div>
-              <label className={labelClass}>Academic Year</label>
-              <input className={inputClass} placeholder="2024-25" value={form.academic_year} onChange={set("academic_year")} />
-            </div>
-            <div>
-              <label className={labelClass}>Date of Birth</label>
-              <input className={inputClass} type="date" value={form.dob} onChange={set("dob")} />
-            </div>
+        {/* Portal Switcher Tabs (Hidden during OTP step) */}
+        {!showOtp && (
+          <div className="bg-gray-900/90 p-1.5 rounded-2xl border border-gray-800 grid grid-cols-2 gap-1 shadow-inner backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch("student")}
+              className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold transition-all ${
+                portal === "student"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/25 border border-blue-500/40"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <GraduationCap className={`w-4 h-4 ${portal === "student" ? "text-white" : "text-blue-400"}`} />
+              Student Registration
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch("admin")}
+              className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold transition-all ${
+                portal === "admin"
+                  ? "bg-gradient-to-r from-amber-600 to-yellow-600 text-black shadow-lg shadow-amber-600/25 border border-amber-500/40"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <Shield className={`w-4 h-4 ${portal === "admin" ? "text-black" : "text-amber-400"}`} />
+              Admin / Faculty Registration
+            </button>
           </div>
+        )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-6 w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
-          >
-            {loading ? "Creating Account..." : "Create Account"}
-          </button>
+        {/* Main Card */}
+        <div
+          className={`bg-gray-900/90 rounded-3xl p-7 border transition-all shadow-2xl backdrop-blur-xl ${
+            portal === "admin"
+              ? "border-amber-500/30 shadow-amber-500/5"
+              : "border-blue-500/30 shadow-blue-500/5"
+          }`}
+        >
+          {showOtp ? (
+            /* ── STEP 2: OTP Verification Screen ── */
+            <div className="space-y-5 max-w-md mx-auto">
+              <div className="text-center space-y-1.5">
+                <div
+                  className={`w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-2 border ${
+                    portal === "admin"
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                      : "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                  }`}
+                >
+                  <KeyRound className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-black text-white">2-Factor Security Verification</h2>
+                <p className="text-gray-400 text-xs">
+                  {otpMessage || "A 6-digit one-time code has been dispatched to:"}
+                </p>
+                <p className="text-indigo-400 font-mono text-xs font-bold">{otpEmail}</p>
+              </div>
 
-          <p className="text-center text-gray-400 text-sm mt-4">
-            Already have an account?{" "}
-            <Link href="/login" className="text-blue-400 hover:text-blue-300">Sign in</Link>
-          </p>
-        </form>
+              {/* Dev Simulation Banner (When SMTP is not configured) */}
+              {simOtp && (
+                <div className="bg-indigo-950/70 border border-indigo-500/40 rounded-2xl p-4 text-xs space-y-2">
+                  <div className="flex items-center justify-between text-indigo-300 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-400" />
+                      Development Mode Simulation
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOtpCode(simOtp)}
+                      className="text-[11px] text-amber-400 hover:underline font-extrabold"
+                    >
+                      ⚡ Auto-fill
+                    </button>
+                  </div>
+                  <p className="text-gray-400 text-[11px]">
+                    Your temporary security verification code is:
+                  </p>
+                  <div className="text-center font-mono font-black text-2xl tracking-[0.25em] text-white bg-black/40 py-2 rounded-xl border border-indigo-500/30">
+                    {simOtp}
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 text-center">
+                    Enter 6-Digit OTP Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ""))}
+                    required
+                    autoFocus
+                    placeholder="123456"
+                    className="w-full text-center font-mono text-2xl tracking-[0.3em] font-bold py-3.5 bg-gray-950 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={verifying}
+                  className={`w-full py-3.5 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${
+                    portal === "admin"
+                      ? "bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black shadow-amber-600/25"
+                      : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/25"
+                  }`}
+                >
+                  {verifying ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      Complete Verification & Enter
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="pt-2 flex items-center justify-between text-xs text-gray-400 border-t border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setShowOtp(false)}
+                  className="flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Edit Form
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={countdown > 0 || resending}
+                  className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 disabled:text-gray-600 font-semibold transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${resending ? "animate-spin" : ""}`} />
+                  {countdown > 0 ? `Resend code (${countdown}s)` : "Resend Code"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── STEP 1: Registration Form ── */
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Admin Setup Key Helper Card (Shown only on Admin Tab) */}
+              {portal === "admin" && (
+                <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-4 text-xs space-y-2">
+                  <div className="flex items-center justify-between text-amber-300 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-amber-400" />
+                      Faculty & Staff Verification Required
+                    </span>
+                    <button
+                      type="button"
+                      onClick={fillDefaultAdminKey}
+                      className="text-[11px] text-amber-400 hover:underline font-extrabold"
+                    >
+                      ⚡ Use Default Key
+                    </button>
+                  </div>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    Administrator registration requires the master setup key to prevent unauthorized access.
+                    Default development key: <code className="text-amber-300 font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded">Admin@StudyBuddy2024</code>
+                  </p>
+                </div>
+              )}
+
+              {/* Form Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Full Name */}
+                <div>
+                  <label className={labelClass}>
+                    <User className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+                    Full Name *
+                  </label>
+                  <input
+                    className={inputClass}
+                    required
+                    placeholder={portal === "admin" ? "Prof. Alan Turing" : "John Doe"}
+                    value={form.full_name}
+                    onChange={set("full_name")}
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div>
+                  <label className={labelClass}>
+                    <Mail className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+                    {portal === "admin" ? "Official / University Email *" : "Student Email *"}
+                  </label>
+                  <input
+                    className={inputClass}
+                    type="email"
+                    required
+                    placeholder={portal === "admin" ? "faculty@university.edu" : "student@university.edu"}
+                    value={form.email}
+                    onChange={set("email")}
+                  />
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className={labelClass}>
+                    <Lock className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+                    Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      className={inputClass}
+                      type={showPassword ? "text" : "password"}
+                      required
+                      placeholder="Min 8 characters"
+                      value={form.password}
+                      onChange={set("password")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className={labelClass}>Phone Number</label>
+                  <input
+                    className={inputClass}
+                    placeholder="+91 9876543210"
+                    value={form.phone}
+                    onChange={set("phone")}
+                  />
+                </div>
+
+                {/* ── ADMIN SPECIFIC FIELDS ── */}
+                {portal === "admin" ? (
+                  <>
+                    <div>
+                      <label className={labelClass}>
+                        <KeyRound className="w-3.5 h-3.5 inline mr-1 text-amber-400" />
+                        Administrator Setup Key *
+                      </label>
+                      <input
+                        className={inputClass}
+                        required
+                        type="password"
+                        placeholder="Admin@StudyBuddy2024"
+                        value={form.admin_key}
+                        onChange={set("admin_key")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>
+                        <FileBadge className="w-3.5 h-3.5 inline mr-1 text-amber-400" />
+                        Faculty / Employee ID
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="EMP-1042 or ADMIN-CS"
+                        value={form.designation}
+                        onChange={set("designation")}
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className={labelClass}>
+                        <Building2 className="w-3.5 h-3.5 inline mr-1 text-amber-400" />
+                        Department / Administrative Office
+                      </label>
+                      <input
+                        className={inputClass}
+                        placeholder="Department of Computer Science & Engineering"
+                        value={form.department}
+                        onChange={set("department")}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  /* ── STUDENT SPECIFIC FIELDS ── */
+                  <>
+                    <div>
+                      <label className={labelClass}>Student ID / Roll Number *</label>
+                      <input
+                        className={inputClass}
+                        required
+                        placeholder="CS2024001"
+                        value={form.student_id}
+                        onChange={set("student_id")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Course / Degree</label>
+                      <input
+                        className={inputClass}
+                        placeholder="B.Tech, BCA, MCA, M.Tech"
+                        value={form.course}
+                        onChange={set("course")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Branch / Specialization</label>
+                      <input
+                        className={inputClass}
+                        placeholder="Computer Science, AI & ML"
+                        value={form.branch}
+                        onChange={set("branch")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Semester</label>
+                      <input
+                        className={inputClass}
+                        placeholder="4th Semester"
+                        value={form.semester}
+                        onChange={set("semester")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Section</label>
+                      <input
+                        className={inputClass}
+                        placeholder="A"
+                        value={form.section}
+                        onChange={set("section")}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Academic Year</label>
+                      <input
+                        className={inputClass}
+                        placeholder="2024-25"
+                        value={form.academic_year}
+                        onChange={set("academic_year")}
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className={labelClass}>Date of Birth</label>
+                      <input
+                        className={inputClass}
+                        type="date"
+                        value={form.dob}
+                        onChange={set("dob")}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3.5 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 mt-2 ${
+                  portal === "admin"
+                    ? "bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black shadow-amber-600/25"
+                    : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/25"
+                }`}
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Creating Account & Dispatching OTP...
+                  </>
+                ) : (
+                  <>
+                    {portal === "admin" ? <Shield className="w-4 h-4" /> : <GraduationCap className="w-4 h-4" />}
+                    Create {portal === "admin" ? "Administrator" : "Student"} Account →
+                  </>
+                )}
+              </button>
+
+              {/* Footer Switch Links */}
+              <div className="pt-4 border-t border-gray-800/80 text-center space-y-2">
+                <p className="text-xs text-gray-400">
+                  Already have an account?{" "}
+                  <Link
+                    href={`/login`}
+                    className={`font-bold hover:underline ${
+                      portal === "admin" ? "text-amber-400 hover:text-amber-300" : "text-blue-400 hover:text-blue-300"
+                    }`}
+                  >
+                    Sign In
+                  </Link>
+                </p>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400 text-sm">
+          Loading registration portal...
+        </div>
+      }
+    >
+      <RegisterContent />
+    </Suspense>
   );
 }

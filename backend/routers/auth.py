@@ -142,6 +142,15 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
         sid = profile.student_id
     elif user.role == "admin":
         sid = f"ADMIN-{user.id[:6].upper()}"
+    elif user.role == "student":
+        sid = f"STU-{user.id[:6].upper()}"
+        try:
+            profile = StudentProfile(user_id=user.id, student_id=sid)
+            db.add(profile)
+            await db.commit()
+            await db.refresh(profile)
+        except Exception:
+            pass
 
     return UserResponse(
         id=user.id,
@@ -200,6 +209,17 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
             is_active=True,
         )
         db.add(user)
+        await db.flush()
+
+        admin_sid = body.student_id.strip() if (body.student_id and body.student_id.strip()) else f"ADMIN-{user.id[:6].upper()}"
+        admin_prof = StudentProfile(
+            user_id=user.id,
+            student_id=admin_sid,
+            phone=body.phone or "",
+            course="Administration",
+            branch=body.branch or "Academic Staff",
+        )
+        db.add(admin_prof)
         await db.commit()
         await db.refresh(user)
     else:
@@ -298,6 +318,17 @@ async def register_admin(
         is_active=True,
     )
     db.add(user)
+    await db.flush()
+
+    admin_sid = body.student_id.strip() if (body.student_id and body.student_id.strip()) else f"ADMIN-{user.id[:6].upper()}"
+    admin_prof = StudentProfile(
+        user_id=user.id,
+        student_id=admin_sid,
+        phone=body.phone or "",
+        course="Administration",
+        branch="Academic Staff",
+    )
+    db.add(admin_prof)
     await db.commit()
     await db.refresh(user)
 

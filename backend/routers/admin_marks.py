@@ -147,10 +147,21 @@ async def enter_marks(
                 detail=f"Obtained {entry.obtained_marks} exceeds max {cat.max_marks} for '{cat.name}'"
             )
 
+        # Resolve student identifier (accepts either user UUID or student_id roll number)
+        target_uid = entry.student_id
+        u_res = await db.execute(
+            select(User.id)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .where((User.id == target_uid) | (StudentProfile.student_id == target_uid))
+        )
+        resolved_uid = u_res.scalar_one_or_none()
+        if resolved_uid:
+            target_uid = resolved_uid
+
         # Upsert
         existing = await db.execute(
             select(Mark).where(
-                Mark.student_id == entry.student_id,
+                Mark.student_id == target_uid,
                 Mark.category_id == entry.category_id,
             )
         )
@@ -160,7 +171,7 @@ async def enter_marks(
             mark.remarks = entry.remarks
         else:
             mark = Mark(
-                student_id=entry.student_id,
+                student_id=target_uid,
                 category_id=entry.category_id,
                 obtained_marks=entry.obtained_marks,
                 remarks=entry.remarks,

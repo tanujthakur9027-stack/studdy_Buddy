@@ -21,12 +21,24 @@ export interface AuthUser {
   class_name?: string | null;
 }
 
+export interface AuthResponseData {
+  access_token?: string | null;
+  token_type?: string;
+  user?: AuthUser | null;
+  otp_required?: boolean;
+  email?: string | null;
+  message?: string | null;
+  simulation_otp?: string | null;
+}
+
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (_email: string, _password: string) => Promise<void>;
+  login: (_email: string, _password: string) => Promise<AuthResponseData>;
+  verifyOtp: (_email: string, _otpCode: string) => Promise<AuthUser>;
+  resendOtp: (_email: string) => Promise<{ message?: string; simulation_otp?: string }>;
   logout: () => Promise<void>;
-  register: (_data: Record<string, string>) => Promise<void>;
+  register: (_data: Record<string, string>) => Promise<AuthResponseData>;
   refreshUser: () => Promise<void>;
 }
 
@@ -104,18 +116,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => api.interceptors.response.eject(id);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data } = await api.post(
+  const login = async (email: string, password: string): Promise<AuthResponseData> => {
+    const { data } = await api.post<AuthResponseData>(
       "/api/auth/login",
       { email, password },
       { withCredentials: true }
     );
+    if (!data.otp_required && data.access_token && data.user) {
+      setUser(data.user);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sb_token", data.access_token);
+        localStorage.setItem("sb_user", JSON.stringify(data.user));
+      }
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
+    }
+    return data;
+  };
+
+  const verifyOtp = async (email: string, otp_code: string): Promise<AuthUser> => {
+    const { data } = await api.post<AuthResponseData>(
+      "/api/auth/verify-otp",
+      { email, otp_code },
+      { withCredentials: true }
+    );
+    if (!data.access_token || !data.user) {
+      throw new Error(data.message || "OTP verification failed");
+    }
     setUser(data.user);
     if (typeof window !== "undefined") {
       localStorage.setItem("sb_token", data.access_token);
       localStorage.setItem("sb_user", JSON.stringify(data.user));
     }
     api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
+    return data.user;
+  };
+
+  const resendOtp = async (email: string): Promise<{ message?: string; simulation_otp?: string }> => {
+    const { data } = await api.post(
+      "/api/auth/resend-otp",
+      { email },
+      { withCredentials: true }
+    );
+    return data;
   };
 
   const logout = async () => {
@@ -132,22 +174,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     delete api.defaults.headers.common["Authorization"];
   };
 
-  const register = async (formData: Record<string, string>) => {
-    const { data } = await api.post(
-      "/api/auth/register",
+  const register = async (formData: Record<string, string>): Promise<AuthResponseData> => {
+    const endpoint = formData.role === "admin" ? "/api/auth/register-admin" : "/api/auth/register";
+    const { data } = await api.post<AuthResponseData>(
+      endpoint,
       formData,
       { withCredentials: true }
     );
-    setUser(data.user);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("sb_token", data.access_token);
-      localStorage.setItem("sb_user", JSON.stringify(data.user));
+    if (!data.otp_required && data.access_token && data.user) {
+      setUser(data.user);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sb_token", data.access_token);
+        localStorage.setItem("sb_user", JSON.stringify(data.user));
+      }
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
     }
-    api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
+    return data;
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyOtp, resendOtp, logout, register, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

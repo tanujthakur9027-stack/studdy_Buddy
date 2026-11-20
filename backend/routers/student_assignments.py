@@ -59,9 +59,14 @@ async def list_my_assignments(
         select(StudentProfile).where(StudentProfile.user_id == current_user.id)
     )
     profile = profile_result.scalar_one_or_none()
+    if not profile:
+        profile = StudentProfile(user_id=current_user.id, student_id=f"STU-{current_user.id[:6].upper()}")
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
 
-    # If student has no class assigned, return empty list — not all assignments
-    if not profile or not profile.class_id:
+    # If student has no class assigned yet, return empty list
+    if not profile.class_id:
         return []
 
     q = (

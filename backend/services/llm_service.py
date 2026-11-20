@@ -14,7 +14,7 @@ import time
 from collections.abc import AsyncIterator
 
 import google.genai as genai
-from openai import AsyncOpenAI, NotFoundError, RateLimitError
+from openai import AsyncOpenAI, AuthenticationError, NotFoundError, RateLimitError
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -171,7 +171,7 @@ async def chat(
                     max_tokens=max_tokens,
                     messages=messages,
                 )
-            except (RateLimitError, NotFoundError) as exc:
+            except (RateLimitError, NotFoundError, AuthenticationError) as exc:
                 logger.warning("groq_model_unavailable model=%s: %s", used_model, exc)
                 last_exc = exc
                 continue
@@ -230,7 +230,7 @@ async def chat_with_history(
                     max_tokens=max_tokens,
                     messages=messages,
                 )
-            except (RateLimitError, NotFoundError) as exc:
+            except (RateLimitError, NotFoundError, AuthenticationError) as exc:
                 logger.warning("groq_model_unavailable model=%s: %s", used_model, exc)
                 last_exc = exc
                 continue
@@ -297,7 +297,7 @@ async def stream_chat_with_history(
                     if delta:
                         yield delta
                 return  # success
-            except (RateLimitError, NotFoundError) as exc:
+            except (RateLimitError, NotFoundError, AuthenticationError) as exc:
                 logger.warning("groq_model_unavailable stream model=%s: %s", used_model, exc)
                 continue
 
@@ -350,7 +350,7 @@ async def stream_chat(
                     if delta:
                         yield delta
                 return  # success
-            except (RateLimitError, NotFoundError) as exc:
+            except (RateLimitError, NotFoundError, AuthenticationError) as exc:
                 logger.warning("groq_model_unavailable stream model=%s: %s", used_model, exc)
                 continue
 

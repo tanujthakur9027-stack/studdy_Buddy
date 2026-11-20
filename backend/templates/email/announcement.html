@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{ title }}</title>
+<style>
+  body { margin:0; padding:0; background:#0f0f1a; font-family:'Segoe UI',Arial,sans-serif; color:#e0e0e0; }
+  .wrapper { max-width:600px; margin:40px auto; background:#1a1a2e; border-radius:16px; overflow:hidden; border:1px solid #2a2a40; }
+  .header { background:linear-gradient(135deg,#6366f1,#8b5cf6); padding:32px; text-align:center; }
+  .header h1 { margin:0; font-size:24px; color:#fff; letter-spacing:-0.5px; }
+  .header p { margin:8px 0 0; color:rgba(255,255,255,0.8); font-size:14px; }
+  .body { padding:32px; }
+  .card { background:#12122a; border:1px solid #2a2a40; border-radius:12px; padding:20px; margin:20px 0; line-height:1.6; color:#e0e0e0; white-space:pre-wrap; }
+  .footer { padding:20px 32px; text-align:center; border-top:1px solid #2a2a40; }
+  .footer p { margin:4px 0; color:#555; font-size:12px; }
+  .badge { display:inline-block; background:#6366f1; color:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <div class="badge">📢 Campus Announcement</div>
+    <h1>{{ title }}</h1>
+    <p>Study Buddy Notification</p>
+  </div>
+  <div class="body">
+    <div class="card">{{ message }}</div>
+    {% if app_url %}
+    <div style="text-align:center;margin-top:24px;">
+      <a href="{{ app_url }}/notifications" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View in Study Buddy →</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    <p>Study Buddy — Mangalayatan University</p>
+    <p>This is an automated message. Please do not reply.</p>
+  </div>
+</div>
+</body>
+</html>

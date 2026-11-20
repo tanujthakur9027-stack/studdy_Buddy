@@ -27,7 +27,13 @@ async def get_timetable(
         select(StudentProfile).where(StudentProfile.user_id == current_user.id)
     )
     profile = profile_result.scalar_one_or_none()
-    if not profile or not profile.class_id:
+    if not profile:
+        profile = StudentProfile(user_id=current_user.id, student_id=f"STU-{current_user.id[:6].upper()}")
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
+
+    if not profile.class_id:
         return {"timetable": None, "message": "No class assigned"}
 
     tt_result = await db.execute(

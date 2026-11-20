@@ -54,6 +54,12 @@ async def _handle_get_profile(current_user: User, db: AsyncSession) -> ProfileOu
         select(StudentProfile).where(StudentProfile.user_id == current_user.id)
     )
     profile = result.scalar_one_or_none()
+    if not profile and current_user.role == "student":
+        profile = StudentProfile(user_id=current_user.id, student_id=f"STU-{current_user.id[:6].upper()}")
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
+
     return ProfileOut(
         user_id=current_user.id,
         email=current_user.email,
