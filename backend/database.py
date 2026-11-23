@@ -22,7 +22,7 @@ _is_sqlite = "sqlite" in settings.resolved_database_url
 # PostgreSQL gets a proper connection pool.
 _engine_kwargs: dict = {
     "echo": False,
-    "connect_args": {"check_same_thread": False} if _is_sqlite else {},
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {"statement_cache_size": 0},
     "pool_pre_ping": True,
 }
 if not _is_sqlite:
