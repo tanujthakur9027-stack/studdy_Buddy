@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -9,10 +9,6 @@ import {
   GraduationCap,
   Shield,
   KeyRound,
-  Sparkles,
-  ShieldCheck,
-  ArrowLeft,
-  RefreshCw,
   Eye,
   EyeOff,
   User,
@@ -23,7 +19,7 @@ import {
 } from "lucide-react";
 
 function RegisterContent() {
-  const { register, verifyOtp, resendOtp } = useAuth();
+  const { register } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -54,32 +50,11 @@ function RegisterContent() {
     department: "",
   });
 
-  // OTP Verification States
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [simOtp, setSimOtp] = useState<string | null>(null);
-  const [otpMessage, setOtpMessage] = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const timer = setInterval(() => {
-      setCountdown((c) => c - 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [countdown]);
-
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handlePortalSwitch = (role: "student" | "admin") => {
     setPortal(role);
-    setShowOtp(false);
-    setOtpCode("");
-    setSimOtp(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,22 +93,13 @@ function RegisterContent() {
         payload.dob = form.dob.trim();
       }
 
-      const res = await register(payload);
+      await register(payload);
 
-      if (res.otp_required) {
-        setShowOtp(true);
-        setOtpEmail(res.email || form.email.trim().toLowerCase());
-        setSimOtp(res.simulation_otp || null);
-        setOtpMessage(res.message || "Please enter the 6-digit verification code sent to your email.");
-        setCountdown(30);
-        toast.success("Security verification code generated!");
+      toast.success(`Account created successfully as ${portal === "admin" ? "Administrator" : "Student"}!`);
+      if (portal === "admin") {
+        router.push("/admin/dashboard");
       } else {
-        toast.success(`Account created successfully as ${portal === "admin" ? "Administrator" : "Student"}!`);
-        if (portal === "admin") {
-          router.push("/admin/dashboard");
-        } else {
-          router.push("/dashboard");
-        }
+        router.push("/dashboard");
       }
     } catch (err: unknown) {
       const msg =
@@ -142,53 +108,6 @@ function RegisterContent() {
       toast.error(msg);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.trim().length < 4) {
-      toast.error("Please enter the 6-digit OTP verification code.");
-      return;
-    }
-
-    setVerifying(true);
-    try {
-      const verifiedUser = await verifyOtp(otpEmail, otpCode.trim());
-      toast.success(`Welcome to StudyBuddy, ${verifiedUser.full_name || "User"}!`);
-      if (verifiedUser.role === "admin" || portal === "admin") {
-        router.push("/admin/dashboard");
-      } else {
-        router.push("/dashboard");
-      }
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        (err as Error)?.message ||
-        "Invalid or expired OTP code.";
-      toast.error(msg);
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    if (countdown > 0 || resending) return;
-    setResending(true);
-    try {
-      const res = await resendOtp(otpEmail);
-      if (res.simulation_otp) {
-        setSimOtp(res.simulation_otp);
-      }
-      setCountdown(45);
-      toast.success(res.message || "New OTP dispatched to your registered email.");
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Failed to resend OTP.";
-      toast.error(msg);
-    } finally {
-      setResending(false);
     }
   };
 
@@ -236,15 +155,12 @@ function RegisterContent() {
             </div>
           </div>
           <p className="text-gray-400 text-sm">
-            {showOtp
-              ? "Verify your identity with 2-Factor authentication"
-              : `Register a new ${portal === "admin" ? "Administrator" : "Student"} account`}
+            {`Register a new ${portal === "admin" ? "Administrator" : "Student"} account`}
           </p>
         </div>
 
-        {/* Portal Switcher Tabs (Hidden during OTP step) */}
-        {!showOtp && (
-          <div className="bg-gray-900/90 p-1.5 rounded-2xl border border-gray-800 grid grid-cols-2 gap-1 shadow-inner backdrop-blur-xl">
+        {/* Portal Switcher Tabs */}
+        <div className="bg-gray-900/90 p-1.5 rounded-2xl border border-gray-800 grid grid-cols-2 gap-1 shadow-inner backdrop-blur-xl">
             <button
               type="button"
               onClick={() => handlePortalSwitch("student")}
@@ -271,7 +187,6 @@ function RegisterContent() {
               Admin / Faculty Registration
             </button>
           </div>
-        )}
 
         {/* Main Card */}
         <div
@@ -281,129 +196,21 @@ function RegisterContent() {
               : "border-blue-500/30 shadow-blue-500/5"
           }`}
         >
-          {showOtp ? (
-            /* ── STEP 2: OTP Verification Screen ── */
-            <div className="space-y-5 max-w-md mx-auto">
-              <div className="text-center space-y-1.5">
-                <div
-                  className={`w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-2 border ${
-                    portal === "admin"
-                      ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                      : "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                  }`}
-                >
-                  <KeyRound className="w-6 h-6" />
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Admin Setup Key Helper Card (Shown only on Admin Tab) */}
+            {portal === "admin" && (
+              <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-4 text-xs space-y-2">
+                <div className="flex items-center justify-between text-amber-300 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-amber-400" />
+                    Faculty & Staff Verification Required
+                  </span>
                 </div>
-                <h2 className="text-xl font-black text-white">2-Factor Security Verification</h2>
-                <p className="text-gray-400 text-xs">
-                  {otpMessage || "A 6-digit one-time code has been dispatched to:"}
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  Administrator registration requires a valid administrative setup key provided by your system administrator.
                 </p>
-                <p className="text-indigo-400 font-mono text-xs font-bold">{otpEmail}</p>
               </div>
-
-              {/* Dev Simulation Banner (When SMTP is not configured) */}
-              {simOtp && (
-                <div className="bg-indigo-950/70 border border-indigo-500/40 rounded-2xl p-4 text-xs space-y-2">
-                  <div className="flex items-center justify-between text-indigo-300 font-bold">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-indigo-400" />
-                      Development Mode Simulation
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setOtpCode(simOtp)}
-                      className="text-[11px] text-amber-400 hover:underline font-extrabold"
-                    >
-                      ⚡ Auto-fill
-                    </button>
-                  </div>
-                  <p className="text-gray-400 text-[11px]">
-                    Your temporary security verification code is:
-                  </p>
-                  <div className="text-center font-mono font-black text-2xl tracking-[0.25em] text-white bg-black/40 py-2 rounded-xl border border-indigo-500/30">
-                    {simOtp}
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 text-center">
-                    Enter 6-Digit OTP Code
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={10}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ""))}
-                    required
-                    autoFocus
-                    placeholder="123456"
-                    className="w-full text-center font-mono text-2xl tracking-[0.3em] font-bold py-3.5 bg-gray-950 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={verifying}
-                  className={`w-full py-3.5 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${
-                    portal === "admin"
-                      ? "bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black shadow-amber-600/25"
-                      : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/25"
-                  }`}
-                >
-                  {verifying ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Verifying...
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      Complete Verification & Enter
-                    </>
-                  )}
-                </button>
-              </form>
-
-              <div className="pt-2 flex items-center justify-between text-xs text-gray-400 border-t border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setShowOtp(false)}
-                  className="flex items-center gap-1 hover:text-white transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  Edit Form
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={countdown > 0 || resending}
-                  className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 disabled:text-gray-600 font-semibold transition-colors"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${resending ? "animate-spin" : ""}`} />
-                  {countdown > 0 ? `Resend code (${countdown}s)` : "Resend Code"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ── STEP 1: Registration Form ── */
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Admin Setup Key Helper Card (Shown only on Admin Tab) */}
-              {portal === "admin" && (
-                <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-4 text-xs space-y-2">
-                  <div className="flex items-center justify-between text-amber-300 font-bold">
-                    <span className="flex items-center gap-1.5">
-                      <Shield className="w-4 h-4 text-amber-400" />
-                      Faculty & Staff Verification Required
-                    </span>
-                  </div>
-                  <p className="text-gray-400 text-[11px] leading-relaxed">
-                    Administrator registration requires a valid administrative setup key provided by your system administrator.
-                  </p>
-                </div>
-              )}
+            )}
 
               {/* Form Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -608,7 +415,7 @@ function RegisterContent() {
                 {loading ? (
                   <>
                     <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Creating Account & Dispatching OTP...
+                    Creating Account & Signing In...
                   </>
                 ) : (
                   <>
@@ -633,7 +440,6 @@ function RegisterContent() {
                 </p>
               </div>
             </form>
-          )}
         </div>
       </div>
     </div>

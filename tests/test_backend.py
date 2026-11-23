@@ -343,43 +343,22 @@ async def test_profile_aliases(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_otp_verification_flow(client: AsyncClient):
-    from config import get_settings
-    settings = get_settings()
-    orig = settings.otp_auth_enabled
-    orig_sim = settings.otp_simulation_mode
-    settings.otp_auth_enabled = True
-    settings.otp_simulation_mode = True
-    try:
-        reg_payload = _reg_payload("otp_user")
-        await client.post("/api/auth/register", json=reg_payload)
+    reg_payload = _reg_payload("direct_auth_user")
+    reg_resp = await client.post("/api/auth/register", json=reg_payload)
+    assert reg_resp.status_code == 201
+    reg_data = reg_resp.json()
+    assert reg_data.get("otp_required") is False
+    assert reg_data.get("access_token") is not None
 
-        login_resp = await client.post(
-            "/api/auth/login",
-            json={"email": reg_payload["email"], "password": "Password123"},
-        )
-        assert login_resp.status_code == 200
-        data = login_resp.json()
-        assert data.get("otp_required") is True
-        assert "simulation_otp" in data
-        otp_code = data["simulation_otp"]
-
-        bad_resp = await client.post(
-            "/api/auth/verify-otp",
-            json={"email": reg_payload["email"], "otp_code": "000000"},
-        )
-        assert bad_resp.status_code == 400
-
-        good_resp = await client.post(
-            "/api/auth/verify-otp",
-            json={"email": reg_payload["email"], "otp_code": otp_code},
-        )
-        assert good_resp.status_code == 200
-        good_data = good_resp.json()
-        assert "access_token" in good_data
-        assert good_data["user"]["email"] == reg_payload["email"]
-    finally:
-        settings.otp_auth_enabled = orig
-        settings.otp_simulation_mode = orig_sim
+    login_resp = await client.post(
+        "/api/auth/login",
+        json={"email": reg_payload["email"], "password": "Password123"},
+    )
+    assert login_resp.status_code == 200
+    data = login_resp.json()
+    assert data.get("otp_required") is False
+    assert data.get("access_token") is not None
+    assert data["user"]["email"] == reg_payload["email"]
 
 
 @pytest.mark.asyncio
@@ -422,11 +401,7 @@ async def test_admin_student_export(client: AsyncClient):
 async def test_admin_register_and_otp_login(client: AsyncClient):
     from config import get_settings
     settings = get_settings()
-    orig = settings.otp_auth_enabled
-    orig_sim = settings.otp_simulation_mode
     orig_keys = settings.admin_keys
-    settings.otp_auth_enabled = True
-    settings.otp_simulation_mode = True
     settings.admin_keys = "valid-test-admin-key"
     try:
         admin_email = "custom_admin_faculty@gmail.com"
@@ -441,18 +416,10 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
         )
         assert reg_resp.status_code == 201
         reg_data = reg_resp.json()
-        assert reg_data.get("otp_required") is True
-        assert "simulation_otp" in reg_data
-
-        otp_code = reg_data["simulation_otp"]
-        ver_resp = await client.post(
-            "/api/auth/verify-otp",
-            json={"email": admin_email, "otp_code": otp_code},
-        )
-        assert ver_resp.status_code == 200
-        ver_data = ver_resp.json()
-        assert ver_data["user"]["role"] == "admin"
-        assert ver_data["user"]["email"] == admin_email
+        assert reg_data.get("otp_required") is False
+        assert reg_data.get("access_token") is not None
+        assert reg_data["user"]["role"] == "admin"
+        assert reg_data["user"]["email"] == admin_email
 
         login_resp = await client.post(
             "/api/auth/login",
@@ -460,22 +427,14 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
         )
         assert login_resp.status_code == 200
         l_data = login_resp.json()
-        assert l_data.get("otp_required") is True
-        login_otp = l_data["simulation_otp"]
-
-        ver_login = await client.post(
-            "/api/auth/verify-otp",
-            json={"email": admin_email, "otp_code": login_otp},
-        )
-        assert ver_login.status_code == 200
-        token = ver_login.json()["access_token"]
+        assert l_data.get("otp_required") is False
+        assert l_data.get("access_token") is not None
+        token = l_data["access_token"]
 
         me_resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert me_resp.status_code == 200
         assert me_resp.json()["role"] == "admin"
     finally:
-        settings.otp_auth_enabled = orig
-        settings.otp_simulation_mode = orig_sim
         settings.admin_keys = orig_keys
 
 
@@ -602,72 +561,21 @@ async def test_admin_registration_bypass_attempts(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_otp_never_present_in_production_or_simulation_off(client: AsyncClient):
     """
-    Verify that simulation_otp is NEVER leaked when:
-    - simulation_mode is False
-    - environment is "production"
+    Verify that registration never requires OTP and simulation_otp is always None.
     """
-    from config import get_settings
-    settings = get_settings()
-    orig_env = settings.environment
-    orig_sim = settings.otp_simulation_mode
-    orig_otp = settings.otp_auth_enabled
-
-    try:
-        settings.otp_auth_enabled = True
-
-        # 1. Simulation mode OFF in dev -> simulation_otp MUST be None
-        settings.otp_simulation_mode = False
-        settings.environment = "development"
-        r1 = await client.post(
-            "/api/auth/register",
-            json={
-                "email": "otp_sim_off@test.com",
-                "password": "Password123!",
-                "full_name": "OTP Sim Off",
-                "student_id": "STU_SIM_OFF",
-            },
-        )
-        assert r1.status_code == 201
-        assert r1.json().get("otp_required") is True
-        assert r1.json().get("simulation_otp") is None
-
-        # 2. Simulation mode ON in production -> simulation_otp MUST STILL be None
-        settings.otp_simulation_mode = True
-        settings.environment = "production"
-        r2 = await client.post(
-            "/api/auth/register",
-            json={
-                "email": "otp_prod_env@test.com",
-                "password": "Password123!",
-                "full_name": "OTP Prod Env",
-                "student_id": "STU_PROD_ENV",
-            },
-        )
-        assert r2.status_code == 201
-        assert r2.json().get("otp_required") is True
-        assert r2.json().get("simulation_otp") is None
-
-        # 3. Simulation mode ON in development -> simulation_otp is provided for dev/test
-        settings.otp_simulation_mode = True
-        settings.environment = "development"
-        r3 = await client.post(
-            "/api/auth/register",
-            json={
-                "email": "otp_dev_ok@test.com",
-                "password": "Password123!",
-                "full_name": "OTP Dev OK",
-                "student_id": "STU_DEV_OK",
-            },
-        )
-        assert r3.status_code == 201
-        assert r3.json().get("otp_required") is True
-        assert r3.json().get("simulation_otp") is not None
-        assert len(r3.json().get("simulation_otp")) == 6
-
-    finally:
-        settings.environment = orig_env
-        settings.otp_simulation_mode = orig_sim
-        settings.otp_auth_enabled = orig_otp
+    r1 = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "otp_sim_off@test.com",
+            "password": "Password123!",
+            "full_name": "OTP Sim Off",
+            "student_id": "STU_SIM_OFF",
+        },
+    )
+    assert r1.status_code == 201
+    assert r1.json().get("otp_required") is False
+    assert r1.json().get("simulation_otp") is None
+    assert r1.json().get("access_token") is not None
 
 
 

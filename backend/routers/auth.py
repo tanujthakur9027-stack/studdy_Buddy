@@ -267,38 +267,6 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         await db.commit()
         await db.refresh(user)
 
-    current_settings = get_settings()
-    if current_settings.otp_auth_enabled:
-        await db.execute(
-            update(AuthOTP)
-            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
-            .values(is_used=True)
-        )
-        code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
-        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
-        db.add(new_otp)
-        await db.commit()
-
-        acc_type = "Administrator" if is_admin_reg else "Student"
-        email_html = f"""
-        <p>Hello <b>{user.full_name}</b>,</p>
-        <p>Welcome to StudyBuddy! Your {acc_type} account verification code (OTP) is:</p>
-        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
-        """
-        email_sent = await send_email(to=user.email, subject=f"[StudyBuddy] Verify Your {acc_type} Account", body=email_html)
-
-        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
-        return AuthResponse(
-            access_token=None,
-            user=None,
-            otp_required=True,
-            email=user.email,
-            message=_get_otp_dispatch_message(email_sent, f"{acc_type} account created.", sim_active=is_sim),
-            simulation_otp=code if is_sim else None,
-        )
-
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
 
@@ -349,37 +317,6 @@ async def register_admin(
     await db.commit()
     await db.refresh(user)
 
-    current_settings = get_settings()
-    if current_settings.otp_auth_enabled:
-        await db.execute(
-            update(AuthOTP)
-            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
-            .values(is_used=True)
-        )
-        code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
-        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
-        db.add(new_otp)
-        await db.commit()
-
-        email_html = f"""
-        <p>Hello <b>{user.full_name}</b>,</p>
-        <p>Welcome to StudyBuddy as an Administrator! Your verification code (OTP) is:</p>
-        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
-        """
-        email_sent = await send_email(to=user.email, subject="[StudyBuddy] Admin Verification Code", body=email_html)
-
-        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
-        return AuthResponse(
-            access_token=None,
-            user=None,
-            otp_required=True,
-            email=user.email,
-            message=_get_otp_dispatch_message(email_sent, "Administrator account created.", sim_active=is_sim),
-            simulation_otp=code if is_sim else None,
-        )
-
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
 
@@ -399,62 +336,7 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
-    # If an OTP code was provided directly in login payload
-    if body.otp_code:
-        now_utc = datetime.now(timezone.utc)
-        otp_res = await db.execute(
-            select(AuthOTP)
-            .where(
-                AuthOTP.email == user.email,
-                AuthOTP.is_used == False,
-                AuthOTP.expires_at > now_utc,
-            )
-            .order_by(AuthOTP.created_at.desc())
-        )
-        otp_rec = otp_res.scalars().first()
-        if not otp_rec or otp_rec.otp_code != body.otp_code.strip():
-            raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
-        otp_rec.is_used = True
-        await db.commit()
-
-        token = create_access_token({"sub": user.id, "role": user.role})
-        response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
-        user_resp = await _build_user_response(user, db)
-        return AuthResponse(access_token=token, user=user_resp, otp_required=False)
-
-    current_settings = get_settings()
-    # 2-Step OTP Authentication Flow
-    if current_settings.otp_auth_enabled:
-        await db.execute(
-            update(AuthOTP)
-            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
-            .values(is_used=True)
-        )
-        code = f"{secrets.randbelow(900000) + 100000}"
-        expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
-        new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
-        db.add(new_otp)
-        await db.commit()
-
-        email_html = f"""
-        <p>Hello <b>{user.full_name}</b>,</p>
-        <p>Your one-time security verification code (OTP) for StudyBuddy is:</p>
-        <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-        <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes. Please do not share this code with anyone.</p>
-        """
-        email_sent = await send_email(to=user.email, subject="[StudyBuddy] Your Login Verification Code", body=email_html)
-
-        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
-        return AuthResponse(
-            access_token=None,
-            user=None,
-            otp_required=True,
-            email=user.email,
-            message=_get_otp_dispatch_message(email_sent, sim_active=is_sim),
-            simulation_otp=code if is_sim else None,
-        )
-
-    # Direct login if OTP auth is turned off
+    # Direct password authentication (OTP permanently removed)
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
 
@@ -470,32 +352,14 @@ async def verify_otp(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    """Direct fallback returning session for backward compatibility."""
     email = body.email.strip().lower()
-    code = body.otp_code.strip()
-
     user_result = await db.execute(select(User).where(User.email == email))
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User account not found")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
-
-    now_utc = datetime.now(timezone.utc)
-    otp_result = await db.execute(
-        select(AuthOTP)
-        .where(
-            AuthOTP.email == email,
-            AuthOTP.is_used == False,
-            AuthOTP.expires_at > now_utc,
-        )
-        .order_by(AuthOTP.created_at.desc())
-    )
-    otp_row = otp_result.scalars().first()
-    if not otp_row or otp_row.otp_code != code:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP verification code.")
-
-    otp_row.is_used = True
-    await db.commit()
 
     token = create_access_token({"sub": user.id, "role": user.role})
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=3600 * 24)
@@ -511,40 +375,7 @@ async def resend_otp(
     body: ResendOTPRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    email = body.email.strip().lower()
-    user_result = await db.execute(select(User).where(User.email == email))
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Account is deactivated")
-
-    await db.execute(
-        update(AuthOTP)
-        .where(AuthOTP.email == email, AuthOTP.is_used == False)
-        .values(is_used=True)
-    )
-
-    current_settings = get_settings()
-    code = f"{secrets.randbelow(900000) + 100000}"
-    expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
-    new_otp = AuthOTP(email=email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
-    db.add(new_otp)
-    await db.commit()
-
-    email_html = f"""
-    <p>Hello <b>{user.full_name}</b>,</p>
-    <p>Your new StudyBuddy one-time security code is:</p>
-    <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#818cf8;background:#1e1b4b;padding:14px 20px;border-radius:10px;text-align:center;margin:16px 0;display:inline-block;">{code}</div>
-    <p style="font-size:13px;color:#9ca3af;">Valid for {current_settings.otp_expire_minutes} minutes.</p>
-    """
-    email_sent = await send_email(to=email, subject="[StudyBuddy] Resent OTP Verification Code", body=email_html)
-
-    is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
-    return {
-        "message": _get_otp_dispatch_message(email_sent, "Fresh code:", sim_active=is_sim),
-        "simulation_otp": code if is_sim else None,
-    }
+    return {"message": "OTP authentication is permanently disabled. Please log in directly with your password."}
 
 
 @router.post("/logout")
