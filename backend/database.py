@@ -17,17 +17,21 @@ settings = get_settings()
 
 _is_sqlite = "sqlite" in settings.resolved_database_url
 
+from sqlalchemy.pool import NullPool
+
 # Create async engine — echo=False in prod; set echo=True to debug SQL
-# SQLite uses NullPool (one connection, no pooling) — pool_size/max_overflow must NOT be passed.
-# PostgreSQL gets a proper connection pool.
+# NullPool is used for both SQLite (avoids thread affinity locks) and Neon PostgreSQL (avoids
+# stale idle connection drops across cloud NAT and PgBouncer connection lifecycles).
 _engine_kwargs: dict = {
     "echo": False,
-    "connect_args": {"check_same_thread": False} if _is_sqlite else {"statement_cache_size": 0},
-    "pool_pre_ping": True,
+    "poolclass": NullPool,
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {
+        "ssl": True,
+        "statement_cache_size": 0,
+        "timeout": 30,
+        "command_timeout": 30,
+    },
 }
-if not _is_sqlite:
-    _engine_kwargs["pool_size"] = 5
-    _engine_kwargs["max_overflow"] = 10
 
 engine = create_async_engine(settings.resolved_database_url, **_engine_kwargs)
 
@@ -87,51 +91,64 @@ async def _seed_legacy_class_and_roles(conn) -> None:
     from datetime import datetime, timezone
     now_str = datetime.now(timezone.utc).isoformat()
 
+    async def _exec_safe(stmt, params=None):
+        if not _is_sqlite:
+            async with conn.begin_nested():
+                return await conn.execute(stmt, params or {})
+        else:
+            return await conn.execute(stmt, params or {})
+
     try:
-        # 1. Update all existing admin users to is_super_admin = 1
-        await conn.execute(text("UPDATE users SET is_super_admin = 1 WHERE role = 'admin' AND (is_super_admin IS NULL OR is_super_admin = 0)"))
+        # 1. Update all existing admin users to is_super_admin = True
+        await _exec_safe(
+            text("UPDATE users SET is_super_admin = :t WHERE role = 'admin' AND (is_super_admin IS NULL OR is_super_admin = :f)"),
+            {"t": True, "f": False}
+        )
 
         # 2. Get an admin id to use as creator
-        res = await conn.execute(text("SELECT id FROM users WHERE role = 'admin' LIMIT 1"))
+        res = await _exec_safe(text("SELECT id FROM users WHERE role = 'admin' LIMIT 1"))
         row = res.fetchone()
         admin_id = row[0] if row else "system-seed"
 
         # 3. Create 'Legacy / Unassigned' class if not present
-        res_cls = await conn.execute(text("SELECT id FROM school_classes WHERE id = 'legacy-default-class' OR (name = 'Legacy' AND section = 'General')"))
+        res_cls = await _exec_safe(text("SELECT id FROM school_classes WHERE id = 'legacy-default-class' OR (name = 'Legacy' AND section = 'General')"))
         legacy_row = res_cls.fetchone()
         if legacy_row:
             legacy_id = legacy_row[0]
         else:
             legacy_id = "legacy-default-class"
-            await conn.execute(
+            await _exec_safe(
                 text("""
                     INSERT INTO school_classes (id, name, section, academic_year, created_by, created_at, is_active)
-                    VALUES (:id, 'Legacy', 'General', '2024-2025', :creator, :now, 1)
+                    VALUES (:id, 'Legacy', 'General', '2024-2025', :creator, :now, :act)
                 """),
-                {"id": legacy_id, "creator": admin_id, "now": now_str}
+                {"id": legacy_id, "creator": admin_id, "now": now_str, "act": True}
             )
 
         # 4. Migrate any student_profiles that don't have a class_id
-        res_stu = await conn.execute(text("SELECT user_id, student_id FROM student_profiles WHERE class_id IS NULL OR class_id = ''"))
+        res_stu = await _exec_safe(text("SELECT user_id, student_id FROM student_profiles WHERE class_id IS NULL OR class_id = ''"))
         for uid, sid in res_stu.fetchall():
-            await conn.execute(
+            await _exec_safe(
                 text("UPDATE student_profiles SET class_id = :cls_id WHERE user_id = :uid"),
                 {"cls_id": legacy_id, "uid": uid}
             )
             # Check if active enrollment exists
-            res_enr = await conn.execute(
-                text("SELECT id FROM class_enrollments WHERE student_id = :uid AND is_active = 1"),
-                {"uid": uid}
+            res_enr = await _exec_safe(
+                text("SELECT id FROM class_enrollments WHERE student_id = :uid AND is_active = :act"),
+                {"uid": uid, "act": True}
             )
             if not res_enr.fetchone():
                 roll = sid if sid else f"ROLL-{uid[:8]}"
-                await conn.execute(
+                await _exec_safe(
                     text("""
                         INSERT INTO class_enrollments (id, class_id, student_id, roll_number, joined_at, is_active)
-                        VALUES (:eid, :cls_id, :uid, :roll, :now, 1)
+                        VALUES (:eid, :cls_id, :uid, :roll, :now, :act)
                     """),
-                    {"eid": str(uuid.uuid4()), "cls_id": legacy_id, "uid": uid, "roll": roll, "now": now_str}
+                    {"eid": str(uuid.uuid4()), "cls_id": legacy_id, "uid": uid, "roll": roll, "now": now_str, "act": True}
                 )
+    except Exception:
+        # Table or column might not be ready yet in some test isolation setups; safe to continue
+        pass
     except Exception:
         # Table or column might not be ready yet in some test isolation setups; safe to continue
         pass
@@ -142,9 +159,12 @@ async def _run_migrations(conn) -> None:
     migrations = _MIGRATIONS_SQLITE if _is_sqlite else _MIGRATIONS_POSTGRES
     for stmt in migrations:
         try:
-            await conn.execute(text(stmt))
+            if not _is_sqlite:
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
+            else:
+                await conn.execute(text(stmt))
         except Exception:
-            # SQLite raises OperationalError "duplicate column name" — safe to ignore.
             pass
     if _is_sqlite:
         try:
@@ -160,11 +180,8 @@ async def init_db() -> None:
     """Create all tables on startup (idempotent). Enable WAL mode for SQLite."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await _run_migrations(conn)
-        # WAL journal mode allows concurrent reads while a write is in progress.
-        # This eliminates "database is locked" errors under concurrent requests
-        # and cuts read latency significantly on the free-tier Render instance.
         if _is_sqlite:
+            await _run_migrations(conn)
             try:
                 await conn.execute(text("PRAGMA journal_mode=WAL"))
                 await conn.execute(text("PRAGMA synchronous=NORMAL"))
@@ -172,6 +189,8 @@ async def init_db() -> None:
                 await conn.execute(text("PRAGMA temp_store=MEMORY"))
             except Exception:
                 pass
+        else:
+            await _seed_legacy_class_and_roles(conn)
 
 
 async def get_db():

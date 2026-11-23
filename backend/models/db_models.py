@@ -277,10 +277,10 @@ class StudentProfile(Base):
     academic_year: Mapped[str] = mapped_column(String(20), default="")
     dob: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     profile_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True)
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="student_profile")
-    klass: Mapped[Optional["Class"]] = relationship(foreign_keys=[class_id])
+    klass: Mapped[Optional["SchoolClass"]] = relationship(foreign_keys=[class_id])
 
 
 # ── Academic structure ────────────────────────────────────────────────────────
@@ -388,8 +388,8 @@ class Assignment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     title: Mapped[str] = mapped_column(String(255))
-    subject_id: Mapped[str] = mapped_column(String(36), ForeignKey("subjects.id", ondelete="CASCADE"))
-    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("classes.id", ondelete="CASCADE"))
+    subject_id: Mapped[str] = mapped_column(String(100), index=True)
+    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="CASCADE"), index=True)
     section_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
@@ -402,8 +402,7 @@ class Assignment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    subject: Mapped["Subject"] = relationship()
-    klass: Mapped["Class"] = relationship()
+    klass: Mapped[Optional["SchoolClass"]] = relationship(foreign_keys=[class_id])
     submissions: Mapped[list["AssignmentSubmission"]] = relationship(back_populates="assignment", cascade="all, delete-orphan")
 
 
@@ -432,7 +431,7 @@ class AssessmentCategory(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100))
-    subject_id: Mapped[str] = mapped_column(String(36), ForeignKey("subjects.id", ondelete="CASCADE"))
+    subject_id: Mapped[str] = mapped_column(String(100), index=True)
     class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     max_marks: Mapped[float] = mapped_column(Float, default=100.0)
     weightage: Mapped[float] = mapped_column(Float, default=100.0)
@@ -465,7 +464,7 @@ class Timetable(Base):
     __tablename__ = "timetables"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("classes.id", ondelete="CASCADE"))
+    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="CASCADE"), index=True)
     section_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(100), default="Timetable")
     start_time: Mapped[str] = mapped_column(String(10), default="09:00")  # HH:MM
@@ -476,7 +475,7 @@ class Timetable(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    klass: Mapped["Class"] = relationship()
+    klass: Mapped[Optional["SchoolClass"]] = relationship(foreign_keys=[class_id])
     slots: Mapped[list["TimetableSlot"]] = relationship(back_populates="timetable", cascade="all, delete-orphan")
 
 
@@ -523,7 +522,7 @@ class Announcement(Base):
     title: Mapped[str] = mapped_column(String(255))
     content: Mapped[str] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
-    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True)
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     section_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -574,7 +573,7 @@ class Note(Base):
     original_filename: Mapped[str] = mapped_column(String(255), default="")
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     visibility: Mapped[str] = mapped_column(String(20), default="connections")  # connections|class|public
-    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("classes.id", ondelete="SET NULL"), nullable=True)
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     uploader: Mapped["User"] = relationship(foreign_keys=[uploaded_by])

@@ -143,12 +143,8 @@ class Settings(BaseSettings):
             url = "postgresql+asyncpg://" + url[len("postgresql://"):]
 
         if "asyncpg" in url:
-            # asyncpg accepts ssl=... rather than sslmode=...
-            url = (
-                url.replace("sslmode=require", "ssl=require")
-                .replace("sslmode=prefer", "ssl=prefer")
-                .replace("sslmode=disable", "ssl=disable")
-            )
+            # Strip query parameters (sslmode, channel_binding, etc.) since asyncpg handles SSL via connect_args
+            url = url.split("?")[0]
 
         # SQLite normalization to guaranteed absolute path
         if "sqlite" in url and ":///:memory:" not in url:
