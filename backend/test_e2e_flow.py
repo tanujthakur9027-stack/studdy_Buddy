@@ -30,7 +30,8 @@ async def run_e2e():
 
     from config import get_settings
     settings = get_settings()
-    settings.otp_simulation_mode = True
+    settings.otp_auth_enabled = False
+    settings.otp_simulation_mode = False
     settings.environment = "development"
     settings.admin_keys = "TestAdminSecret2026!"
 
@@ -63,80 +64,45 @@ async def run_e2e():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # ------------------------------------------------------------------
-        # TEST 1: Admin Login & 2-Factor OTP
+        # TEST 1: Admin Direct Login (No OTP / No SMTP Required)
         # ------------------------------------------------------------------
-        print("\n[Test 1] Testing Admin Login with OTP...")
+        print("\n[Test 1] Testing Admin Direct Login (Password Authentication)...")
         resp = await client.post("/api/auth/login", json={
             "email": "admin@studybuddy.com",
             "password": "TestAdminSecret2026!",
         })
         assert resp.status_code == 200, f"Admin login failed: {resp.text}"
         data = resp.json()
-        assert data.get("otp_required") is True, f"Expected otp_required=True, got: {data}"
-        assert data.get("simulation_otp") is not None, "Expected simulation_otp code in response"
-        admin_otp = data["simulation_otp"]
-        print(f"  ✓ Admin login initiated, OTP dispatched: {admin_otp}")
-
-        # Verify Admin OTP
-        verify_resp = await client.post("/api/auth/verify-otp", json={
-            "email": "admin@studybuddy.com",
-            "otp_code": admin_otp,
-        })
-        assert verify_resp.status_code == 200, f"Admin verify-otp failed: {verify_resp.text}"
-        admin_auth = verify_resp.json()
-        assert admin_auth.get("access_token") is not None, "Missing access_token"
-        assert admin_auth.get("user", {}).get("role") == "admin", "User role is not admin"
-        admin_token = admin_auth["access_token"]
+        assert data.get("otp_required") is False, f"Expected otp_required=False, got: {data}"
+        assert data.get("access_token") is not None, "Missing access_token"
+        assert data.get("user", {}).get("role") == "admin", "User role is not admin"
+        admin_token = data["access_token"]
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
-        print(f"  ✓ Admin OTP verified successfully! Admin ID: {admin_auth['user']['id']}")
+        print(f"  ✓ Admin logged in directly! Token generated. Admin ID: {data['user']['id']}")
 
         # ------------------------------------------------------------------
-        # TEST 2: Student Login & 2-Factor OTP
+        # TEST 2: Student Direct Registration & Login
         # ------------------------------------------------------------------
-        print("\n[Test 2] Testing Student Login with OTP...")
-        stu_login_resp = await client.post("/api/auth/login", json={
-            "email": "tanuj789@gmail.com",
-            "password": "Password123!",
+        print("\n[Test 2] Testing Student Direct Registration (No OTP Required)...")
+        import random
+        stu_rand = uuid.uuid4().hex[:6]
+        test_stu_email = f"student_{stu_rand}@example.com"
+        test_stu_sid = f"CS{random.randint(20000, 99999)}"
+        reg_resp = await client.post("/api/auth/register", json={
+            "email": test_stu_email,
+            "password": "TestPassword123!",
+            "full_name": "Test Student Direct",
+            "student_id": test_stu_sid,
+            "course": "B.Tech CSE",
+            "semester": "6",
+            "section": "A",
         })
-        # If student exists or if we test registration
-        if stu_login_resp.status_code == 200:
-            stu_data = stu_login_resp.json()
-            assert stu_data.get("otp_required") is True
-            stu_otp = stu_data.get("simulation_otp")
-            stu_verify = await client.post("/api/auth/verify-otp", json={
-                "email": "tanuj789@gmail.com",
-                "otp_code": stu_otp,
-            })
-            assert stu_verify.status_code == 200
-            stu_auth = stu_verify.json()
-            stu_token = stu_auth["access_token"]
-            print(f"  ✓ Student OTP verified successfully! Student ID: {stu_auth['user']['student_id']}")
-        else:
-            print("  Student account password needs register or reset, testing via new student...")
-            import random
-            stu_rand = uuid.uuid4().hex[:6]
-            test_stu_email = f"student_{stu_rand}@example.com"
-            test_stu_sid = f"CS{random.randint(20000, 99999)}"
-            reg_resp = await client.post("/api/auth/register", json={
-                "email": test_stu_email,
-                "password": "TestPassword123!",
-                "full_name": "Test Student OTP",
-                "student_id": test_stu_sid,
-                "course": "B.Tech CSE",
-                "semester": "6",
-                "section": "A",
-            })
-            assert reg_resp.status_code == 201, f"Student register failed: {reg_resp.text}"
-            reg_data = reg_resp.json()
-            reg_otp = reg_data["simulation_otp"]
-            stu_verify = await client.post("/api/auth/verify-otp", json={
-                "email": test_stu_email,
-                "otp_code": reg_otp,
-            })
-            assert stu_verify.status_code == 200
-            stu_auth = stu_verify.json()
-            stu_token = stu_auth["access_token"]
-            print(f"  ✓ Registered and verified new student: {stu_auth['user']['student_id']}")
+        assert reg_resp.status_code == 201, f"Student register failed: {reg_resp.text}"
+        reg_data = reg_resp.json()
+        assert reg_data.get("otp_required") is False, "Expected otp_required=False on registration"
+        assert reg_data.get("access_token") is not None, "Expected immediate access_token"
+        stu_token = reg_data["access_token"]
+        print(f"  ✓ Registered student and obtained immediate access token: {reg_data['user']['student_id']}")
 
         stu_headers = {"Authorization": f"Bearer {stu_token}"}
 
@@ -186,9 +152,9 @@ async def run_e2e():
         print(f"  ✓ Latest notification in student inbox: '{latest['title']}' - '{latest['message'][:50]}...'")
 
         # ------------------------------------------------------------------
-        # TEST 7: Register Brand New Admin Account with OTP
+        # TEST 7: Register Brand New Admin Account (No OTP Required)
         # ------------------------------------------------------------------
-        print("\n[Test 7] Testing New Admin Registration & Verification...")
+        print("\n[Test 7] Testing New Admin Direct Registration...")
         random_suffix = uuid.uuid4().hex[:6]
         new_admin_email = f"dean_{random_suffix}@university.edu"
         reg_admin_resp = await client.post("/api/auth/register-admin", json={
@@ -202,21 +168,12 @@ async def run_e2e():
         })
         assert reg_admin_resp.status_code == 201, f"Admin register failed: {reg_admin_resp.text}"
         reg_admin_data = reg_admin_resp.json()
-        assert reg_admin_data.get("otp_required") is True, "Admin reg should require OTP"
-        new_admin_otp = reg_admin_data["simulation_otp"]
-        print(f"  ✓ New Admin registered, OTP dispatched: {new_admin_otp}")
-
-        # Verify New Admin OTP
-        verify_new_admin = await client.post("/api/auth/verify-otp", json={
-            "email": new_admin_email,
-            "otp_code": new_admin_otp,
-        })
-        assert verify_new_admin.status_code == 200, f"New admin OTP verify failed: {verify_new_admin.text}"
-        new_admin_auth = verify_new_admin.json()
-        assert new_admin_auth["user"]["role"] == "admin"
-        assert new_admin_auth["user"]["email"] == new_admin_email
-        new_admin_token = new_admin_auth["access_token"]
-        print(f"  ✓ New Admin verified! Role: {new_admin_auth['user']['role']}, Admin ID: {new_admin_auth['user']['student_id']}")
+        assert reg_admin_data.get("otp_required") is False, "Expected otp_required=False on admin reg"
+        assert reg_admin_data.get("access_token") is not None, "Missing access_token"
+        new_admin_token = reg_admin_data["access_token"]
+        assert reg_admin_data["user"]["role"] == "admin"
+        assert reg_admin_data["user"]["email"] == new_admin_email
+        print(f"  ✓ New Admin registered directly! Role: {reg_admin_data['user']['role']}, Admin ID: {reg_admin_data['user']['student_id']}")
 
         # Verify New Admin can access Admin Dashboard / Classes API
         new_admin_headers = {"Authorization": f"Bearer {new_admin_token}"}

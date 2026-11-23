@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     # ── Auth feature flag ─────────────────────────────────────────────────────
     auth_required: bool = True
-    otp_auth_enabled: bool = True
+    otp_auth_enabled: bool = False
     otp_expire_minutes: int = 5
     otp_simulation_mode: bool = False
 

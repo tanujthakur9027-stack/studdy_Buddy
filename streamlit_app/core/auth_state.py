@@ -74,6 +74,10 @@ def do_login(email: str, password: str) -> Optional[str]:
     st.session_state["_token"] = data["access_token"]
     st.session_state["_user"]  = data["user"]
     st.session_state["documents_loaded"] = False
+    st.session_state.pop("_otp_pending", None)
+    st.session_state.pop("_otp_email", None)
+    st.session_state.pop("_otp_sim", None)
+    st.session_state.pop("_otp_msg", None)
     return None
 
 
@@ -118,6 +122,10 @@ def do_register(payload: dict) -> Optional[str]:
     st.session_state["_token"] = data["access_token"]
     st.session_state["_user"]  = data["user"]
     st.session_state["documents_loaded"] = False
+    st.session_state.pop("_otp_pending", None)
+    st.session_state.pop("_otp_email", None)
+    st.session_state.pop("_otp_sim", None)
+    st.session_state.pop("_otp_msg", None)
     return None
 
 
@@ -156,6 +164,10 @@ def do_register_admin(payload: dict) -> Optional[str]:
     st.session_state["_user"]  = data["user"]
     st.session_state["_portal"] = "admin"
     st.session_state["documents_loaded"] = False
+    st.session_state.pop("_otp_pending", None)
+    st.session_state.pop("_otp_email", None)
+    st.session_state.pop("_otp_sim", None)
+    st.session_state.pop("_otp_msg", None)
     return None
 
 
