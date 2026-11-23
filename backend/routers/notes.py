@@ -14,8 +14,8 @@ from typing import Optional
 
 from config import get_settings
 from database import get_db
-from dependencies.auth import get_current_user
-from models.db_models import Note, StudentProfile, StudentConnection, User
+from dependencies.auth import get_current_user, check_class_access
+from models.db_models import Note, StudentProfile, StudentConnection, User, ClassEnrollment
 from services.storage_service import save_file, ALLOWED_NOTE_TYPES
 from services.notification_service import create_bulk_notifications
 
@@ -36,6 +36,7 @@ class NoteOut(BaseModel):
     uploaded_by: str
     uploader_name: str
     visibility: str
+    class_id: Optional[str] = None
     created_at: str
 
 
@@ -48,6 +49,7 @@ async def upload_note(
     semester: str = Form(""),
     tags: str = Form(""),
     visibility: str = Form("connections"),
+    class_id: Optional[str] = Form(None),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -62,18 +64,32 @@ async def upload_note(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Get student's class
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
-    )
-    profile = profile_result.scalar_one_or_none()
+    # Resolve target class
+    if class_id:
+        if current_user.role == "admin":
+            await check_class_access(class_id, current_user, db, require_write=True)
+    else:
+        # Get student's class (prioritize active ClassEnrollment)
+        enr_res = await db.execute(
+            select(ClassEnrollment.class_id).where(
+                ClassEnrollment.student_id == current_user.id,
+                ClassEnrollment.is_active == True,  # noqa: E712
+            )
+        )
+        class_id = enr_res.scalar_one_or_none()
+        if not class_id:
+            profile_result = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+            )
+            profile = profile_result.scalar_one_or_none()
+            class_id = profile.class_id if profile else None
 
     note = Note(
         title=title, description=description, subject=subject,
         course=course, semester=semester, tags=tags,
         file_url=file_url, original_filename=file.filename or title,
         uploaded_by=current_user.id, visibility=visibility,
-        class_id=profile.class_id if profile else None,
+        class_id=class_id,
     )
     db.add(note)
     await db.flush()
@@ -109,7 +125,7 @@ async def upload_note(
         subject=note.subject, course=note.course, semester=note.semester,
         tags=note.tags, file_url=note.file_url, original_filename=note.original_filename,
         uploaded_by=note.uploaded_by, uploader_name=current_user.full_name,
-        visibility=note.visibility, created_at=str(note.created_at),
+        visibility=note.visibility, class_id=note.class_id, created_at=str(note.created_at),
     )
 
 
@@ -134,12 +150,20 @@ async def list_notes(
     for c in conn_result.scalars().all():
         connected_ids.add(c.user_b_id if c.user_a_id == current_user.id else c.user_a_id)
 
-    # Get student's class
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+    # Get student's class (prioritize active ClassEnrollment)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
     )
-    profile = profile_result.scalar_one_or_none()
-    class_id = profile.class_id if profile else None
+    class_id = enr_res.scalar_one_or_none()
+    if not class_id:
+        profile_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        class_id = profile.class_id if profile else None
 
     # Build visibility filter
     visibility_filter = or_(
@@ -169,7 +193,7 @@ async def list_notes(
             subject=n.subject, course=n.course, semester=n.semester,
             tags=n.tags, file_url=n.file_url, original_filename=n.original_filename,
             uploaded_by=n.uploaded_by, uploader_name=u.full_name,
-            visibility=n.visibility, created_at=str(n.created_at),
+            visibility=n.visibility, class_id=n.class_id, created_at=str(n.created_at),
         )
         for n, u in result.all()
     ]
@@ -193,7 +217,7 @@ async def get_note(
         subject=n.subject, course=n.course, semester=n.semester,
         tags=n.tags, file_url=n.file_url, original_filename=n.original_filename,
         uploaded_by=n.uploaded_by, uploader_name=u.full_name,
-        visibility=n.visibility, created_at=str(n.created_at),
+        visibility=n.visibility, class_id=n.class_id, created_at=str(n.created_at),
     )
 
 

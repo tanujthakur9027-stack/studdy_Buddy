@@ -19,6 +19,7 @@ export interface AuthUser {
   profile_photo_url?: string | null;
   class_id?: string | null;
   class_name?: string | null;
+  is_super_admin?: boolean;
 }
 
 export interface AuthResponseData {

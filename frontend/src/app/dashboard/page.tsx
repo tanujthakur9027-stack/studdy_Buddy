@@ -37,9 +37,16 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-gray-400 mt-1">Welcome back, {user?.full_name}!</p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-gray-400 mt-1">Welcome back, {user?.full_name}!</p>
+        </div>
+        {user?.class_name && (
+          <span className="text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-full font-semibold">
+            Class {user.class_name}
+          </span>
+        )}
       </div>
 
       {/* Stat cards */}

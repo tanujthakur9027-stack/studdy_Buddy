@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { ClipboardList, Download, Upload, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -18,6 +19,7 @@ interface Assignment {
 }
 
 export default function AssignmentsPage() {
+  const { user } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Assignment | null>(null);
@@ -74,7 +76,17 @@ export default function AssignmentsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white flex items-center gap-2"><ClipboardList className="w-6 h-6 text-orange-400" />Assignments</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <ClipboardList className="w-6 h-6 text-orange-400" />
+          {user?.class_name ? `Class ${user.class_name} Assignments` : "Assignments"}
+        </h1>
+        {user?.class_name && (
+          <span className="text-xs bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full font-medium">
+            Class {user.class_name}
+          </span>
+        )}
+      </div>
 
       {/* Filter tabs */}
       <div className="flex gap-2">

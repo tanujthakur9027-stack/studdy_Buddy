@@ -3,15 +3,15 @@ routers/admin_marks.py — Admin: assessment categories and marks entry.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from database import get_db
-from dependencies.auth import require_admin
-from models.db_models import AssessmentCategory, Mark, StudentProfile, User
+from dependencies.auth import require_admin, check_class_access
+from models.db_models import AssessmentCategory, Mark, StudentProfile, User, ClassEnrollment, ClassAdmin
 from services.notification_service import create_bulk_notifications
 from services.email_service import send_email
 from services.marks_service import calculate_grade
@@ -24,6 +24,7 @@ router = APIRouter(prefix="/admin", tags=["Admin - Marks"])
 class CategoryCreate(BaseModel):
     name: str
     subject_id: str
+    class_id: Optional[str] = None
     max_marks: float = 100.0
     weightage: float = 100.0
 
@@ -32,6 +33,7 @@ class CategoryOut(BaseModel):
     id: str
     name: str
     subject_id: str
+    class_id: Optional[str] = None
     max_marks: float
     weightage: float
     created_at: str
@@ -40,14 +42,19 @@ class CategoryOut(BaseModel):
 @router.get("/assessment-categories", response_model=list[CategoryOut])
 async def list_categories(
     subject_id: Optional[str] = None,
+    class_id: Optional[str] = None,
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(AssessmentCategory)
+    if class_id:
+        await check_class_access(class_id, admin, db, require_write=False)
+        q = q.where(AssessmentCategory.class_id == class_id)
     if subject_id:
         q = q.where(AssessmentCategory.subject_id == subject_id)
     result = await db.execute(q.order_by(AssessmentCategory.name))
     return [CategoryOut(id=c.id, name=c.name, subject_id=c.subject_id,
+                        class_id=c.class_id,
                         max_marks=c.max_marks, weightage=c.weightage,
                         created_at=str(c.created_at)) for c in result.scalars()]
 
@@ -58,8 +65,10 @@ async def create_category(
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if body.class_id:
+        await check_class_access(body.class_id, admin, db, require_write=True)
     cat = AssessmentCategory(
-        name=body.name, subject_id=body.subject_id,
+        name=body.name, subject_id=body.subject_id, class_id=body.class_id,
         max_marks=body.max_marks, weightage=body.weightage,
         created_by=admin.id,
     )
@@ -67,6 +76,7 @@ async def create_category(
     await db.commit()
     await db.refresh(cat)
     return CategoryOut(id=cat.id, name=cat.name, subject_id=cat.subject_id,
+                       class_id=cat.class_id,
                        max_marks=cat.max_marks, weightage=cat.weightage,
                        created_at=str(cat.created_at))
 
@@ -106,6 +116,7 @@ async def delete_category(cat_id: str, admin=Depends(require_admin), db: AsyncSe
 class MarkEntry(BaseModel):
     student_id: str
     category_id: str
+    class_id: Optional[str] = None
     obtained_marks: float
     remarks: str = ""
 
@@ -121,6 +132,7 @@ class MarkOut(BaseModel):
     id: str
     student_id: str
     category_id: str
+    class_id: Optional[str] = None
     obtained_marks: float
     remarks: str
     is_published: bool
@@ -147,16 +159,68 @@ async def enter_marks(
                 detail=f"Obtained {entry.obtained_marks} exceeds max {cat.max_marks} for '{cat.name}'"
             )
 
+        # Class permission check
+        target_class_id = entry.class_id or cat.class_id
+        if target_class_id:
+            await check_class_access(target_class_id, admin, db, require_write=True)
+
         # Resolve student identifier (accepts either user UUID or student_id roll number)
         target_uid = entry.student_id
-        u_res = await db.execute(
-            select(User.id)
-            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-            .where((User.id == target_uid) | (StudentProfile.student_id == target_uid))
-        )
-        resolved_uid = u_res.scalar_one_or_none()
-        if resolved_uid:
-            target_uid = resolved_uid
+        if target_class_id:
+            enr_res = await db.execute(
+                select(ClassEnrollment.student_id)
+                .where(
+                    ClassEnrollment.class_id == target_class_id,
+                    (ClassEnrollment.student_id == target_uid) | (ClassEnrollment.roll_number == target_uid),
+                    ClassEnrollment.is_active == True,  # noqa: E712
+                )
+            )
+            resolved_uid = enr_res.scalars().first()
+            if resolved_uid:
+                target_uid = resolved_uid
+            else:
+                u_res = await db.execute(
+                    select(User.id)
+                    .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+                    .where(
+                        (User.id == target_uid) | (StudentProfile.student_id == target_uid),
+                        StudentProfile.class_id == target_class_id,
+                    )
+                )
+                resolved_uid = u_res.scalars().first()
+                if resolved_uid:
+                    target_uid = resolved_uid
+        else:
+            u_res = await db.execute(
+                select(User.id)
+                .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+                .where((User.id == target_uid) | (StudentProfile.student_id == target_uid))
+            )
+            resolved_uid = u_res.scalars().first()
+            if resolved_uid:
+                target_uid = resolved_uid
+
+        # If class_id specified, ensure student is enrolled in that class
+        if target_class_id:
+            enr_check = await db.execute(
+                select(ClassEnrollment).where(
+                    ClassEnrollment.class_id == target_class_id,
+                    ClassEnrollment.student_id == target_uid,
+                    ClassEnrollment.is_active == True,  # noqa: E712
+                )
+            )
+            if not enr_check.scalar_one_or_none():
+                p_check = await db.execute(
+                    select(StudentProfile).where(
+                        StudentProfile.user_id == target_uid,
+                        StudentProfile.class_id == target_class_id,
+                    )
+                )
+                if not p_check.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Student {entry.student_id} is not enrolled in class {target_class_id}",
+                    )
 
         # Upsert
         existing = await db.execute(
@@ -169,10 +233,13 @@ async def enter_marks(
         if mark:
             mark.obtained_marks = entry.obtained_marks
             mark.remarks = entry.remarks
+            if target_class_id:
+                mark.class_id = target_class_id
         else:
             mark = Mark(
                 student_id=target_uid,
                 category_id=entry.category_id,
+                class_id=target_class_id,
                 obtained_marks=entry.obtained_marks,
                 remarks=entry.remarks,
             )
@@ -182,6 +249,7 @@ async def enter_marks(
 
     await db.commit()
     return [MarkOut(id=m.id, student_id=m.student_id, category_id=m.category_id,
+                    class_id=m.class_id,
                     obtained_marks=m.obtained_marks, remarks=m.remarks,
                     is_published=m.is_published) for m in results]
 
@@ -217,15 +285,33 @@ async def update_mark(
 class PublishRequest(BaseModel):
     category_id: Optional[str] = None
     subject_id: Optional[str] = None
+    class_id: Optional[str] = None
+
+
+async def _send_marks_publish_email_task(email: str, full_name: str) -> None:
+    try:
+        await send_email(
+            to=email,
+            subject="[StudyBuddy] Your Marks Have Been Published",
+            body=f"<p>Hello <b>{full_name}</b>,</p><p>Your examination marks have been published. Log in to StudyBuddy to view your report card.</p>",
+        )
+    except Exception:
+        pass
 
 
 @router.post("/marks/publish")
 async def publish_marks(
     body: PublishRequest,
+    background_tasks: BackgroundTasks,
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if body.class_id:
+        await check_class_access(body.class_id, admin, db, require_write=True)
+
     q = select(Mark).where(Mark.is_published == False)  # noqa: E712
+    if body.class_id:
+        q = q.where(Mark.class_id == body.class_id)
     if body.category_id:
         q = q.where(Mark.category_id == body.category_id)
     elif body.subject_id:
@@ -249,18 +335,15 @@ async def publish_marks(
             message="Your marks have been published. Check the Marks section.",
             notif_type="marks",
         )
-        email_q = select(User.email, User.full_name).where(User.id.in_(student_ids))
-        email_result = await db.execute(email_q)
-        for email, full_name in email_result.all():
-            await send_email(
-                to=email,
-                subject="Your Marks Have Been Published",
-                template_name="marks_published.html",
-                context={"student_name": full_name},
-            )
+        if settings.smtp_host:
+            email_q = select(User.email, User.full_name).where(User.id.in_(student_ids))
+            email_result = await db.execute(email_q)
+            for email, full_name in email_result.all():
+                if email:
+                    background_tasks.add_task(_send_marks_publish_email_task, email, full_name or "")
 
     await db.commit()
-    return {"message": f"Published marks for {len(marks)} entries"}
+    return {"message": f"Published marks for {len(marks)} entries", "notified": len(student_ids)}
 
 
 @router.get("/marks/report")

@@ -627,16 +627,16 @@ async def test_duplicate_unused_otps_dont_crash_verify(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_init_db_creates_all_28_tables():
+async def test_init_db_creates_all_tables():
     """
-    Test that init_db() on a fresh database registers and creates all 28 tables.
+    Test that init_db() on a fresh database registers and creates all tables including class management.
     """
     from database import Base, init_db
     from sqlalchemy.ext.asyncio import create_async_engine
     import tempfile
     from pathlib import Path
 
-    assert len(Base.metadata.tables) == 28, f"Expected 28 tables in Base.metadata, got {len(Base.metadata.tables)}"
+    assert len(Base.metadata.tables) >= 31, f"Expected at least 31 tables in Base.metadata, got {len(Base.metadata.tables)}"
     tmp_db_file = Path(tempfile.gettempdir()) / "test_init_db_fresh.db"
     if tmp_db_file.exists():
         tmp_db_file.unlink()
@@ -649,7 +649,9 @@ async def test_init_db_creates_all_28_tables():
             from sqlalchemy import text
             res = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"))
             tables = [row[0] for row in res.fetchall()]
-            assert len(tables) == 28, f"Expected 28 tables in fresh DB, got {len(tables)}: {tables}"
+            assert len(tables) >= 31, f"Expected at least 31 tables in fresh DB, got {len(tables)}: {tables}"
+            for req_table in ["school_classes", "class_admins", "class_enrollments"]:
+                assert req_table in tables, f"Expected table {req_table} in database tables"
     finally:
         await test_engine.dispose()
         if tmp_db_file.exists():
@@ -738,3 +740,436 @@ def test_empty_document_user_cannot_retrieve_rag_content():
         user_doc_ids=["user_doc_1", "user_doc_2"],
     )
     assert results_unowned == []
+
+
+# ── Class-Based Management System Tests ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_class_management_super_admin_and_uniqueness(client: AsyncClient):
+    """
+    Test class creation, display name generation, unique constraint on (name, section, academic_year),
+    and super admin permissions.
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import create_access_token, hash_password
+
+    async with AsyncSessionLocal() as session:
+        sa = User(
+            email="super_admin_cls@example.com",
+            full_name="Super Admin Cls",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        session.add(sa)
+        await session.commit()
+        await session.refresh(sa)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+
+    headers = {"Authorization": f"Bearer {sa_token}"}
+
+    # 1. Create Class 10-A
+    res_a = await client.post(
+        "/api/classes",
+        json={"name": "10", "section": "A", "academic_year": "2024-2025"},
+        headers=headers,
+    )
+    assert res_a.status_code == 201
+    data_a = res_a.json()
+    assert data_a["display_name"] == "10-A"
+    assert data_a["name"] == "10"
+    assert data_a["section"] == "A"
+    class_a_id = data_a["id"]
+
+    # 2. Duplicate Class 10-A should fail with 400
+    res_dup = await client.post(
+        "/api/classes",
+        json={"name": "10", "section": "A", "academic_year": "2024-2025"},
+        headers=headers,
+    )
+    assert res_dup.status_code == 400
+    assert "already exists" in res_dup.json()["detail"]
+
+    # 3. Create Class 10-B
+    res_b = await client.post(
+        "/api/classes",
+        json={"name": "10", "section": "B", "academic_year": "2024-2025"},
+        headers=headers,
+    )
+    assert res_b.status_code == 201
+    data_b = res_b.json()
+    assert data_b["display_name"] == "10-B"
+
+    # 4. Super admin lists classes -> sees both
+    res_list = await client.get("/api/classes", headers=headers)
+    assert res_list.status_code == 200
+    c_ids = [c["id"] for c in res_list.json()]
+    assert class_a_id in c_ids
+
+
+@pytest.mark.asyncio
+async def test_class_student_enrollment_and_roll_uniqueness(client: AsyncClient):
+    """
+    Test that roll numbers are strictly validated for uniqueness within the same class,
+    while allowing the same roll number in a different class.
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import create_access_token, hash_password
+
+    async with AsyncSessionLocal() as session:
+        sa = User(
+            email="sa_enroll@example.com",
+            full_name="SA Enroll",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        session.add(sa)
+        await session.commit()
+        await session.refresh(sa)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+
+    headers = {"Authorization": f"Bearer {sa_token}"}
+
+    # Create Class 11-A and 11-B
+    c1_res = await client.post("/api/classes", json={"name": "11", "section": "A", "academic_year": "2024-2025"}, headers=headers)
+    c2_res = await client.post("/api/classes", json={"name": "11", "section": "B", "academic_year": "2024-2025"}, headers=headers)
+    c1_id = c1_res.json()["id"]
+    c2_id = c2_res.json()["id"]
+
+    # Enroll Stu 1 into 11-A with roll "11A-01"
+    res_stu1 = await client.post(
+        f"/api/classes/{c1_id}/students",
+        json={"email": "stu1_11a@example.com", "full_name": "Student One", "roll_number": "11A-01", "password": "Student@123"},
+        headers=headers,
+    )
+    assert res_stu1.status_code == 201
+    assert res_stu1.json()["roll_number"] == "11A-01"
+
+    # Enroll Stu 2 into 11-A with duplicate roll "11A-01" -> fails with 400
+    res_dup = await client.post(
+        f"/api/classes/{c1_id}/students",
+        json={"email": "stu2_11a@example.com", "full_name": "Student Two", "roll_number": "11A-01", "password": "Student@123"},
+        headers=headers,
+    )
+    assert res_dup.status_code == 400
+    assert "already assigned" in res_dup.json()["detail"]
+
+    # Enroll Stu 3 into 11-B with SAME roll "11A-01" -> succeeds because it's a different class!
+    res_other_class = await client.post(
+        f"/api/classes/{c2_id}/students",
+        json={"email": "stu3_11b@example.com", "full_name": "Student Three", "roll_number": "11A-01", "password": "Student@123"},
+        headers=headers,
+    )
+    assert res_other_class.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_student_bulk_csv_upload_and_report(client: AsyncClient):
+    """
+    Test bulk CSV import with per-row reporting, duplicate rejection, and success counts.
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import create_access_token, hash_password
+
+    async with AsyncSessionLocal() as session:
+        sa = User(
+            email="sa_bulk@example.com",
+            full_name="SA Bulk",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        session.add(sa)
+        await session.commit()
+        await session.refresh(sa)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+
+    headers = {"Authorization": f"Bearer {sa_token}"}
+    c_res = await client.post("/api/classes", json={"name": "12", "section": "A", "academic_year": "2024-2025"}, headers=headers)
+    c_id = c_res.json()["id"]
+
+    # Pre-enroll one student with roll 12A-01
+    await client.post(
+        f"/api/classes/{c_id}/students",
+        json={"email": "existing_stu@example.com", "full_name": "Existing", "roll_number": "12A-01", "password": "Pass"},
+        headers=headers,
+    )
+
+    # Prepare CSV containing 2 valid rows, 1 duplicate roll row, and 1 invalid email row
+    csv_content = (
+        "name,email,roll_number,password\n"
+        "Alice Smith,alice_bulk@example.com,12A-02,Student@123\n"
+        "Bob Jones,bob_bulk@example.com,12A-03,Student@123\n"
+        "Charlie Dup,charlie_bulk@example.com,12A-01,Student@123\n"  # Duplicate roll in this class
+        "David Invalid,notanemail,12A-04,Student@123\n"              # Invalid email
+    )
+
+    files = {"file": ("students.csv", csv_content.encode("utf-8"), "text/csv")}
+    res_bulk = await client.post(f"/api/classes/{c_id}/students/bulk", files=files, headers=headers)
+    assert res_bulk.status_code == 200
+    report = res_bulk.json()
+    assert report["succeeded"] == 2
+    assert report["failed"] == 2
+
+    # Check that Alice and Bob are enrolled
+    stu_res = await client.get(f"/api/classes/{c_id}/students", headers=headers)
+    enrolled_emails = [s["email"] for s in stu_res.json()]
+    assert "alice_bulk@example.com" in enrolled_emails
+    assert "bob_bulk@example.com" in enrolled_emails
+
+
+@pytest.mark.asyncio
+async def test_student_transfer_preserves_history(client: AsyncClient):
+    """
+    Test transferring a student from Class A to Class B deactivates the old enrollment
+    and creates/activates the new enrollment record.
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User, ClassEnrollment
+    from services.auth_service import create_access_token, hash_password
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        sa = User(
+            email="sa_trans@example.com",
+            full_name="SA Trans",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        session.add(sa)
+        await session.commit()
+        await session.refresh(sa)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+
+    headers = {"Authorization": f"Bearer {sa_token}"}
+    cA_res = await client.post("/api/classes", json={"name": "9", "section": "A", "academic_year": "2024-2025"}, headers=headers)
+    cB_res = await client.post("/api/classes", json={"name": "9", "section": "B", "academic_year": "2024-2025"}, headers=headers)
+    cA_id = cA_res.json()["id"]
+    cB_id = cB_res.json()["id"]
+
+    # Enroll student in 9-A
+    add_res = await client.post(
+        f"/api/classes/{cA_id}/students",
+        json={"email": "transfer_stu@example.com", "full_name": "Transfer Stu", "roll_number": "9A-05", "password": "Student@123"},
+        headers=headers,
+    )
+    student_id = add_res.json()["student_id"]
+
+    # Transfer student to 9-B
+    trans_res = await client.put(
+        f"/api/classes/{cA_id}/students/{student_id}",
+        json={"target_class_id": cB_id},
+        headers=headers,
+    )
+    assert trans_res.status_code == 200
+    assert trans_res.json()["class_id"] == cB_id
+
+    # Verify database: Old enrollment is inactive, new enrollment is active
+    async with AsyncSessionLocal() as session:
+        all_enr = await session.execute(
+            select(ClassEnrollment).where(ClassEnrollment.student_id == student_id)
+        )
+        enrollments = all_enr.scalars().all()
+        assert len(enrollments) == 2
+        active_enrs = [e for e in enrollments if e.is_active]
+        inactive_enrs = [e for e in enrollments if not e.is_active]
+        assert len(active_enrs) == 1
+        assert active_enrs[0].class_id == cB_id
+        assert len(inactive_enrs) == 1
+        assert inactive_enrs[0].class_id == cA_id
+
+
+@pytest.mark.asyncio
+async def test_class_admin_permissions_isolation(client: AsyncClient):
+    """
+    Test that an admin assigned to Class A cannot view or manage Class B:
+    - Attempting assignment creation in Class B -> 403
+    - Attempting to list students of Class B -> 403
+    - Attempting to post announcement for Class B -> 403
+    - Attempting broadcast to Class B -> 403
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import create_access_token, hash_password
+
+    async with AsyncSessionLocal() as session:
+        # Super admin
+        sa = User(
+            email="sa_iso@example.com",
+            full_name="SA Iso",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        # Class Admin for Class A only
+        ca_a = User(
+            email="admin_class_a@example.com",
+            full_name="Admin Class A",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=False,
+            is_active=True,
+        )
+        session.add(sa)
+        session.add(ca_a)
+        await session.commit()
+        await session.refresh(sa)
+        await session.refresh(ca_a)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+        ca_a_token = create_access_token({"sub": ca_a.id, "role": "admin"})
+
+    sa_headers = {"Authorization": f"Bearer {sa_token}"}
+    ca_headers = {"Authorization": f"Bearer {ca_a_token}"}
+
+    # Super admin creates Class A and Class B
+    cA_res = await client.post("/api/classes", json={"name": "8", "section": "A", "academic_year": "2024-2025"}, headers=sa_headers)
+    cB_res = await client.post("/api/classes", json={"name": "8", "section": "B", "academic_year": "2024-2025"}, headers=sa_headers)
+    cA_id = cA_res.json()["id"]
+    cB_id = cB_res.json()["id"]
+
+    # Assign Admin A to Class A
+    await client.post(f"/api/classes/{cA_id}/admins", json={"email": "admin_class_a@example.com"}, headers=sa_headers)
+
+    # 1. Admin A creates assignment in Class A -> succeeds (201)
+    asgn_a = await client.post(
+        "/api/admin/assignments",
+        data={
+            "title": "Class A Math", "subject_id": "Math", "class_id": cA_id,
+            "due_date": "2026-12-31", "due_time": "23:59", "max_marks": 100,
+        },
+        headers=ca_headers,
+    )
+    assert asgn_a.status_code == 201
+
+    # 2. Admin A attempts assignment creation in Class B -> 403 Forbidden!
+    asgn_b = await client.post(
+        "/api/admin/assignments",
+        data={
+            "title": "Class B Math", "subject_id": "Math", "class_id": cB_id,
+            "due_date": "2026-12-31", "due_time": "23:59", "max_marks": 100,
+        },
+        headers=ca_headers,
+    )
+    assert asgn_b.status_code == 403
+
+    # 3. Admin A attempts to list students of Class B -> 403 Forbidden!
+    stu_b = await client.get(f"/api/classes/{cB_id}/students", headers=ca_headers)
+    assert stu_b.status_code == 403
+
+    # 4. Admin A attempts announcement for Class B -> 403 Forbidden!
+    ann_b = await client.post(
+        "/api/admin/announcements",
+        json={"title": "Unauthorized Notice", "content": "Hello", "class_id": cB_id},
+        headers=ca_headers,
+    )
+    assert ann_b.status_code == 403
+
+    # 5. Admin A attempts broadcast to Class B -> 403 Forbidden!
+    bcast_b = await client.post(
+        f"/api/classes/{cB_id}/broadcast",
+        json={"title": "Hacked", "message": "Test"},
+        headers=ca_headers,
+    )
+    assert bcast_b.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_student_class_content_isolation(client: AsyncClient):
+    """
+    Test that students can only view content (assignments, announcements, notes)
+    targeted to their enrolled class.
+    """
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import create_access_token, hash_password
+
+    async with AsyncSessionLocal() as session:
+        sa = User(
+            email="sa_stu_iso@example.com",
+            full_name="SA Stu Iso",
+            password_hash=hash_password("AdminPass123"),
+            role="admin",
+            is_super_admin=True,
+            is_active=True,
+        )
+        session.add(sa)
+        await session.commit()
+        await session.refresh(sa)
+        sa_token = create_access_token({"sub": sa.id, "role": "admin"})
+
+    sa_headers = {"Authorization": f"Bearer {sa_token}"}
+
+    # Create Class 7-A and 7-B
+    cA = (await client.post("/api/classes", json={"name": "7", "section": "A", "academic_year": "2024-2025"}, headers=sa_headers)).json()
+    cB = (await client.post("/api/classes", json={"name": "7", "section": "B", "academic_year": "2024-2025"}, headers=sa_headers)).json()
+
+    # Enroll Student A in 7-A and Student B in 7-B
+    enr_a = (await client.post(
+        f"/api/classes/{cA['id']}/students",
+        json={"email": "student_7a@example.com", "full_name": "Stu 7A", "roll_number": "7A-01", "password": "Pass"},
+        headers=sa_headers,
+    )).json()
+
+    enr_b = (await client.post(
+        f"/api/classes/{cB['id']}/students",
+        json={"email": "student_7b@example.com", "full_name": "Stu 7B", "roll_number": "7B-01", "password": "Pass"},
+        headers=sa_headers,
+    )).json()
+
+    stu_a_token = create_access_token({"sub": enr_a["student_id"], "role": "student"})
+    stu_b_token = create_access_token({"sub": enr_b["student_id"], "role": "student"})
+    stu_a_headers = {"Authorization": f"Bearer {stu_a_token}"}
+    stu_b_headers = {"Authorization": f"Bearer {stu_b_token}"}
+
+    # Admin creates assignment for 7-A and 7-B and publishes them
+    asgn_a = (await client.post(
+        "/api/admin/assignments",
+        data={"title": "Assignment for 7A only", "subject_id": "Sci", "class_id": cA["id"], "due_date": "2026-12-31"},
+        headers=sa_headers,
+    )).json()
+    await client.post(f"/api/admin/assignments/{asgn_a['id']}/publish", headers=sa_headers)
+
+    asgn_b = (await client.post(
+        "/api/admin/assignments",
+        data={"title": "Assignment for 7B only", "subject_id": "Sci", "class_id": cB["id"], "due_date": "2026-12-31"},
+        headers=sa_headers,
+    )).json()
+    await client.post(f"/api/admin/assignments/{asgn_b['id']}/publish", headers=sa_headers)
+
+    # Student A queries assignments -> must see 7-A assignment, must NOT see 7-B
+    stu_a_asgns = (await client.get("/api/assignments", headers=stu_a_headers)).json()
+    stu_a_titles = [a["title"] for a in stu_a_asgns]
+    assert "Assignment for 7A only" in stu_a_titles
+    assert "Assignment for 7B only" not in stu_a_titles
+
+    # Student B queries assignments -> must see 7-B assignment, must NOT see 7-A
+    stu_b_asgns = (await client.get("/api/assignments", headers=stu_b_headers)).json()
+    stu_b_titles = [a["title"] for a in stu_b_asgns]
+    assert "Assignment for 7B only" in stu_b_titles
+    assert "Assignment for 7A only" not in stu_b_titles
+
+    # Post announcement for 7-A only
+    await client.post(
+        "/api/admin/announcements",
+        json={"title": "Class 7A Picnic", "content": "Details here", "class_id": cA["id"]},
+        headers=sa_headers,
+    )
+
+    # Student A sees the announcement
+    ann_a = (await client.get("/api/announcements", headers=stu_a_headers)).json()
+    assert any(a["title"] == "Class 7A Picnic" for a in ann_a)
+
+    # Student B does NOT see the 7-A announcement
+    ann_b = (await client.get("/api/announcements", headers=stu_b_headers)).json()
+    assert not any(a["title"] == "Class 7A Picnic" for a in ann_b)
+

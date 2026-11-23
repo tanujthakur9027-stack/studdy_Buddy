@@ -85,9 +85,17 @@ def predict_attrition_risk(
     rf = _get_model()
     if rf is not None:
         try:
-            import numpy as np
-            features_vec = np.array([[debtor, scholarship_holder, age, gender, grade, attendance]])
-            risk_probability = float(rf.predict_proba(features_vec)[0][1] * 100.0)
+            if hasattr(rf, "feature_names_in_"):
+                import pandas as pd
+                df_input = pd.DataFrame(
+                    [[debtor, scholarship_holder, age, gender, grade, attendance]],
+                    columns=rf.feature_names_in_,
+                )
+                risk_probability = float(rf.predict_proba(df_input)[0][1] * 100.0)
+            else:
+                import numpy as np
+                features_vec = np.array([[debtor, scholarship_holder, age, gender, grade, attendance]])
+                risk_probability = float(rf.predict_proba(features_vec)[0][1] * 100.0)
         except Exception as exc:
             logger.debug("Sklearn predict failed: %s; falling back to calibrated formulation", exc)
             rf = None

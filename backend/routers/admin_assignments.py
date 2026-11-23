@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from database import get_db
-from dependencies.auth import require_admin
-from models.db_models import Assignment, StudentProfile
+from dependencies.auth import require_admin, check_class_access
+from models.db_models import Assignment, StudentProfile, ClassAdmin, ClassEnrollment
 from services.storage_service import save_file, ALLOWED_ASSIGNMENT_TYPES
 from services.notification_service import create_bulk_notifications
 from services.email_service import send_email
@@ -62,12 +62,17 @@ def _to_out(a: Assignment) -> AssignmentOut:
 
 @router.get("", response_model=list[AssignmentOut])
 async def list_assignments(
+    class_id: Optional[str] = None,
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Assignment).order_by(Assignment.created_at.desc())
-    )
+    q = select(Assignment)
+    if class_id:
+        await check_class_access(class_id, admin, db, require_write=False)
+        q = q.where(Assignment.class_id == class_id)
+    elif not admin.is_super_admin_user:
+        q = q.join(ClassAdmin, ClassAdmin.class_id == Assignment.class_id).where(ClassAdmin.admin_user_id == admin.id)
+    result = await db.execute(q.order_by(Assignment.created_at.desc()))
     return [_to_out(a) for a in result.scalars()]
 
 
@@ -86,6 +91,7 @@ async def create_assignment(
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_class_access(class_id, admin, db, require_write=True)
     file_url = None
     if file and file.filename:
         try:
@@ -121,6 +127,9 @@ async def update_assignment(
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    await check_class_access(assignment.class_id, admin, db, require_write=True)
+    if body.class_id and body.class_id != assignment.class_id:
+        await check_class_access(body.class_id, admin, db, require_write=True)
     for k, v in body.model_dump().items():
         setattr(assignment, k, v)
     await db.commit()
@@ -137,17 +146,23 @@ async def publish_assignment(
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    await check_class_access(assignment.class_id, admin, db, require_write=True)
 
     assignment.is_published = True
     await db.flush()
 
-    # Find affected students
-    q = select(StudentProfile).where(StudentProfile.class_id == assignment.class_id)
-    if assignment.section_id:
-        q = q.where(StudentProfile.section == assignment.section_id)
-    profiles_result = await db.execute(q)
-    profiles = profiles_result.scalars().all()
-    student_ids = [p.user_id for p in profiles]
+    # Find affected students via enrollments and profiles
+    enr_res = await db.execute(
+        select(ClassEnrollment.student_id).where(
+            ClassEnrollment.class_id == assignment.class_id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
+    )
+    student_ids = list(enr_res.scalars().all())
+    if not student_ids:
+        q = select(StudentProfile.user_id).where(StudentProfile.class_id == assignment.class_id)
+        p_res = await db.execute(q)
+        student_ids = list(p_res.scalars().all())
 
     if student_ids:
         await create_bulk_notifications(
@@ -172,6 +187,7 @@ async def delete_assignment(
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    await check_class_access(assignment.class_id, admin, db, require_write=True)
     await db.delete(assignment)
     await db.commit()
     return {"message": "Assignment deleted"}

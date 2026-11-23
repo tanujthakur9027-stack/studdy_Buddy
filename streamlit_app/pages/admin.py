@@ -289,76 +289,90 @@ with attrition_tab:
 
 # ── Classes ───────────────────────────────────────────────────────────────────
 with classes_tab:
-    _h("🏛️ Classes, Sections &amp; Subjects")
-    classes_data,  _ = api_get("/api/admin/classes",  timeout=10)
-    sections_data, _ = api_get("/api/admin/sections", timeout=10)
-    subjects_data, _ = api_get("/api/admin/subjects", timeout=10)
-    classes   = classes_data  or []
-    sections  = sections_data or []
-    subjects  = subjects_data or []
+    _h("🏛️ School Classes & Rosters")
+    classes_data, _ = api_get("/api/classes", timeout=10)
+    classes = classes_data or []
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        with st.form("new_class"):
-            st.markdown("**New Class**")
-            cls_name   = st.text_input("Class Name", placeholder="B.Tech CSE Year 2")
-            cls_course = st.text_input("Course",     placeholder="B.Tech")
+    with st.expander("➕ Create New School Class", expanded=False):
+        with st.form("new_school_class"):
+            c1, c2, c3 = st.columns(3)
+            cls_name = c1.text_input("Class / Grade Name *", placeholder="10")
+            cls_sec = c2.text_input("Section *", value="A", placeholder="A")
+            cls_year = c3.text_input("Academic Year *", value="2024-2025")
             if st.form_submit_button("Create Class", type="primary"):
-                if cls_name:
-                    _, err = api_post("/api/admin/classes", json={"name": cls_name, "course": cls_course})
-                    if err: st.error(err)
-                    else: st.success("Created!"); st.rerun()
-    with col2:
-        with st.form("new_section"):
-            st.markdown("**New Section**")
-            sec_cls  = st.selectbox("Class", [c["id"] for c in classes],
-                                    format_func=lambda i: next((c["name"] for c in classes if c["id"]==i),i), key="sec_cls")
-            sec_name = st.text_input("Section Name", placeholder="A")
-            if st.form_submit_button("Create Section", type="primary"):
-                if sec_name and sec_cls:
-                    _, err = api_post("/api/admin/sections", json={"name": sec_name, "class_id": sec_cls})
-                    if err: st.error(err)
-                    else: st.success("Created!"); st.rerun()
-    with col3:
-        with st.form("new_subject"):
-            st.markdown("**New Subject**")
-            sub_cls  = st.selectbox("Class", [c["id"] for c in classes],
-                                    format_func=lambda i: next((c["name"] for c in classes if c["id"]==i),i), key="sub_cls")
-            sub_name = st.text_input("Subject Name", placeholder="Data Structures")
-            sub_code = st.text_input("Code", placeholder="CS301")
-            if st.form_submit_button("Create Subject", type="primary"):
-                if sub_name and sub_cls:
-                    _, err = api_post("/api/admin/subjects", json={"name": sub_name, "code": sub_code, "class_id": sub_cls})
-                    if err: st.error(err)
-                    else: st.success("Created!"); st.rerun()
+                if cls_name and cls_sec:
+                    _, err = api_post("/api/classes", json={
+                        "name": cls_name.strip(),
+                        "section": cls_sec.strip().upper(),
+                        "academic_year": cls_year.strip(),
+                    })
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success(f"Class {cls_name}-{cls_sec.upper()} created!")
+                        st.rerun()
+                else:
+                    st.error("Class name and section are required")
 
-    st.divider()
-    for cls in classes:
-        cls_sections = [s for s in sections if s["class_id"] == cls["id"]]
-        cls_subjects  = [s for s in subjects  if s["class_id"] == cls["id"]]
-        with st.expander(f"📁 {cls['name']} · {len(cls_sections)} sections · {len(cls_subjects)} subjects"):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Sections**")
-                for sec in cls_sections:
-                    ca, cb = st.columns([3,1])
-                    ca.markdown(f"<span style='color:#d4d4d8'>{sec['name']}</span>", unsafe_allow_html=True)
-                    if cb.button("Del", key=f"delsec_{sec['id']}"):
-                        api_delete(f"/api/admin/sections/{sec['id']}"); st.rerun()
-            with c2:
-                st.markdown("**Subjects**")
-                for sub in cls_subjects:
-                    ca, cb = st.columns([3,1])
-                    ca.markdown(f"<span style='color:#d4d4d8'>{sub['name']}</span><span style='color:#52525b;font-size:11px'> {sub.get('code','')}</span>",
-                                unsafe_allow_html=True)
-                    if cb.button("Del", key=f"delsub_{sub['id']}"):
-                        api_delete(f"/api/admin/subjects/{sub['id']}"); st.rerun()
+    st.markdown("### Active Classes")
+    if not classes:
+        st.info("No school classes found. Create one above.")
+    else:
+        for cls in classes:
+            c_id = cls["id"]
+            d_name = cls.get("display_name", cls.get("name", "Class"))
+            stu_count = cls.get("student_count", 0)
+            year = cls.get("academic_year", "")
+
+            with st.expander(f"🏛️ Class {d_name} ({year}) · 👥 {stu_count} students"):
+                col_roster, col_add = st.columns([3, 2])
+                with col_roster:
+                    st.markdown(f"**Roster for Class {d_name}**")
+                    stu_data, s_err = api_get(f"/api/classes/{c_id}/students", timeout=10)
+                    roster = stu_data or []
+                    if not roster:
+                        st.caption("No students currently enrolled in this class.")
+                    else:
+                        for stu in roster:
+                            r_c1, r_c2 = st.columns([4, 1])
+                            r_c1.markdown(
+                                f"<span style='color:#60a5fa;font-family:monospace'>{stu['roll_number']}</span> "
+                                f"<strong style='color:#ffffff'>{stu['full_name']}</strong> "
+                                f"<span style='color:#71717a;font-size:12px'>({stu['email']})</span>",
+                                unsafe_allow_html=True,
+                            )
+                            if r_c2.button("Remove", key=f"del_stu_{c_id}_{stu['student_id']}"):
+                                api_delete(f"/api/classes/{c_id}/students/{stu['student_id']}")
+                                st.rerun()
+
+                with col_add:
+                    st.markdown(f"**Add Student to {d_name}**")
+                    with st.form(f"add_stu_{c_id}"):
+                        s_name = st.text_input("Full Name *", key=f"sname_{c_id}")
+                        s_email = st.text_input("Email *", key=f"semail_{c_id}")
+                        s_roll = st.text_input("Roll Number *", key=f"sroll_{c_id}", placeholder="e.g. 10A-01")
+                        s_pass = st.text_input("Password", value="Student@123", type="password", key=f"spass_{c_id}")
+                        if st.form_submit_button("Enroll Student", type="primary"):
+                            if s_name and s_email and s_roll:
+                                _, a_err = api_post(f"/api/classes/{c_id}/students", json={
+                                    "full_name": s_name.strip(),
+                                    "email": s_email.strip().lower(),
+                                    "roll_number": s_roll.strip(),
+                                    "password": s_pass.strip(),
+                                })
+                                if a_err:
+                                    st.error(a_err)
+                                else:
+                                    st.success(f"Added {s_name} to {d_name}!")
+                                    st.rerun()
+                            else:
+                                st.error("Full name, email, and roll number are required.")
 
 
 # ── Assignments ───────────────────────────────────────────────────────────────
 with assignments_tab:
     _h("📋 Manage Assignments")
-    classes_data, _ = api_get("/api/admin/classes",  timeout=10)
+    classes_data, _ = api_get("/api/classes", timeout=10)
     subjects_data, _ = api_get("/api/admin/subjects", timeout=10)
     classes  = classes_data  or []
     subjects = subjects_data or []
@@ -367,7 +381,7 @@ with assignments_tab:
             title   = st.text_input("Title *")
             c1, c2 = st.columns(2)
             cls_id  = c1.selectbox("Class *", [c["id"] for c in classes],
-                                   format_func=lambda i: next((c["name"] for c in classes if c["id"]==i),i))
+                                   format_func=lambda i: next((c.get("display_name", c["name"]) for c in classes if c["id"]==i), i))
             sub_id  = c2.selectbox("Subject *", [s["id"] for s in subjects],
                                    format_func=lambda i: next((s["name"] for s in subjects if s["id"]==i),i))
             desc    = st.text_area("Description", height=80)
@@ -507,13 +521,13 @@ with marks_tab:
 # ── Timetable ─────────────────────────────────────────────────────────────────
 with timetable_tab:
     _h("📅 Timetable Management")
-    classes_data, _ = api_get("/api/admin/classes", timeout=10)
+    classes_data, _ = api_get("/api/classes", timeout=10)
     classes = classes_data or []
     with st.expander("➕ Create New Timetable"):
         with st.form("new_tt"):
             c1, c2 = st.columns(2)
             tt_cls  = c1.selectbox("Class *", [c["id"] for c in classes],
-                                    format_func=lambda i: next((c["name"] for c in classes if c["id"]==i),i))
+                                    format_func=lambda i: next((c.get("display_name", c["name"]) for c in classes if c["id"]==i), i))
             tt_name = c2.text_input("Name", value="Timetable")
             c3, c4, c5 = st.columns(3)
             tt_start = c3.text_input("Start Time", value="09:00")
@@ -562,15 +576,15 @@ with timetable_tab:
 # ── Announcements ─────────────────────────────────────────────────────────────
 with announcements_tab:
     _h("📢 Announcements")
-    classes_data, _ = api_get("/api/admin/classes", timeout=10)
+    classes_data, _ = api_get("/api/classes", timeout=10)
     classes = classes_data or []
     with st.form("new_ann"):
         ann_title   = st.text_input("Title *")
         ann_content = st.text_area("Content *", height=120)
-        ann_cls     = st.selectbox("Target",
+        ann_cls     = st.selectbox("Target Class *",
                                     [""]+[c["id"] for c in classes],
                                     format_func=lambda i:"All Students (Broadcast)" if not i else
-                                    next((c["name"] for c in classes if c["id"]==i),i))
+                                    next((f"Class {c.get('display_name', c['name'])} ({c.get('student_count', 0)} students)" for c in classes if c["id"]==i), i))
         if st.form_submit_button("📢 Post Announcement", type="primary"):
             if ann_title and ann_content:
                 _, err = api_post("/api/admin/announcements",
@@ -602,7 +616,7 @@ with announcements_tab:
 with broadcast_tab:
     _h("✉️ Broadcast Notification & Email")
     st.markdown("Dispatch high-priority in-app announcements and optional SMTP emails to students.")
-    classes_data, _ = api_get("/api/admin/classes", timeout=10)
+    classes_data, _ = api_get("/api/classes", timeout=10)
     classes = classes_data or []
 
     with st.form("broadcast_form"):
@@ -613,8 +627,11 @@ with broadcast_tab:
             b_class_id = st.selectbox(
                 "Select Class",
                 [c["id"] for c in classes],
-                format_func=lambda i: next((c["name"] for c in classes if c["id"] == i), i),
+                format_func=lambda i: next((f"Class {c.get('display_name', c['name'])} ({c.get('student_count', 0)} students)" for c in classes if c["id"] == i), i),
             )
+            selected_cls = next((c for c in classes if c["id"] == b_class_id), None)
+            if selected_cls:
+                st.caption(f"📢 Sending to: **Class {selected_cls.get('display_name', selected_cls['name'])}** ({selected_cls.get('student_count', 0)} students)")
         elif b_target == "Single Student":
             b_student_id = st.text_input("Student User ID (UUID)")
 
@@ -625,13 +642,20 @@ with broadcast_tab:
         if st.form_submit_button("🚀 Send Broadcast", type="primary"):
             if not b_title or not b_message:
                 st.error("Please provide both a title and message.")
+            elif b_target == "Specific Class" and b_class_id:
+                res, err = api_post(f"/api/classes/{b_class_id}/broadcast", json={
+                    "title": b_title.strip(),
+                    "message": b_message.strip(),
+                    "send_email": b_email,
+                })
+                if err:
+                    st.error(err)
+                else:
+                    st.success(f"Broadcast dispatched! {res.get('recipient_count', 0)} student(s) in Class received alert.")
             else:
                 target_type = "all"
                 target_id = None
-                if b_target == "Specific Class":
-                    target_type = "class"
-                    target_id = b_class_id
-                elif b_target == "Single Student":
+                if b_target == "Single Student":
                     target_type = "student"
                     target_id = b_student_id.strip() if b_student_id else None
 

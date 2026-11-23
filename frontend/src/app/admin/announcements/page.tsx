@@ -4,7 +4,14 @@ import { api } from "@/lib/api";
 import { Megaphone, Plus, Trash, X } from "lucide-react";
 import toast from "react-hot-toast";
 
-interface Class { id: string; name: string; }
+interface SchoolClass {
+  id: string;
+  name: string;
+  section: string;
+  academic_year: string;
+  display_name: string;
+  student_count: number;
+}
 interface Announcement {
   id: string; title: string; content: string;
   created_by: string; author_name: string;
@@ -14,7 +21,7 @@ interface Announcement {
 
 export default function AdminAnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", content: "", class_id: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +33,7 @@ export default function AdminAnnouncementsPage() {
     api.get("/api/admin/announcements", { withCredentials: true })
       .then(r => setAnnouncements(r.data))
       .catch(() => {});
-    api.get("/api/admin/classes", { withCredentials: true })
+    api.get("/api/classes", { withCredentials: true })
       .then(r => setClasses(r.data))
       .catch(() => {});
   }, []);
@@ -78,7 +85,7 @@ export default function AdminAnnouncementsPage() {
   };
 
   const className = (classId: string | null) =>
-    classId ? classes.find(c => c.id === classId)?.name || "Unknown" : null;
+    classId ? classes.find(c => c.id === classId)?.display_name || "Unknown" : null;
 
   return (
     <div className="space-y-6">
@@ -180,15 +187,25 @@ export default function AdminAnnouncementsPage() {
                 className={inp}
               />
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Target Audience</label>
+                <label className="text-xs text-gray-400 block mb-1">Target Class *</label>
                 <select
+                  required
                   value={form.class_id}
                   onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}
                   className={inp}
                 >
-                  <option value="">All Students (Broadcast)</option>
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="">Select a Class...</option>
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>
+                      Class {c.display_name} ({c.student_count} students)
+                    </option>
+                  ))}
                 </select>
+                {form.class_id && (
+                  <p className="text-xs text-blue-400 mt-1.5 font-medium">
+                    Sending to: {classes.find(c => c.id === form.class_id)?.display_name} ({classes.find(c => c.id === form.class_id)?.student_count || 0} students)
+                  </p>
+                )}
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button

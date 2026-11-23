@@ -12,7 +12,7 @@ from typing import Optional
 
 from database import get_db
 from dependencies.auth import get_current_user
-from models.db_models import Assignment, AssignmentSubmission, StudentProfile, User
+from models.db_models import Assignment, AssignmentSubmission, StudentProfile, User, ClassEnrollment
 from services.storage_service import save_file, ALLOWED_ASSIGNMENT_TYPES
 from config import get_settings
 
@@ -54,24 +54,29 @@ async def list_my_assignments(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Get student's class
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+    # Get student's class (prioritizing active ClassEnrollment)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
     )
-    profile = profile_result.scalar_one_or_none()
-    if not profile:
-        profile = StudentProfile(user_id=current_user.id, student_id=f"STU-{current_user.id[:6].upper()}")
-        db.add(profile)
-        await db.commit()
-        await db.refresh(profile)
+    class_id = enr_res.scalar_one_or_none()
+
+    if not class_id:
+        profile_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        class_id = profile.class_id if profile else None
 
     # If student has no class assigned yet, return empty list
-    if not profile.class_id:
+    if not class_id:
         return []
 
     q = (
         select(Assignment)
-        .where(Assignment.is_published == True, Assignment.class_id == profile.class_id)  # noqa: E712
+        .where(Assignment.is_published == True, Assignment.class_id == class_id)  # noqa: E712
     )
 
     result = await db.execute(q.order_by(Assignment.due_date.asc()))
@@ -106,11 +111,21 @@ async def get_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     # Verify student belongs to a class
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
     )
-    profile = profile_result.scalar_one_or_none()
-    if not profile or not profile.class_id:
+    class_id = enr_res.scalar_one_or_none()
+    if not class_id:
+        profile_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        class_id = profile.class_id if profile else None
+
+    if not class_id:
         raise HTTPException(status_code=403, detail="You are not assigned to any class")
 
     result = await db.execute(
@@ -118,7 +133,7 @@ async def get_assignment(
             and_(
                 Assignment.id == assignment_id,
                 Assignment.is_published == True,  # noqa: E712
-                Assignment.class_id == profile.class_id,
+                Assignment.class_id == class_id,
             )
         )
     )
@@ -154,18 +169,28 @@ async def submit_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     # Verify student belongs to a class
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
     )
-    profile = profile_result.scalar_one_or_none()
-    if not profile or not profile.class_id:
+    class_id = enr_res.scalar_one_or_none()
+    if not class_id:
+        profile_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        class_id = profile.class_id if profile else None
+
+    if not class_id:
         raise HTTPException(status_code=403, detail="You are not assigned to any class")
 
     asgn_result = await db.execute(
         select(Assignment).where(
             Assignment.id == assignment_id,
             Assignment.is_published == True,  # noqa: E712
-            Assignment.class_id == profile.class_id,
+            Assignment.class_id == class_id,
         )
     )
     assignment = asgn_result.scalar_one_or_none()

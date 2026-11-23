@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from database import get_db
-from dependencies.auth import require_admin, get_current_user
-from models.db_models import Announcement, User, StudentProfile
+from dependencies.auth import require_admin, get_current_user, check_class_access
+from models.db_models import Announcement, User, StudentProfile, ClassAdmin, ClassEnrollment
 from services.notification_service import create_bulk_notifications
 
 # Student-facing router
@@ -41,12 +41,18 @@ class AnnouncementOut(BaseModel):
 # ── Admin endpoints ───────────────────────────────────────────────────────────
 
 @admin_router.get("", response_model=list[AnnouncementOut])
-async def admin_list(admin=Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Announcement, User)
-        .join(User, Announcement.created_by == User.id)
-        .order_by(Announcement.created_at.desc())
-    )
+async def admin_list(
+    class_id: Optional[str] = None,
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(Announcement, User).join(User, Announcement.created_by == User.id)
+    if class_id:
+        await check_class_access(class_id, admin, db, require_write=False)
+        q = q.where(Announcement.class_id == class_id)
+    elif not admin.is_super_admin_user:
+        q = q.join(ClassAdmin, ClassAdmin.class_id == Announcement.class_id).where(ClassAdmin.admin_user_id == admin.id)
+    result = await db.execute(q.order_by(Announcement.created_at.desc()))
     return [_to_out(a, u) for a, u in result.all()]
 
 
@@ -56,6 +62,9 @@ async def admin_create(
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if body.class_id:
+        await check_class_access(body.class_id, admin, db, require_write=True)
+
     ann = Announcement(
         title=body.title, content=body.content,
         created_by=admin.id, class_id=body.class_id, section_id=body.section_id,
@@ -63,12 +72,20 @@ async def admin_create(
     db.add(ann)
     await db.flush()
 
-    # Notify affected students
-    q = select(StudentProfile.user_id)
+    # Notify affected students via active enrollments or profiles
+    student_ids: list[str] = []
     if body.class_id:
-        q = q.where(StudentProfile.class_id == body.class_id)
-    student_ids_result = await db.execute(q)
-    student_ids = [row[0] for row in student_ids_result.all()]
+        enr_res = await db.execute(
+            select(ClassEnrollment.student_id).where(
+                ClassEnrollment.class_id == body.class_id,
+                ClassEnrollment.is_active == True,  # noqa: E712
+            )
+        )
+        student_ids = list(enr_res.scalars().all())
+        if not student_ids:
+            q = select(StudentProfile.user_id).where(StudentProfile.class_id == body.class_id)
+            p_res = await db.execute(q)
+            student_ids = list(p_res.scalars().all())
 
     if student_ids:
         await create_bulk_notifications(
@@ -100,8 +117,15 @@ async def admin_update(
     ann = result.scalar_one_or_none()
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")
+    if ann.class_id:
+        await check_class_access(ann.class_id, admin, db, require_write=True)
+    if body.class_id and body.class_id != ann.class_id:
+        await check_class_access(body.class_id, admin, db, require_write=True)
+
     ann.title = body.title
     ann.content = body.content
+    if body.class_id:
+        ann.class_id = body.class_id
     await db.commit()
     result2 = await db.execute(
         select(Announcement, User)
@@ -118,6 +142,8 @@ async def admin_delete(ann_id: str, admin=Depends(require_admin), db: AsyncSessi
     ann = result.scalar_one_or_none()
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")
+    if ann.class_id:
+        await check_class_access(ann.class_id, admin, db, require_write=True)
     await db.delete(ann)
     await db.commit()
     return {"message": "Deleted"}
@@ -130,11 +156,19 @@ async def student_list(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    profile_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
     )
-    profile = profile_result.scalar_one_or_none()
-    class_id = profile.class_id if profile else None
+    class_id = enr_res.scalar_one_or_none()
+    if not class_id:
+        profile_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        class_id = profile.class_id if profile else None
 
     q = select(Announcement, User).join(User, Announcement.created_by == User.id)
     if class_id:

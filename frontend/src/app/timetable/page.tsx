@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { Calendar } from "lucide-react";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -32,6 +33,7 @@ interface TimetableData {
 }
 
 export default function TimetablePage() {
+  const { user } = useAuth();
   const [data, setData] = useState<TimetableData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState(new Date().getDay() === 0 ? 0 : new Date().getDay() - 1);
@@ -47,7 +49,17 @@ export default function TimetablePage() {
 
   if (!data) return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Calendar className="w-6 h-6 text-blue-400" />Timetable</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <Calendar className="w-6 h-6 text-blue-400" />
+          {user?.class_name ? `Class ${user.class_name} Timetable` : "Timetable"}
+        </h1>
+        {user?.class_name && (
+          <span className="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full font-medium">
+            Class {user.class_name}
+          </span>
+        )}
+      </div>
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
         <Calendar className="w-12 h-12 text-gray-700 mx-auto mb-4" />
         <p className="text-gray-400">No timetable published yet</p>

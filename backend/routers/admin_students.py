@@ -18,8 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from dependencies.auth import require_admin
-from models.db_models import Class, StudentProfile, User
+from dependencies.auth import require_admin, check_class_access
+from models.db_models import Class, StudentProfile, User, SchoolClass, ClassEnrollment, ClassAdmin
 
 router = APIRouter(prefix="/admin/students", tags=["Admin - Students"])
 
@@ -40,6 +40,7 @@ class StudentProfileOut(BaseModel):
     dob: Optional[str]
     profile_photo_url: Optional[str]
     class_id: Optional[str]
+    class_name: Optional[str] = None
 
 
 class StudentAdminUpdate(BaseModel):
@@ -61,17 +62,38 @@ async def list_students(
     page: int = 1,
     page_size: int = 100,
     search: str = "",
+    class_id: Optional[str] = None,
     admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     page_size = min(max(page_size, 1), 500)
     offset = (page - 1) * page_size
 
-    q = (
-        select(User, StudentProfile)
-        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-        .where(User.role == "student")
-    )
+    if class_id:
+        await check_class_access(class_id, admin, db, require_write=False)
+        q = (
+            select(User, StudentProfile, ClassEnrollment, SchoolClass)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .join(ClassEnrollment, and_(ClassEnrollment.student_id == User.id, ClassEnrollment.is_active == True))
+            .join(SchoolClass, SchoolClass.id == ClassEnrollment.class_id)
+            .where(User.role == "student", ClassEnrollment.class_id == class_id)
+        )
+    elif not admin.is_super_admin_user:
+        q = (
+            select(User, StudentProfile, ClassEnrollment, SchoolClass)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .join(ClassEnrollment, and_(ClassEnrollment.student_id == User.id, ClassEnrollment.is_active == True))
+            .join(SchoolClass, SchoolClass.id == ClassEnrollment.class_id)
+            .join(ClassAdmin, ClassAdmin.class_id == ClassEnrollment.class_id)
+            .where(User.role == "student", ClassAdmin.admin_user_id == admin.id)
+        )
+    else:
+        q = (
+            select(User, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .where(User.role == "student")
+        )
+
     if search:
         q = q.where(
             User.full_name.ilike(f"%{search}%")
@@ -83,7 +105,22 @@ async def list_students(
     rows = result.all()
 
     out = []
-    for user, profile in rows:
+    for row in rows:
+        user = row[0]
+        profile = row[1]
+        cls_name = None
+        cid = profile.class_id if profile else None
+        if len(row) > 3:
+            s_cls = row[3]
+            cls_name = s_cls.display_name
+            cid = s_cls.id
+        elif cid:
+            # Pre-load class name if available
+            c_res = await db.execute(select(SchoolClass).where(SchoolClass.id == cid))
+            sc = c_res.scalar_one_or_none()
+            if sc:
+                cls_name = sc.display_name
+
         out.append(StudentProfileOut(
             id=user.id,
             email=user.email,
@@ -99,7 +136,8 @@ async def list_students(
             academic_year=profile.academic_year if profile else "",
             dob=profile.dob if profile else None,
             profile_photo_url=profile.profile_photo_url if profile else None,
-            class_id=profile.class_id if profile else None,
+            class_id=cid,
+            class_name=cls_name,
         ))
     return out
 

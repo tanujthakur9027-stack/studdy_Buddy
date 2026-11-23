@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Calendar, Plus, Send, Trash, X } from "lucide-react";
 import toast from "react-hot-toast";
 
-interface Class { id: string; name: string; }
+interface Class { id: string; name: string; display_name?: string; }
 interface Section { id: string; name: string; class_id: string; }
 interface Subject { id: string; name: string; class_id: string; }
 interface Timetable {
@@ -43,7 +43,7 @@ export default function AdminTimetablePage() {
   const inp = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500";
 
   useEffect(() => {
-    api.get("/api/admin/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
+    api.get("/api/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
     api.get("/api/admin/sections", { withCredentials: true }).then(r => setSections(r.data)).catch(() => {});
     api.get("/api/admin/subjects", { withCredentials: true }).then(r => setSubjects(r.data)).catch(() => {});
     api.get("/api/admin/timetables", { withCredentials: true }).then(r => setTimetables(r.data)).catch(() => {});
@@ -192,7 +192,7 @@ export default function AdminTimetablePage() {
               onChange={e => setTTForm(f => ({ ...f, class_id: e.target.value, section_id: "" }))}
               className={inp}>
               <option value="">Select Class *</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {classes.map(c => <option key={c.id} value={c.id}>{c.display_name || c.name}</option>)}
             </select>
             <select value={ttForm.section_id}
               onChange={e => setTTForm(f => ({ ...f, section_id: e.target.value }))}

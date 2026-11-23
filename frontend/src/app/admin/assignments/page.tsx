@@ -9,12 +9,19 @@ interface Assignment {
   due_date: string; max_marks: number; is_published: boolean; created_at: string;
 }
 interface Subject { id: string; name: string; class_id: string; }
-interface Class { id: string; name: string; course: string; }
+interface SchoolClass {
+  id: string;
+  name: string;
+  section: string;
+  academic_year: string;
+  display_name: string;
+  student_count: number;
+}
 
 export default function AdminAssignmentsPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: "", subject_id: "", class_id: "", section_id: "",
@@ -26,7 +33,7 @@ export default function AdminAssignmentsPage() {
   useEffect(() => {
     api.get("/api/admin/assignments", { withCredentials: true }).then(r => setAssignments(r.data)).catch(() => {});
     api.get("/api/admin/subjects", { withCredentials: true }).then(r => setSubjects(r.data)).catch(() => {});
-    api.get("/api/admin/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
+    api.get("/api/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
   }, []);
 
   // Subjects that belong to the currently selected class
@@ -75,7 +82,7 @@ export default function AdminAssignmentsPage() {
   };
 
   const getClassName = (classId: string) =>
-    classes.find(c => c.id === classId)?.name ?? classId;
+    classes.find(c => c.id === classId)?.display_name ?? classId;
 
   const inp = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500";
 
@@ -130,34 +137,51 @@ export default function AdminAssignmentsPage() {
               <input required placeholder="Title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inp} />
 
               {/* Step 1: Pick class first */}
-              <select
-                required
-                value={form.class_id}
-                onChange={e => handleClassChange(e.target.value)}
-                className={inp}
-              >
-                <option value="">Select Class *</option>
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.course ? ` — ${c.course}` : ""}</option>
-                ))}
-              </select>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Target Class *</label>
+                <select
+                  required
+                  value={form.class_id}
+                  onChange={e => handleClassChange(e.target.value)}
+                  className={inp}
+                >
+                  <option value="">Select Class *</option>
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>Class {c.display_name} ({c.student_count} students)</option>
+                  ))}
+                </select>
+                {form.class_id && (
+                  <p className="text-xs text-blue-400 mt-1 font-medium">
+                    Sending to: {classes.find(c => c.id === form.class_id)?.display_name} ({classes.find(c => c.id === form.class_id)?.student_count || 0} students)
+                  </p>
+                )}
+              </div>
 
-              {/* Step 2: Pick subject from that class */}
-              <select
-                required
-                value={form.subject_id}
-                onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))}
-                className={inp}
-                disabled={!form.class_id}
-              >
-                <option value="">{form.class_id ? "Select Subject *" : "Select a class first"}</option>
-                {filteredSubjects.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              {form.class_id && filteredSubjects.length === 0 && (
-                <p className="text-xs text-yellow-400">No subjects found for this class. Add subjects under Classes first.</p>
-              )}
+              {/* Step 2: Subject */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Subject *</label>
+                {filteredSubjects.length > 0 ? (
+                  <select
+                    required
+                    value={form.subject_id}
+                    onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))}
+                    className={inp}
+                  >
+                    <option value="">Select Subject *</option>
+                    {filteredSubjects.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    required
+                    placeholder="Subject name (e.g. Mathematics)"
+                    value={form.subject_id}
+                    onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))}
+                    className={inp}
+                  />
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <input type="date" required placeholder="Due Date *" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={inp} />

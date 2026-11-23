@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
 from database import get_db
 from dependencies.auth import get_current_user
-from models.db_models import StudentProfile, User
+from models.db_models import StudentProfile, User, SchoolClass, ClassEnrollment
 from services.storage_service import ALLOWED_PHOTO_TYPES, save_file
 
 router = APIRouter(prefix="/students", tags=["Student - Profile"])
@@ -36,6 +36,7 @@ class ProfileOut(BaseModel):
     dob: Optional[str]
     profile_photo_url: Optional[str]
     class_id: Optional[str]
+    class_name: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):
@@ -60,6 +61,25 @@ async def _handle_get_profile(current_user: User, db: AsyncSession) -> ProfileOu
         await db.commit()
         await db.refresh(profile)
 
+    class_id = profile.class_id if profile else None
+    class_name = None
+
+    enr_res = await db.execute(
+        select(ClassEnrollment, SchoolClass)
+        .join(SchoolClass, SchoolClass.id == ClassEnrollment.class_id)
+        .where(ClassEnrollment.student_id == current_user.id, ClassEnrollment.is_active == True)
+    )
+    enr_row = enr_res.first()
+    if enr_row:
+        enr, s_cls = enr_row
+        class_name = s_cls.display_name
+        class_id = s_cls.id
+    elif class_id:
+        c_res = await db.execute(select(SchoolClass).where(SchoolClass.id == class_id))
+        s_cls = c_res.scalar_one_or_none()
+        if s_cls:
+            class_name = s_cls.display_name
+
     return ProfileOut(
         user_id=current_user.id,
         email=current_user.email,
@@ -73,7 +93,8 @@ async def _handle_get_profile(current_user: User, db: AsyncSession) -> ProfileOu
         academic_year=profile.academic_year if profile else "",
         dob=profile.dob if profile else None,
         profile_photo_url=profile.profile_photo_url if profile else None,
-        class_id=profile.class_id if profile else None,
+        class_id=class_id,
+        class_name=class_name,
     )
 
 

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { FileText, Upload, Download, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -21,6 +22,7 @@ interface Note {
 }
 
 export default function NotesPage() {
+  const { user } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -74,11 +76,21 @@ export default function NotesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><FileText className="w-6 h-6 text-yellow-400" />Notes</h1>
-        <button onClick={() => setShowUpload(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl">
-          <Upload className="w-4 h-4" />Upload Note
-        </button>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <FileText className="w-6 h-6 text-yellow-400" />
+          {user?.class_name ? `Class ${user.class_name} Notes` : "Notes"}
+        </h1>
+        <div className="flex items-center gap-2">
+          {user?.class_name && (
+            <span className="text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full font-medium">
+              Class {user.class_name}
+            </span>
+          )}
+          <button onClick={() => setShowUpload(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl">
+            <Upload className="w-4 h-4" />Upload Note
+          </button>
+        </div>
       </div>
 
       {/* Search */}

@@ -5,6 +5,14 @@ import { BarChart2, Plus, Send, Trash, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 interface Subject { id: string; name: string; class_id: string; }
+interface SchoolClass {
+  id: string;
+  name: string;
+  section: string;
+  academic_year: string;
+  display_name: string;
+  student_count: number;
+}
 interface Category {
   id: string; name: string; subject_id: string;
   max_marks: number; weightage: number; created_at: string;
@@ -13,9 +21,11 @@ interface MarkRow {
   student_id: string; student_name: string; category?: string;
   obtained: number | null; max: number; percentage: number | null; is_published: boolean;
 }
-interface Student { id: string; full_name: string; email: string; }
+interface Student { id: string; full_name: string; email: string; student_id?: string; roll_number?: string; }
 
 export default function AdminMarksPage() {
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [report, setReport] = useState<MarkRow[]>([]);
@@ -36,9 +46,30 @@ export default function AdminMarksPage() {
   const inp = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500";
 
   useEffect(() => {
+    api.get("/api/classes", { withCredentials: true }).then(r => setClasses(r.data)).catch(() => {});
     api.get("/api/admin/subjects", { withCredentials: true }).then(r => setSubjects(r.data)).catch(() => {});
     api.get("/api/admin/students", { withCredentials: true }).then(r => setStudents(r.data)).catch(() => {});
   }, []);
+
+  const handleClassSelect = (classId: string) => {
+    setSelectedClassId(classId);
+    setSelectedCategory(null);
+    if (classId) {
+      api.get(`/api/classes/${classId}/students`, { withCredentials: true })
+        .then(r => setStudents(r.data.map((s: { student_id: string; full_name: string; email: string; roll_number: string }) => ({
+          id: s.student_id,
+          full_name: s.full_name,
+          email: s.email,
+          roll_number: s.roll_number,
+        }))))
+        .catch(() => {});
+      api.get(`/api/admin/assessment-categories?class_id=${classId}`, { withCredentials: true })
+        .then(r => setCategories(r.data))
+        .catch(() => {});
+    } else {
+      api.get("/api/admin/students", { withCredentials: true }).then(r => setStudents(r.data)).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     if (!selectedSubject) { setCategories([]); setReport([]); return; }
@@ -100,6 +131,7 @@ export default function AdminMarksPage() {
         .map(s => ({
           student_id: s.id,
           category_id: selectedCategory.id,
+          class_id: selectedClassId || undefined,
           obtained_marks: parseFloat(marksInput[s.id]),
           remarks: remarksInput[s.id] || "",
         }));
@@ -144,20 +176,45 @@ export default function AdminMarksPage() {
         )}
       </div>
 
-      {/* Subject Selector */}
-      <div className="flex flex-wrap gap-3">
-        <select
-          value={selectedSubject}
-          onChange={e => { setSelectedSubject(e.target.value); setSelectedCategory(null); }}
-          className="px-3 py-2 bg-gray-900 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
-        >
-          <option value="">Select Subject to Manage Marks</option>
-          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+      {/* Class & Subject Selector */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[240px]">
+          <label className="text-xs text-gray-400 block mb-1">Select Target Class *</label>
+          <select
+            value={selectedClassId}
+            onChange={e => handleClassSelect(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Choose Class...</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>
+                Class {c.display_name} ({c.student_count} students)
+              </option>
+            ))}
+          </select>
+          {selectedClassId && (
+            <p className="text-xs text-blue-400 mt-1 font-medium">
+              Sending to: {classes.find(c => c.id === selectedClassId)?.display_name} ({classes.find(c => c.id === selectedClassId)?.student_count || 0} students)
+            </p>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-[240px]">
+          <label className="text-xs text-gray-400 block mb-1">Subject</label>
+          <select
+            value={selectedSubject}
+            onChange={e => { setSelectedSubject(e.target.value); setSelectedCategory(null); }}
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Select Subject</option>
+            {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+
         {selectedSubject && (
           <button
             onClick={() => { setCatForm(f => ({ ...f, subject_id: selectedSubject })); setShowCatForm(v => !v); }}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-xl"
+            className="mt-5 flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-xl"
           >
             <Plus className="w-4 h-4" />Add Assessment Category
           </button>

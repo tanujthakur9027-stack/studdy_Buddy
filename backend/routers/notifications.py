@@ -11,8 +11,8 @@ import logging
 
 from typing import Optional
 from database import get_db
-from dependencies.auth import get_current_user, require_admin
-from models.db_models import Notification, User, StudentProfile
+from dependencies.auth import get_current_user, require_admin, check_class_access
+from models.db_models import Notification, User, StudentProfile, ClassAdmin, ClassEnrollment
 from services.notification_service import create_notification, create_bulk_notifications
 from services.email_service import send_email
 from config import get_settings
@@ -215,6 +215,8 @@ class BroadcastRequest(BaseModel):
     message: str
     target: str = "all"  # "all" | "class" | "student"
     target_id: Optional[str] = None  # class_id if target==class, user_id if target==student
+    class_id: Optional[str] = None   # optional direct class identifier
+    target_student_ids: Optional[list[str]] = None  # optional narrowing to specific students
     send_email: bool = False
 
 
@@ -228,7 +230,38 @@ async def broadcast_notification(
     """Admin-only: Broadcast in-app notifications and optional emails to students."""
     recipient_users: list[User] = []
 
-    if body.target == "student" and body.target_id:
+    # If class targeted directly or via target="class"
+    cls_id = body.class_id or (body.target_id if body.target == "class" else None)
+
+    if cls_id:
+        await check_class_access(cls_id, admin, db, require_write=True)
+        q = (
+            select(User)
+            .join(ClassEnrollment, ClassEnrollment.student_id == User.id)
+            .where(
+                ClassEnrollment.class_id == cls_id,
+                ClassEnrollment.is_active == True,  # noqa: E712
+                User.is_active == True,              # noqa: E712
+            )
+        )
+        if body.target_student_ids:
+            q = q.where(User.id.in_(body.target_student_ids))
+        res = await db.execute(q)
+        recipient_users = list(res.scalars().all())
+
+        if not recipient_users:
+            # Fallback to StudentProfile if enrollment was not created
+            q2 = (
+                select(User)
+                .join(StudentProfile, StudentProfile.user_id == User.id)
+                .where(StudentProfile.class_id == cls_id, User.is_active == True)  # noqa: E712
+            )
+            if body.target_student_ids:
+                q2 = q2.where(User.id.in_(body.target_student_ids))
+            res2 = await db.execute(q2)
+            recipient_users = list(res2.scalars().all())
+
+    elif body.target == "student" and body.target_id:
         res = await db.execute(
             select(User)
             .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
@@ -239,16 +272,29 @@ async def broadcast_notification(
         )
         user = res.scalar_one_or_none()
         if user:
+            # If admin is not super admin, check that student belongs to one of their classes
+            if not admin.is_super_admin_user:
+                enr_chk = await db.execute(
+                    select(ClassEnrollment)
+                    .join(ClassAdmin, ClassAdmin.class_id == ClassEnrollment.class_id)
+                    .where(
+                        ClassEnrollment.student_id == user.id,
+                        ClassAdmin.admin_user_id == admin.id,
+                        ClassEnrollment.is_active == True,
+                    )
+                )
+                if not enr_chk.scalar_one_or_none():
+                    raise HTTPException(status_code=403, detail="Student is not in any of your assigned classes")
             recipient_users = [user]
-    elif body.target == "class" and body.target_id:
-        res = await db.execute(
-            select(User)
-            .join(StudentProfile, StudentProfile.user_id == User.id)
-            .where(StudentProfile.class_id == body.target_id, User.is_active == True)  # noqa: E712
-        )
-        recipient_users = list(res.scalars().all())
+
     else:
-        # Default: all active students
+        # Target: all active students
+        if not admin.is_super_admin_user:
+            # Class admins cannot broadcast to whole institution
+            raise HTTPException(
+                status_code=403,
+                detail="Class administrators can only broadcast to their assigned classes. Please select a class.",
+            )
         res = await db.execute(
             select(User).where(User.role == "student", User.is_active == True)  # noqa: E712
         )
@@ -266,7 +312,7 @@ async def broadcast_notification(
         title=body.title,
         message=body.message,
         notif_type="announcement",
-        reference_id=admin.id,
+        reference_id=cls_id or admin.id,
     )
     await db.commit()
 
@@ -276,11 +322,13 @@ async def broadcast_notification(
         queued_count = len(emails)
 
     return {
-        "message": f"Broadcast delivered to {len(user_ids)} student(s).",
+        "queued": True,
+        "recipient_count": len(user_ids),
         "in_app_count": len(user_ids),
         "emails_queued": queued_count,
         "emails_sent": queued_count,
         "status": "queued" if queued_count > 0 else "completed",
+        "message": f"Broadcast delivered to {len(user_ids)} student(s).",
     }
 
 

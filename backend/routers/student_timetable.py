@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from dependencies.auth import get_current_user
-from models.db_models import Timetable, TimetableSlot, StudentProfile, Subject, User
+from models.db_models import Timetable, TimetableSlot, StudentProfile, Subject, User, ClassEnrollment
 from services.timetable_service import compute_slot_times, compute_lunch_times
 
 router = APIRouter(prefix="/timetable", tags=["Student - Timetable"])
@@ -33,12 +33,23 @@ async def get_timetable(
         await db.commit()
         await db.refresh(profile)
 
-    if not profile.class_id:
+    # Get student's class (prioritizing active ClassEnrollment)
+    enr_res = await db.execute(
+        select(ClassEnrollment.class_id).where(
+            ClassEnrollment.student_id == current_user.id,
+            ClassEnrollment.is_active == True,  # noqa: E712
+        )
+    )
+    class_id = enr_res.scalar_one_or_none()
+    if not class_id:
+        class_id = profile.class_id if profile else None
+
+    if not class_id:
         return {"timetable": None, "message": "No class assigned"}
 
     tt_result = await db.execute(
         select(Timetable).where(
-            Timetable.class_id == profile.class_id,
+            Timetable.class_id == class_id,
             Timetable.is_published == True,  # noqa: E712
         ).order_by(Timetable.updated_at.desc())
     )

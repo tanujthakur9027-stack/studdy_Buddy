@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from database import get_db
-from dependencies.auth import require_admin
-from models.db_models import Timetable, TimetableSlot, StudentProfile
+from dependencies.auth import require_admin, check_class_access
+from models.db_models import Timetable, TimetableSlot, StudentProfile, ClassAdmin, ClassEnrollment
 from services.notification_service import create_bulk_notifications
 from services.timetable_service import (
     compute_slot_times, compute_lunch_times,
@@ -62,13 +62,24 @@ class SlotOut(BaseModel):
 
 
 @router.get("", response_model=list[TimetableOut])
-async def list_timetables(admin=Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Timetable).order_by(Timetable.created_at.desc()))
+async def list_timetables(
+    class_id: Optional[str] = None,
+    admin=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(Timetable)
+    if class_id:
+        await check_class_access(class_id, admin, db, require_write=False)
+        q = q.where(Timetable.class_id == class_id)
+    elif not admin.is_super_admin_user:
+        q = q.join(ClassAdmin, ClassAdmin.class_id == Timetable.class_id).where(ClassAdmin.admin_user_id == admin.id)
+    result = await db.execute(q.order_by(Timetable.created_at.desc()))
     return [_tt_out(t) for t in result.scalars()]
 
 
 @router.post("", response_model=TimetableOut, status_code=201)
 async def create_timetable(body: TimetableCreate, admin=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    await check_class_access(body.class_id, admin, db, require_write=True)
     tt = Timetable(
         class_id=body.class_id, section_id=body.section_id,
         name=body.name, start_time=body.start_time,

@@ -33,6 +33,7 @@ from routers.progress import router as progress_router
 from routers.share import router as share_router
 from routers.notifications import router as notifications_router
 from routers.admin_students import router as admin_students_router
+from routers.classes import router as school_classes_router
 from routers.student_profile import router as student_profile_router, profile_alias_router
 from routers.admin_attrition import router as admin_attrition_router
 from routers.admin_classes import router as admin_classes_router
@@ -228,6 +229,7 @@ app.include_router(flashcards_router,         prefix="/api")
 app.include_router(notifications_router,      prefix="/api")
 # New: Admin management
 app.include_router(admin_students_router,     prefix="/api")
+app.include_router(school_classes_router,      prefix="/api")
 app.include_router(admin_classes_router,      prefix="/api")
 app.include_router(admin_assignments_router,  prefix="/api")
 app.include_router(admin_submissions_router,  prefix="/api")

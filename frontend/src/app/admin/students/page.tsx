@@ -14,7 +14,8 @@ interface Student {
 interface Class {
   id: string;
   name: string;
-  course: string;
+  display_name?: string;
+  academic_year?: string;
 }
 
 export default function AdminStudentsPage() {
@@ -36,7 +37,7 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     load();
-    api.get("/api/admin/classes", { withCredentials: true })
+    api.get("/api/classes", { withCredentials: true })
       .then(r => setClasses(r.data))
       .catch(() => {});
   }, []);
@@ -76,7 +77,8 @@ export default function AdminStudentsPage() {
 
   const getClassName = (classId: string | null) => {
     if (!classId) return null;
-    return classes.find(c => c.id === classId)?.name ?? null;
+    const found = classes.find(c => c.id === classId);
+    return found?.display_name || found?.name || null;
   };
 
   return (
@@ -186,7 +188,7 @@ export default function AdminStudentsPage() {
                 >
                   <option value="">— No class (unassign)</option>
                   {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}{c.course ? ` (${c.course})` : ""}</option>
+                    <option key={c.id} value={c.id}>{c.display_name || c.name}</option>
                   ))}
                 </select>
                 <button

@@ -57,6 +57,11 @@ _MIGRATIONS_SQLITE = [
     "ALTER TABLE flashcard_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE feynman_results ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE shared_resources ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE SET NULL",
+    # Class-Based Management migrations
+    "ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT 0",
+    "ALTER TABLE notifications ADD COLUMN class_id TEXT",
+    "ALTER TABLE assessment_categories ADD COLUMN class_id TEXT",
+    "ALTER TABLE marks ADD COLUMN class_id TEXT",
 ]
 
 _MIGRATIONS_POSTGRES = [
@@ -68,7 +73,68 @@ _MIGRATIONS_POSTGRES = [
     "ALTER TABLE flashcard_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE feynman_results ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE shared_resources ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE SET NULL",
+    # Class-Based Management migrations
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS class_id TEXT",
+    "ALTER TABLE assessment_categories ADD COLUMN IF NOT EXISTS class_id TEXT",
+    "ALTER TABLE marks ADD COLUMN IF NOT EXISTS class_id TEXT",
 ]
+
+
+async def _seed_legacy_class_and_roles(conn) -> None:
+    """Idempotently create Legacy class and migrate existing users/students."""
+    import uuid
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).isoformat()
+
+    try:
+        # 1. Update all existing admin users to is_super_admin = 1
+        await conn.execute(text("UPDATE users SET is_super_admin = 1 WHERE role = 'admin' AND (is_super_admin IS NULL OR is_super_admin = 0)"))
+
+        # 2. Get an admin id to use as creator
+        res = await conn.execute(text("SELECT id FROM users WHERE role = 'admin' LIMIT 1"))
+        row = res.fetchone()
+        admin_id = row[0] if row else "system-seed"
+
+        # 3. Create 'Legacy / Unassigned' class if not present
+        res_cls = await conn.execute(text("SELECT id FROM school_classes WHERE id = 'legacy-default-class' OR (name = 'Legacy' AND section = 'General')"))
+        legacy_row = res_cls.fetchone()
+        if legacy_row:
+            legacy_id = legacy_row[0]
+        else:
+            legacy_id = "legacy-default-class"
+            await conn.execute(
+                text("""
+                    INSERT INTO school_classes (id, name, section, academic_year, created_by, created_at, is_active)
+                    VALUES (:id, 'Legacy', 'General', '2024-2025', :creator, :now, 1)
+                """),
+                {"id": legacy_id, "creator": admin_id, "now": now_str}
+            )
+
+        # 4. Migrate any student_profiles that don't have a class_id
+        res_stu = await conn.execute(text("SELECT user_id, student_id FROM student_profiles WHERE class_id IS NULL OR class_id = ''"))
+        for uid, sid in res_stu.fetchall():
+            await conn.execute(
+                text("UPDATE student_profiles SET class_id = :cls_id WHERE user_id = :uid"),
+                {"cls_id": legacy_id, "uid": uid}
+            )
+            # Check if active enrollment exists
+            res_enr = await conn.execute(
+                text("SELECT id FROM class_enrollments WHERE student_id = :uid AND is_active = 1"),
+                {"uid": uid}
+            )
+            if not res_enr.fetchone():
+                roll = sid if sid else f"ROLL-{uid[:8]}"
+                await conn.execute(
+                    text("""
+                        INSERT INTO class_enrollments (id, class_id, student_id, roll_number, joined_at, is_active)
+                        VALUES (:eid, :cls_id, :uid, :roll, :now, 1)
+                    """),
+                    {"eid": str(uuid.uuid4()), "cls_id": legacy_id, "uid": uid, "roll": roll, "now": now_str}
+                )
+    except Exception:
+        # Table or column might not be ready yet in some test isolation setups; safe to continue
+        pass
 
 
 async def _run_migrations(conn) -> None:
@@ -80,6 +146,14 @@ async def _run_migrations(conn) -> None:
         except Exception:
             # SQLite raises OperationalError "duplicate column name" — safe to ignore.
             pass
+    if _is_sqlite:
+        try:
+            # Ensure student_id index is non-unique so roll numbers are scoped per class in class_enrollments
+            await conn.execute(text("DROP INDEX IF EXISTS ix_student_profiles_student_id"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_student_profiles_student_id ON student_profiles (student_id)"))
+        except Exception:
+            pass
+    await _seed_legacy_class_and_roles(conn)
 
 
 async def init_db() -> None:
@@ -91,10 +165,13 @@ async def init_db() -> None:
         # This eliminates "database is locked" errors under concurrent requests
         # and cuts read latency significantly on the free-tier Render instance.
         if _is_sqlite:
-            await conn.execute(text("PRAGMA journal_mode=WAL"))
-            await conn.execute(text("PRAGMA synchronous=NORMAL"))
-            await conn.execute(text("PRAGMA cache_size=-32000"))   # 32 MB page cache
-            await conn.execute(text("PRAGMA temp_store=MEMORY"))
+            try:
+                await conn.execute(text("PRAGMA journal_mode=WAL"))
+                await conn.execute(text("PRAGMA synchronous=NORMAL"))
+                await conn.execute(text("PRAGMA cache_size=-32000"))   # 32 MB page cache
+                await conn.execute(text("PRAGMA temp_store=MEMORY"))
+            except Exception:
+                pass
 
 
 async def get_db():

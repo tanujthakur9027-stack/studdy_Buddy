@@ -10,6 +10,7 @@ interface Profile {
   student_id: string; phone: string; course: string;
   branch: string; semester: string; section: string;
   academic_year: string; dob?: string; profile_photo_url?: string;
+  class_id?: string | null; class_name?: string | null;
 }
 
 export default function ProfilePage() {
@@ -73,7 +74,12 @@ export default function ProfilePage() {
         <div>
           <p className="text-xl font-bold text-white">{profile?.full_name}</p>
           <p className="text-gray-400 text-sm">{profile?.email}</p>
-          <p className="text-gray-500 text-xs mt-1">ID: {profile?.student_id}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-gray-500 text-xs">ID: {profile?.student_id}</span>
+            <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-medium">
+              Class {profile?.class_name || user?.class_name || "Unassigned"}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -82,9 +88,10 @@ export default function ProfilePage() {
         <h2 className="font-semibold text-white mb-4">Academic Information</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
           {[
+            ["Assigned Class", profile?.class_name || user?.class_name || "Unassigned"],
             ["Course", profile?.course], ["Branch", profile?.branch],
             ["Semester", profile?.semester], ["Academic Year", profile?.academic_year],
-            ["Student ID", profile?.student_id],
+            ["Student ID / Roll No", profile?.student_id],
           ].map(([label, value]) => (
             <div key={label as string}>
               <p className="text-gray-500 text-xs">{label}</p>

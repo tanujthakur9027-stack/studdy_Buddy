@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -241,9 +241,20 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255), default="")
     role: Mapped[str] = mapped_column(String(20), default="student")  # "admin" | "student"
+    is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    @property
+    def is_super_admin_user(self) -> bool:
+        if self.role != "admin":
+            return False
+        from config import get_settings
+        settings = get_settings()
+        if settings.admin_seed_email and self.email.lower() == settings.admin_seed_email.lower():
+            return True
+        return bool(getattr(self, "is_super_admin", False))
 
     # Relationships
     student_profile: Mapped[Optional["StudentProfile"]] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
@@ -257,7 +268,7 @@ class StudentProfile(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
-    student_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    student_id: Mapped[str] = mapped_column(String(100), index=True, default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
     course: Mapped[str] = mapped_column(String(100), default="")
     branch: Mapped[str] = mapped_column(String(100), default="")
@@ -309,6 +320,65 @@ class Subject(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     klass: Mapped["Class"] = relationship(back_populates="subjects")
+
+
+# ── School Class System (Phase 1) ─────────────────────────────────────────────
+
+class SchoolClass(Base):
+    __tablename__ = "school_classes"
+    __table_args__ = (
+        UniqueConstraint("name", "section", "academic_year", name="uq_school_class_name_section_year"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(100), index=True)            # e.g. "10"
+    section: Mapped[str] = mapped_column(String(50), default="A")         # e.g. "A"
+    academic_year: Mapped[str] = mapped_column(String(50), default="2024-2025") # e.g. "2024-2025"
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    @property
+    def display_name(self) -> str:
+        return f"{self.name}-{self.section}"
+
+    creator: Mapped["User"] = relationship(foreign_keys=[created_by])
+    admins: Mapped[list["ClassAdmin"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
+    enrollments: Mapped[list["ClassEnrollment"]] = relationship(back_populates="school_class", cascade="all, delete-orphan")
+
+
+class ClassAdmin(Base):
+    """Many-to-many link between a school class and its assigned admin user(s)."""
+    __tablename__ = "class_admins"
+    __table_args__ = (
+        UniqueConstraint("class_id", "admin_user_id", name="uq_class_admin"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="CASCADE"), index=True)
+    admin_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    school_class: Mapped["SchoolClass"] = relationship(back_populates="admins")
+    admin_user: Mapped["User"] = relationship(foreign_keys=[admin_user_id])
+
+
+class ClassEnrollment(Base):
+    """Student enrollment in a school class with a class-unique roll number."""
+    __tablename__ = "class_enrollments"
+    __table_args__ = (
+        UniqueConstraint("class_id", "roll_number", name="uq_class_enrollment_roll"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    class_id: Mapped[str] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    roll_number: Mapped[str] = mapped_column(String(100), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    school_class: Mapped["SchoolClass"] = relationship(back_populates="enrollments")
+    student: Mapped["User"] = relationship(foreign_keys=[student_id])
 
 
 # ── Assignments ───────────────────────────────────────────────────────────────
@@ -363,6 +433,7 @@ class AssessmentCategory(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100))
     subject_id: Mapped[str] = mapped_column(String(36), ForeignKey("subjects.id", ondelete="CASCADE"))
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     max_marks: Mapped[float] = mapped_column(Float, default=100.0)
     weightage: Mapped[float] = mapped_column(Float, default=100.0)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
@@ -377,6 +448,7 @@ class Mark(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     student_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     category_id: Mapped[str] = mapped_column(String(36), ForeignKey("assessment_categories.id", ondelete="CASCADE"))
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     obtained_marks: Mapped[float] = mapped_column(Float, default=0.0)
     remarks: Mapped[str] = mapped_column(Text, default="")
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -431,6 +503,7 @@ class Notification(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    class_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)
     notif_type: Mapped[str] = mapped_column(String(50), default="general")  # assignment|submission|marks|timetable|announcement|note|registration

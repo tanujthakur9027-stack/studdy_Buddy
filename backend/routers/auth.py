@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
 from database import get_db
 from dependencies.auth import get_current_user
-from models.db_models import AuthOTP, Class, StudentProfile, User
+from models.db_models import AuthOTP, Class, ClassEnrollment, SchoolClass, StudentProfile, User
 from services.auth_service import create_access_token, hash_password, verify_password
 from services.email_service import send_email
 
@@ -115,6 +115,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: str
+    is_super_admin: bool = False
     student_id: Optional[str] = None
     phone: Optional[str] = None
     course: Optional[str] = None
@@ -139,6 +140,7 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
     row = profile_result.first()
     profile: Optional[StudentProfile] = row[0] if row else None
     class_name: Optional[str] = row[1] if row else None
+    class_id: Optional[str] = profile.class_id if profile else None
 
     # Derive student_id identifier for display
     sid = ""
@@ -156,6 +158,24 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
         except Exception:
             pass
 
+    # Look for active SchoolClass enrollment
+    if user.role == "student":
+        enr_res = await db.execute(
+            select(ClassEnrollment, SchoolClass)
+            .join(SchoolClass, SchoolClass.id == ClassEnrollment.class_id)
+            .where(
+                ClassEnrollment.student_id == user.id,
+                ClassEnrollment.is_active == True,
+            )
+        )
+        enr_row = enr_res.first()
+        if enr_row:
+            enr, s_cls = enr_row
+            class_id = s_cls.id
+            class_name = s_cls.display_name
+            if enr.roll_number:
+                sid = enr.roll_number
+
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -163,6 +183,7 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
         role=user.role,
         is_active=user.is_active,
         created_at=str(user.created_at),
+        is_super_admin=user.is_super_admin_user,
         student_id=sid,
         phone=profile.phone if profile else "",
         course=profile.course if profile else "",
@@ -172,7 +193,7 @@ async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
         academic_year=profile.academic_year if profile else "",
         dob=profile.dob if profile else None,
         profile_photo_url=profile.profile_photo_url if profile else None,
-        class_id=profile.class_id if profile else None,
+        class_id=class_id,
         class_name=class_name,
     )
 
