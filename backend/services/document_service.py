@@ -481,6 +481,14 @@ def retrieve_context(
     """
     results: list[Document] = []
 
+    # ── Strict Cross-tenant RAG isolation ─────────────────────────────────────
+    # If user owns 0 documents, or requests a doc_id they do not own, return [] immediately.
+    if user_doc_ids is not None:
+        if not user_doc_ids:
+            return []
+        if doc_id and doc_id not in user_doc_ids:
+            return []
+
     if doc_id:
         per_doc = _get_faiss_for_doc(doc_id)
         if per_doc is not None:
@@ -514,7 +522,9 @@ def retrieve_context(
             if doc_id:
                 filter_dict: Optional[dict] = {"doc_id": doc_id}
             elif user_doc_ids is not None:
-                filter_dict = {"doc_id": {"$in": user_doc_ids}} if user_doc_ids else None
+                if not user_doc_ids:
+                    return []
+                filter_dict = {"doc_id": {"$in": user_doc_ids}}
             else:
                 filter_dict = None
             results = chroma.similarity_search(query, k=k, filter=filter_dict)

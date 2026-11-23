@@ -274,6 +274,7 @@ export function FileUpload({ onUploaded, documents, onRemove, onTextInput, paste
               >
                 <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
                 {doc.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={doc.previewUrl}
                     alt={doc.filename}

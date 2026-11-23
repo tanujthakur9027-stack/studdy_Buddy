@@ -91,6 +91,7 @@ def _rate_key(request: Request) -> str:
 limiter = Limiter(
     key_func=_rate_key,
     default_limits=[f"{settings.rate_limit_per_minute}/minute"],
+    enabled=settings.environment.lower() not in ("test", "testing"),
 )
 
 

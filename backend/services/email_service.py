@@ -120,7 +120,7 @@ async def send_email(
     else:
         html_body = wrap_html_email(subject, "\n".join(f"{k}: {v}" for k, v in context.items()))
 
-    if not current_settings.smtp_host:
+    if not current_settings.smtp_host or not current_settings.smtp_user or not current_settings.smtp_pass:
         logger.info("[SMTP SIMULATION] Email to %s | Subject: '%s' | Body Preview: %s", recipients, subject, html_body[:120].replace('\n', ' '))
         return False
 

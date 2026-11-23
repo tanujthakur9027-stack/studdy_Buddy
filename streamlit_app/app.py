@@ -83,15 +83,15 @@ def _inject_secrets() -> None:
         "RATE_LIMIT_PER_MINUTE":       "60",
         "SECRET_KEY":                  _s("SECRET_KEY", "dev-secret-change-in-prod"),
         "ACCESS_TOKEN_EXPIRE_MINUTES": "1440",
-        "ADMIN_SEED_EMAIL":            _s("ADMIN_SEED_EMAIL", "tanujthakur3646@gmail.com"),
-        "ADMIN_SEED_PASSWORD":         _s("ADMIN_SEED_PASSWORD", "Admin@StudyBuddy2024"),
+        "ADMIN_SEED_EMAIL":            _s("ADMIN_SEED_EMAIL", ""),
+        "ADMIN_SEED_PASSWORD":         _s("ADMIN_SEED_PASSWORD", ""),
         "OTP_AUTH_ENABLED":            _s("OTP_AUTH_ENABLED", "true"),
         "OTP_SIMULATION_MODE":         _s("OTP_SIMULATION_MODE", "false"),
-        "SMTP_HOST":                   _s("SMTP_HOST", "smtp.gmail.com"),
+        "SMTP_HOST":                   _s("SMTP_HOST", ""),
         "SMTP_PORT":                   _s("SMTP_PORT", "587"),
-        "SMTP_USER":                   _s("SMTP_USER", "tanujthakur3646@gmail.com"),
-        "SMTP_PASS":                   _s("SMTP_PASS", "REDACTED"),
-        "SMTP_FROM":                   _s("SMTP_FROM", "StudyBuddy <tanujthakur3646@gmail.com>"),
+        "SMTP_USER":                   _s("SMTP_USER", ""),
+        "SMTP_PASS":                   _s("SMTP_PASS", ""),
+        "SMTP_FROM":                   _s("SMTP_FROM", ""),
         "APP_BASE_URL":                _s("APP_BASE_URL", "https://studybuddy.streamlit.app"),
         "ASSIGNMENT_FILE_MAX_MB":      "50",
         "NOTE_FILE_MAX_MB":            "50",
@@ -151,6 +151,20 @@ def _start_backend(build_tag: str = "v5_real_gmail_smtp_otp") -> str:
             logger.warning("seed_admin failed: %s", exc)
 
     threading.Thread(target=_seed, daemon=True).start()
+
+    # Health check wait: wait up to 4 seconds for the server to bind and respond to /health
+    try:
+        import time, urllib.request  # noqa: PLC0415
+        t0 = time.time()
+        while time.time() - t0 < 4.0:
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=0.5) as r:
+                    if r.status == 200:
+                        break
+            except Exception:
+                time.sleep(0.2)
+    except Exception:
+        pass
 
     return "ok"
 

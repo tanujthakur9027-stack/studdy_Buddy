@@ -207,6 +207,7 @@ class SharedResource(Base):
     __tablename__ = "shared_resources"
 
     id: Mapped[str] = mapped_column(String(16), primary_key=True)   # short nanoid-like key
+    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, default=None)
     resource_type: Mapped[str] = mapped_column(String(20))          # "quiz" | "document"
     payload_json: Mapped[str] = mapped_column(Text)                 # full JSON payload
     title: Mapped[str] = mapped_column(String(255), default="")

@@ -31,6 +31,34 @@ async def run_e2e():
     from config import get_settings
     settings = get_settings()
     settings.otp_simulation_mode = True
+    settings.environment = "development"
+    settings.admin_keys = "TestAdminSecret2026!"
+
+    from main import limiter
+    from routers.auth import limiter as auth_limiter
+    limiter.enabled = False
+    auth_limiter.enabled = False
+
+    from database import AsyncSessionLocal
+    from models.db_models import User
+    from services.auth_service import hash_password
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(User).where(User.email == "admin@studybuddy.com"))
+        adm = res.scalar_one_or_none()
+        if not adm:
+            adm = User(
+                email="admin@studybuddy.com",
+                password_hash=hash_password("TestAdminSecret2026!"),
+                full_name="Admin",
+                role="admin",
+                is_active=True,
+            )
+            db.add(adm)
+        else:
+            adm.password_hash = hash_password("TestAdminSecret2026!")
+            adm.is_active = True
+        await db.commit()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -40,7 +68,7 @@ async def run_e2e():
         print("\n[Test 1] Testing Admin Login with OTP...")
         resp = await client.post("/api/auth/login", json={
             "email": "admin@studybuddy.com",
-            "password": "Admin@StudyBuddy2024",
+            "password": "TestAdminSecret2026!",
         })
         assert resp.status_code == 200, f"Admin login failed: {resp.text}"
         data = resp.json()
@@ -167,7 +195,7 @@ async def run_e2e():
             "email": new_admin_email,
             "password": "DeanPassword2024!",
             "full_name": "Dean Ada Lovelace",
-            "admin_key": "Admin@StudyBuddy2024",
+            "admin_key": "TestAdminSecret2026!",
             "phone": "+91 9123456789",
             "student_id": f"EMP-DEAN-{random_suffix.upper()}",
             "role": "admin",

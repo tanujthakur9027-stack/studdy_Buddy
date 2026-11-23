@@ -18,7 +18,11 @@ from models.db_models import AuthOTP, Class, StudentProfile, User
 from services.auth_service import create_access_token, hash_password, verify_password
 from services.email_service import send_email
 
-limiter = Limiter(key_func=get_remote_address)
+settings = get_settings()
+limiter = Limiter(
+    key_func=get_remote_address,
+    enabled=settings.environment.lower() not in ("test", "testing"),
+)
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
@@ -189,10 +193,7 @@ def _get_otp_dispatch_message(email_sent: bool, acc_desc: str = "", sim_active: 
         return f"{prefix}Security code generated below for instant access (Development Mode)."
     if email_sent:
         return f"{prefix}A 6-digit verification code has been dispatched to your email. Please check your inbox."
-    current_settings = get_settings()
-    if not current_settings.smtp_host:
-        return f"{prefix}Notice: SMTP_HOST is not configured in backend/.env."
-    return f"{prefix}Email dispatch issue detected. Backup security code provided below for verification."
+    return f"{prefix}Unable to dispatch verification email. Please check email settings or try again later."
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -207,11 +208,11 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
     is_admin_reg = (body.role == "admin")
 
     if is_admin_reg:
-        valid_keys = [settings.admin_seed_password, "admin2024", "Admin@StudyBuddy2024"]
-        if settings.secret_key:
-            valid_keys.append(settings.secret_key[:8])
-        if body.admin_key and body.admin_key.strip() not in valid_keys:
-            raise HTTPException(status_code=403, detail="Invalid Administrator Setup Key.")
+        valid_keys = settings.valid_admin_keys_list
+        if not valid_keys and settings.secret_key.strip():
+            valid_keys = [settings.secret_key[:8]]
+        if not body.admin_key or body.admin_key.strip() not in valid_keys:
+            raise HTTPException(status_code=403, detail="Valid admin key required")
 
         user = User(
             email=email,
@@ -235,7 +236,7 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         await db.commit()
         await db.refresh(user)
     else:
-        # Student registration
+        # Student registration — enforce role is strictly student
         sid = body.student_id or f"STU-{email.split('@')[0][:6].upper()}"
         existing_sid = await db.execute(select(StudentProfile).where(StudentProfile.student_id == sid))
         if existing_sid.scalar_one_or_none():
@@ -268,6 +269,11 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
 
     current_settings = get_settings()
     if current_settings.otp_auth_enabled:
+        await db.execute(
+            update(AuthOTP)
+            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
+            .values(is_used=True)
+        )
         code = f"{secrets.randbelow(900000) + 100000}"
         expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
         new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
@@ -282,9 +288,8 @@ async def register(request: Request, body: RegisterRequest, response: Response, 
         <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
         """
         email_sent = await send_email(to=user.email, subject=f"[StudyBuddy] Verify Your {acc_type} Account", body=email_html)
-        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Registration code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
-        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
+        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
         return AuthResponse(
             access_token=None,
             user=None,
@@ -315,15 +320,12 @@ async def register_admin(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    valid_keys = [settings.admin_seed_password, "admin2024", "Admin@StudyBuddy2024"]
-    if settings.secret_key:
-        valid_keys.append(settings.secret_key[:8])
+    valid_keys = settings.valid_admin_keys_list
+    if not valid_keys and settings.secret_key.strip():
+        valid_keys = [settings.secret_key[:8]]
 
-    if body.admin_key and body.admin_key.strip() not in valid_keys:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid Administrator Setup Key. Default is 'Admin@StudyBuddy2024'.",
-        )
+    if not body.admin_key or body.admin_key.strip() not in valid_keys:
+        raise HTTPException(status_code=403, detail="Valid admin key required")
 
     user = User(
         email=email,
@@ -349,6 +351,11 @@ async def register_admin(
 
     current_settings = get_settings()
     if current_settings.otp_auth_enabled:
+        await db.execute(
+            update(AuthOTP)
+            .where(AuthOTP.email == user.email, AuthOTP.is_used == False)
+            .values(is_used=True)
+        )
         code = f"{secrets.randbelow(900000) + 100000}"
         expires = datetime.now(timezone.utc) + timedelta(minutes=current_settings.otp_expire_minutes)
         new_otp = AuthOTP(email=user.email, otp_code=code, purpose="login", expires_at=expires, is_used=False)
@@ -362,9 +369,8 @@ async def register_admin(
         <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes.</p>
         """
         email_sent = await send_email(to=user.email, subject="[StudyBuddy] Admin Verification Code", body=email_html)
-        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Admin Registration code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
-        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
+        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
         return AuthResponse(
             access_token=None,
             user=None,
@@ -405,7 +411,7 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
             )
             .order_by(AuthOTP.created_at.desc())
         )
-        otp_rec = otp_res.scalar_one_or_none()
+        otp_rec = otp_res.scalars().first()
         if not otp_rec or otp_rec.otp_code != body.otp_code.strip():
             raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
         otp_rec.is_used = True
@@ -437,9 +443,8 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
         <p style="font-size:13px;color:#9ca3af;">This code is valid for {current_settings.otp_expire_minutes} minutes. Please do not share this code with anyone.</p>
         """
         email_sent = await send_email(to=user.email, subject="[StudyBuddy] Your Login Verification Code", body=email_html)
-        print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Login code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
-        is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
+        is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
         return AuthResponse(
             access_token=None,
             user=None,
@@ -485,7 +490,7 @@ async def verify_otp(
         )
         .order_by(AuthOTP.created_at.desc())
     )
-    otp_row = otp_result.scalar_one_or_none()
+    otp_row = otp_result.scalars().first()
     if not otp_row or otp_row.otp_code != code:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP verification code.")
 
@@ -534,9 +539,8 @@ async def resend_otp(
     <p style="font-size:13px;color:#9ca3af;">Valid for {current_settings.otp_expire_minutes} minutes.</p>
     """
     email_sent = await send_email(to=email, subject="[StudyBuddy] Resent OTP Verification Code", body=email_html)
-    print(f"\n=======================================================\n🔑 [STUDYBUDDY OTP] Resent code for {user.email}: >>> {code} <<<\n=======================================================\n", flush=True)
 
-    is_sim = bool(current_settings.otp_simulation_mode or not email_sent)
+    is_sim = bool(current_settings.otp_simulation_mode and current_settings.environment.lower() != "production")
     return {
         "message": _get_otp_dispatch_message(email_sent, "Fresh code:", sim_active=is_sim),
         "simulation_otp": code if is_sim else None,

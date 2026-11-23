@@ -82,11 +82,6 @@ function RegisterContent() {
     setSimOtp(null);
   };
 
-  const fillDefaultAdminKey = () => {
-    setForm((f) => ({ ...f, admin_key: "Admin@StudyBuddy2024" }));
-    toast.success("Administrator setup key filled!");
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password.length < 8) {
@@ -95,7 +90,7 @@ function RegisterContent() {
     }
 
     if (portal === "admin" && !form.admin_key.trim()) {
-      toast.error("Please enter the Administrator Setup Key (Default: Admin@StudyBuddy2024).");
+      toast.error("Please enter the Administrator Setup Key.");
       return;
     }
 
@@ -403,17 +398,9 @@ function RegisterContent() {
                       <Shield className="w-4 h-4 text-amber-400" />
                       Faculty & Staff Verification Required
                     </span>
-                    <button
-                      type="button"
-                      onClick={fillDefaultAdminKey}
-                      className="text-[11px] text-amber-400 hover:underline font-extrabold"
-                    >
-                      ⚡ Use Default Key
-                    </button>
                   </div>
                   <p className="text-gray-400 text-[11px] leading-relaxed">
-                    Administrator registration requires the master setup key to prevent unauthorized access.
-                    Default development key: <code className="text-amber-300 font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded">Admin@StudyBuddy2024</code>
+                    Administrator registration requires a valid administrative setup key provided by your system administrator.
                   </p>
                 </div>
               )}
@@ -499,7 +486,7 @@ function RegisterContent() {
                         className={inputClass}
                         required
                         type="password"
-                        placeholder="Admin@StudyBuddy2024"
+                        placeholder="Enter administrator setup key"
                         value={form.admin_key}
                         onChange={set("admin_key")}
                       />

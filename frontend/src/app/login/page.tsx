@@ -71,12 +71,7 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  // Quick fill default admin credentials
-  const fillAdminCredentials = () => {
-    setEmail("tanujthakur3646@gmail.com");
-    setPassword("Admin@StudyBuddy2024");
-    toast.success("Admin credentials filled!");
-  };
+
 
   const handlePortalSwitch = (type: "student" | "admin") => {
     setPortal(type);
@@ -352,15 +347,7 @@ export default function LoginPage() {
                     {portal === "admin" ? "Faculty & Staff Portal" : "Student Learning Portal"}
                   </span>
 
-                  {portal === "admin" && (
-                    <button
-                      type="button"
-                      onClick={fillAdminCredentials}
-                      className="text-[11px] text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1"
-                    >
-                      ⚡ Auto-fill Demo
-                    </button>
-                  )}
+
                 </div>
 
                 <h2 className="text-xl font-black text-white">
@@ -462,24 +449,7 @@ export default function LoginPage() {
                   </div>
                 ) : (
                   <div className="bg-gray-950/60 p-3.5 rounded-2xl border border-gray-800 space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-amber-400 font-bold text-[11px]">
-                      <span className="flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        Default Admin Credentials
-                      </span>
-                      <button
-                        type="button"
-                        onClick={fillAdminCredentials}
-                        className="text-[10px] text-amber-300 hover:underline uppercase tracking-wider font-extrabold"
-                      >
-                        Click to Use
-                      </button>
-                    </div>
-                    <div className="font-mono text-[11px] text-gray-300 space-y-0.5">
-                      <p>Email: <span className="text-white">tanujthakur3646@gmail.com</span></p>
-                      <p>Password: <span className="text-white">Admin@StudyBuddy2024</span></p>
-                    </div>
-                    <div className="pt-2 text-center space-y-1.5 border-t border-gray-800/60">
+                    <div className="text-center space-y-1.5">
                       <p className="text-xs text-gray-400">
                         Need a new administrator account?{" "}
                         <Link href="/register?role=admin" className="text-amber-400 hover:text-amber-300 font-bold">

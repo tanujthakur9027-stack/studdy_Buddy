@@ -42,6 +42,9 @@ class Base(DeclarativeBase):
     pass
 
 
+import models.db_models  # noqa: F401, E402
+
+
 # ── Column additions that can't be expressed via create_all ──────────────────
 # Each ALTER TABLE is idempotent: silently ignored if the column already exists.
 _MIGRATIONS_SQLITE = [
@@ -53,6 +56,7 @@ _MIGRATIONS_SQLITE = [
     "ALTER TABLE chat_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE flashcard_sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE feynman_results ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE shared_resources ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE SET NULL",
 ]
 
 _MIGRATIONS_POSTGRES = [
@@ -63,6 +67,7 @@ _MIGRATIONS_POSTGRES = [
     "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE flashcard_sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE feynman_results ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE shared_resources ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE SET NULL",
 ]
 
 

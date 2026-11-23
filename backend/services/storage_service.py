@@ -147,10 +147,10 @@ async def save_file(
     return f"/uploads/{folder}/{unique_name}"
 
 
-def delete_file(url: str) -> None:
-    """Delete a file given its URL path (cloud or local)."""
+def delete_file(url: str) -> bool:
+    """Delete a file given its URL path (cloud or local). Returns True if deleted/handled, False otherwise."""
     if not url:
-        return
+        return False
 
     # S3 deletion
     if url.startswith("http://") or url.startswith("https://"):
@@ -161,15 +161,38 @@ def delete_file(url: str) -> None:
                 parts = url.split(f"{settings.s3_bucket_name}/")
                 key = parts[-1] if len(parts) > 1 else url.split("/")[-2] + "/" + url.split("/")[-1]
                 _delete_from_s3_sync(s3, key)
-        return
+                return True
+        return False
 
     # Local filesystem deletion
-    relative = url.lstrip("/")
-    base = Path(settings.upload_dir)
-    if not base.is_absolute():
-        base = (Path(__file__).resolve().parent.parent / base).resolve()
-    
-    # Check both direct and relative paths
-    path = base / relative.replace("uploads/", "")
-    if path.exists():
-        path.unlink(missing_ok=True)
+    base = Path(settings.upload_dir).resolve()
+
+    # Properly strip leading / or uploads/ prefix if present
+    cleaned = url.strip().replace("\\", "/").lstrip("/")
+    if cleaned.startswith("uploads/"):
+        cleaned = cleaned[len("uploads/"):]
+
+    target_path = (base / cleaned).resolve()
+
+    # Path traversal guard: must be strictly within upload directory
+    try:
+        is_safe = target_path.is_relative_to(base)
+    except AttributeError:
+        try:
+            target_path.relative_to(base)
+            is_safe = True
+        except ValueError:
+            is_safe = False
+
+    if not is_safe:
+        logger.warning(
+            "path_traversal_attempt_blocked",
+            extra={"attempted_path": url, "resolved": str(target_path)},
+        )
+        return False
+
+    if target_path.is_file():
+        target_path.unlink(missing_ok=True)
+        return True
+
+    return False

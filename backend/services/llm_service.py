@@ -14,6 +14,7 @@ import time
 from collections.abc import AsyncIterator
 
 import google.genai as genai
+from fastapi import HTTPException
 from openai import AsyncOpenAI, AuthenticationError, NotFoundError, RateLimitError
 from config import get_settings
 
@@ -45,9 +46,9 @@ def _get_gemini() -> genai.Client:
 
 def _require_configured() -> None:
     if not settings.llm_configured:
-        raise RuntimeError(
-            "No LLM API key configured. Set GROQ_API_KEY (primary) or "
-            "GEMINI_API_KEY (fallback) in your .env or deployment environment."
+        raise HTTPException(
+            status_code=503,
+            detail="No LLM provider configured. Set GROQ_API_KEY or GEMINI_API_KEY in environment.",
         )
 
 
@@ -199,11 +200,15 @@ async def chat(
     # ── Gemini fallback ───────────────────────────────────────────────────────
     if settings.gemini_api_key.strip():
         logger.info("llm_fallback provider=gemini model=%s", settings.gemini_model)
-        return await _gemini_chat(_build_gemini_prompt(system, user))
+        try:
+            return await _gemini_chat(_build_gemini_prompt(system, user))
+        except Exception as exc:
+            logger.error("gemini_call_failed: %s", exc)
 
-    raise RuntimeError(
-        "All Groq models rate-limited and no Gemini fallback key is configured. "
-        "Set GEMINI_API_KEY in your .env or deployment environment."
+    logger.error("all_llm_providers_failed")
+    raise HTTPException(
+        status_code=503,
+        detail="AI study assistant is temporarily unavailable. Please try again in a few moments.",
     )
 
 
@@ -258,12 +263,16 @@ async def chat_with_history(
     # ── Gemini fallback ───────────────────────────────────────────────────────
     if settings.gemini_api_key.strip():
         logger.info("llm_fallback provider=gemini model=%s", settings.gemini_model)
-        prompt = _build_gemini_prompt_from_history(system, history)
-        return await _gemini_chat(prompt)
+        try:
+            prompt = _build_gemini_prompt_from_history(system, history)
+            return await _gemini_chat(prompt)
+        except Exception as exc:
+            logger.error("gemini_call_failed: %s", exc)
 
-    raise RuntimeError(
-        "All Groq models rate-limited and no Gemini fallback key is configured. "
-        "Set GEMINI_API_KEY in your .env or deployment environment."
+    logger.error("all_llm_providers_failed")
+    raise HTTPException(
+        status_code=503,
+        detail="AI study assistant is temporarily unavailable. Please try again in a few moments.",
     )
 
 
@@ -307,14 +316,18 @@ async def stream_chat_with_history(
     # ── Gemini fallback ───────────────────────────────────────────────────────
     if settings.gemini_api_key.strip():
         logger.info("llm_fallback stream provider=gemini model=%s", settings.gemini_model)
-        prompt = _build_gemini_prompt_from_history(system, history)
-        async for chunk in _gemini_stream(prompt):
-            yield chunk
-        return
+        try:
+            prompt = _build_gemini_prompt_from_history(system, history)
+            async for chunk in _gemini_stream(prompt):
+                yield chunk
+            return
+        except Exception as exc:
+            logger.error("gemini_stream_failed: %s", exc)
 
-    raise RuntimeError(
-        "All Groq models rate-limited and no Gemini fallback key is configured. "
-        "Set GEMINI_API_KEY in your .env or deployment environment."
+    logger.error("all_llm_providers_failed")
+    raise HTTPException(
+        status_code=503,
+        detail="AI study assistant is temporarily unavailable. Please try again in a few moments.",
     )
 
 
@@ -359,11 +372,15 @@ async def stream_chat(
     # ── Gemini fallback ───────────────────────────────────────────────────────
     if settings.gemini_api_key.strip():
         logger.info("llm_fallback stream provider=gemini model=%s", settings.gemini_model)
-        async for chunk in _gemini_stream(_build_gemini_prompt(system, user)):
-            yield chunk
-        return
+        try:
+            async for chunk in _gemini_stream(_build_gemini_prompt(system, user)):
+                yield chunk
+            return
+        except Exception as exc:
+            logger.error("gemini_stream_failed: %s", exc)
 
-    raise RuntimeError(
-        "All Groq models rate-limited and no Gemini fallback key is configured. "
-        "Set GEMINI_API_KEY in your .env or deployment environment."
+    logger.error("all_llm_providers_failed")
+    raise HTTPException(
+        status_code=503,
+        detail="AI study assistant is temporarily unavailable. Please try again in a few moments.",
     )

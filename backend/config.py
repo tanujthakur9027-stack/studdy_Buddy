@@ -8,12 +8,14 @@ _ENV_FILE = Path(__file__).parent / ".env"
 
 
 class Settings(BaseSettings):
+    environment: str = "development"
+
     # ── LLM — Groq (primary) ──────────────────────────────────────────────────
     groq_api_key: str = ""
-    groq_model: str = "qwen/qwen3-27b"
+    groq_model: str = "llama-3.3-70b-versatile"
 
     # ── Groq model rotation (tried in order when the primary is rate-limited) ─
-    groq_fallback_models: str = "openai/gpt-oss-20b,openai/gpt-oss-120b"
+    groq_fallback_models: str = "llama-3.1-8b-instant"
 
     # ── LLM — Gemini (fallback when Groq is unavailable) ─────────────────────
     gemini_api_key: str = ""
@@ -56,8 +58,9 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────────
     secret_key: str = ""
     access_token_expire_minutes: int = 60
-    admin_seed_email: str = "tanujthakur3646@gmail.com"
-    admin_seed_password: str = "Admin@StudyBuddy2024"
+    admin_seed_email: str = ""
+    admin_seed_password: str = ""
+    admin_keys: str = ""
 
     # ── Auth feature flag ─────────────────────────────────────────────────────
     auth_required: bool = True
@@ -66,11 +69,11 @@ class Settings(BaseSettings):
     otp_simulation_mode: bool = False
 
     # ── Email / SMTP ──────────────────────────────────────────────────────────
-    smtp_host: str = "smtp.gmail.com"
+    smtp_host: str = ""
     smtp_port: int = 587
-    smtp_user: str = "tanujthakur3646@gmail.com"
-    smtp_pass: str = "REDACTED"
-    smtp_from: str = "StudyBuddy <tanujthakur3646@gmail.com>"
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_from: str = ""
     app_base_url: str = "http://localhost:3000"
 
     # ── File limits ───────────────────────────────────────────────────────────
@@ -87,6 +90,13 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]
+
+    @property
+    def valid_admin_keys_list(self) -> list[str]:
+        keys = [k.strip() for k in self.admin_keys.split(",") if k.strip()]
+        if self.admin_seed_password.strip():
+            keys.append(self.admin_seed_password.strip())
+        return keys
 
     @property
     def groq_fallback_models_list(self) -> list[str]:

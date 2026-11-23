@@ -53,6 +53,20 @@ async def get_timetable(
     )
     slots = slots_result.scalars().all()
 
+    # Pre-fetch subjects and teachers in batch to eliminate N+1 database queries
+    subject_ids = {s.subject_id for s in slots if s.subject_id}
+    teacher_ids = {s.teacher_id for s in slots if s.teacher_id}
+
+    subjects_map: dict[str, str] = {}
+    if subject_ids:
+        subj_res = await db.execute(select(Subject).where(Subject.id.in_(subject_ids)))
+        subjects_map = {s.id: s.name for s in subj_res.scalars().all()}
+
+    teachers_map: dict[str, str] = {}
+    if teacher_ids:
+        teach_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers_map = {u.id: u.full_name for u in teach_res.scalars().all()}
+
     # Build grid
     lunch_start, lunch_end = compute_lunch_times(tt.start_time, tt.lunch_after_period)
     schedule = []
@@ -61,16 +75,8 @@ async def get_timetable(
         periods = []
         for s in day_slots:
             st, et = compute_slot_times(tt.start_time, s.period_number, tt.lunch_after_period)
-            subj_name = ""
-            if s.subject_id:
-                subj_result = await db.execute(select(Subject).where(Subject.id == s.subject_id))
-                subj = subj_result.scalar_one_or_none()
-                subj_name = subj.name if subj else ""
-            teacher_name = ""
-            if s.teacher_id:
-                teacher_result = await db.execute(select(User).where(User.id == s.teacher_id))
-                teacher = teacher_result.scalar_one_or_none()
-                teacher_name = teacher.full_name if teacher else ""
+            subj_name = subjects_map.get(s.subject_id, "") if s.subject_id else ""
+            teacher_name = teachers_map.get(s.teacher_id, "") if s.teacher_id else ""
 
             periods.append({
                 "period_number": s.period_number,

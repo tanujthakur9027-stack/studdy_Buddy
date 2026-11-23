@@ -315,9 +315,6 @@ elif auth_mode == "login" and portal == "admin":
         shake_anim()
         st.session_state["_login_shake"] = False
 
-    admin_default_email = "tanujthakur3646@gmail.com"
-    admin_default_pwd   = "Admin@StudyBuddy2024"
-
     with st.form("admin_login_form"):
         # Header Badge & Title
         st.markdown("""
@@ -380,17 +377,7 @@ elif auth_mode == "login" and portal == "admin":
             st.session_state["_portal"] = "student"
             st.rerun()
 
-    with st.expander("⚡ Quick Demo Admin Credentials (Optional)", expanded=False):
-        st.markdown(f"""
-        <p style="margin:0; font-size:12px; font-family:monospace; color:#cbd5e1;">
-          Email: <strong style="color:#ffffff;">{admin_default_email}</strong><br>
-          Password: <strong style="color:#ffffff;">{admin_default_pwd}</strong>
-        </p>
-        """, unsafe_allow_html=True)
-        if st.button("Fill Demo Admin Credentials", key="btn_fill_adm", use_container_width=True):
-            st.session_state["_admin_autofill_email"] = admin_default_email
-            st.session_state["_admin_autofill_pwd"]   = admin_default_pwd
-            st.rerun()
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -505,8 +492,8 @@ elif auth_mode == "register_admin":
 
         adm_key = st.text_input(
             "Administrator Setup Key",
-            value="Admin@StudyBuddy2024",
-            help="Security key authorizing administrator account creation. Default is 'Admin@StudyBuddy2024'.",
+            type="password",
+            help="Security key authorizing administrator account creation.",
             key="adm_reg_key",
         )
         adm_phone = st.text_input("Phone Number (optional)", placeholder="+91 9876543210", key="adm_reg_phone")

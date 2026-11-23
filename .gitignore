@@ -13,10 +13,19 @@ venv/
 env/
 
 # ── Secret files — NEVER commit these ────────────────────────────────────────
-backend/.env
+**/.env
+**/.env.*
+!**/.env.example
 .env
 .env.local
 .env.production
+
+# ── Database files ────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+studybuddy.db
+backend/studybuddy.db
 
 # ── Data / indexes ────────────────────────────────────────────────────────────
 backend/chroma_db/

@@ -10,6 +10,7 @@ Features:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 
 import requests
@@ -17,7 +18,21 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = "http://localhost:8000"
+def get_backend_url() -> str:
+    """Read BACKEND_URL from os.environ, then st.secrets, defaulting to http://localhost:8000."""
+    env_url = os.environ.get("BACKEND_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+    try:
+        secret_url = str(st.secrets.get("BACKEND_URL", "")).strip()
+        if secret_url:
+            return secret_url.rstrip("/")
+    except Exception:
+        pass
+    return "http://localhost:8000"
+
+
+BACKEND_URL = get_backend_url()
 TIMEOUT_SHORT = 30
 TIMEOUT_LONG  = 180
 

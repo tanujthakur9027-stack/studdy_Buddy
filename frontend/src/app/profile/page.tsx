@@ -59,6 +59,7 @@ export default function ProfilePage() {
         <div className="relative">
           <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
             {profile?.profile_photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={`${BASE}${profile.profile_photo_url}`} alt="avatar" className="w-full h-full object-cover" />
             ) : (
               user?.full_name?.charAt(0).toUpperCase() || "U"

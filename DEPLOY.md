@@ -176,7 +176,7 @@ Open: http://localhost:8501
 | `GROQ_API_KEY` | **YES** | — | Groq LLM API key (free at console.groq.com) |
 | `SECRET_KEY` | **YES** | — | JWT signing key — must be a random 32-byte hex string |
 | `ADMIN_SEED_EMAIL` | no | `admin@studybuddy.com` | Admin account email |
-| `ADMIN_SEED_PASSWORD` | no | `Admin@StudyBuddy2024` | Admin account password (**change in prod!**) |
+| `ADMIN_SEED_PASSWORD` | no | *(none — set a strong password)* | Admin account password (**required for seeding**) |
 | `GEMINI_API_KEY` | no | — | Google Gemini fallback LLM |
 | `DATABASE_URL` | no | SQLite | Async SQLAlchemy DSN — use PostgreSQL for persistence |
 | `UPLOAD_DIR` | no | `./uploads` | File upload directory |

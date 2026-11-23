@@ -3,10 +3,11 @@ routers/notifications.py — In-app notification endpoints.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
 from typing import Optional
 from database import get_db
@@ -16,9 +17,28 @@ from services.notification_service import create_notification, create_bulk_notif
 from services.email_service import send_email
 from config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
+
+
+async def _send_bulk_emails_task(emails: list[str], title: str, message: str) -> None:
+    """Deliver bulk announcement emails in background without blocking the HTTP response."""
+    for em in emails:
+        try:
+            await send_email(
+                to=em,
+                subject=f"[StudyBuddy Notice] {title}",
+                template_name="announcement.html",
+                context={
+                    "title": title,
+                    "message": message,
+                    "app_name": "StudyBuddy",
+                },
+            )
+        except Exception as exc:
+            logger.warning("bulk_email_send_error", extra={"email": em, "error": str(exc)})
 
 
 class NotificationOut(BaseModel):
@@ -201,6 +221,7 @@ class BroadcastRequest(BaseModel):
 @router.post("/broadcast", status_code=201)
 async def broadcast_notification(
     body: BroadcastRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -249,29 +270,17 @@ async def broadcast_notification(
     )
     await db.commit()
 
-    email_sent_count = 0
+    queued_count = 0
     if body.send_email and settings.smtp_host and emails:
-        for em in emails:
-            try:
-                sent = await send_email(
-                    to=em,
-                    subject=f"[StudyBuddy Notice] {body.title}",
-                    template_name="announcement.html",
-                    context={
-                        "title": body.title,
-                        "message": body.message,
-                        "app_name": "StudyBuddy",
-                    },
-                )
-                if sent:
-                    email_sent_count += 1
-            except Exception:
-                pass
+        background_tasks.add_task(_send_bulk_emails_task, emails, body.title, body.message)
+        queued_count = len(emails)
 
     return {
         "message": f"Broadcast delivered to {len(user_ids)} student(s).",
         "in_app_count": len(user_ids),
-        "emails_sent": email_sent_count,
+        "emails_queued": queued_count,
+        "emails_sent": queued_count,
+        "status": "queued" if queued_count > 0 else "completed",
     }
 
 

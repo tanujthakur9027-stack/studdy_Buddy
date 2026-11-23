@@ -306,7 +306,7 @@ npm run dev
 | `SECRET_KEY` | **yes** | — | JWT signing secret — generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | no | `1440` | JWT expiry (default 24 h) |
 | `ADMIN_SEED_EMAIL` | no | `admin@studybuddy.com` | Email for the seeded admin account |
-| `ADMIN_SEED_PASSWORD` | no | `Admin@StudyBuddy2024` | Password for the seeded admin account |
+| `ADMIN_SEED_PASSWORD` | no | *(none — set a strong password)* | Password for the seeded admin account |
 | `DATABASE_URL` | no | `sqlite+aiosqlite:///./studybuddy.db` | SQLite (dev) or `postgresql+asyncpg://…` (prod) |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Comma-separated allowed frontend origins |
 | `RATE_LIMIT_PER_MINUTE` | no | `20` | Max LLM requests per user/IP per minute |

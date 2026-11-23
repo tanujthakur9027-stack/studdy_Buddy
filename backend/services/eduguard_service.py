@@ -37,8 +37,8 @@ def _get_model():
     _model_attempted = True
 
     model_paths = [
-        Path(__file__).resolve().parent.parent.parent / "dropout_predictor_tmp" / "dropout_model.pkl",
         Path(__file__).resolve().parent.parent / "models" / "dropout_model.pkl",
+        Path(__file__).resolve().parent.parent.parent / "dropout_predictor_tmp" / "dropout_model.pkl",
     ]
     for p in model_paths:
         if p.exists():

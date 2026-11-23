@@ -40,8 +40,12 @@ os.environ["UPLOAD_DIR"] = test_upload
 os.environ["FAISS_INDEX_DIR"] = test_faiss
 os.environ["CHROMA_PERSIST_DIR"] = test_chroma
 os.environ["OTP_AUTH_ENABLED"] = "false"
+os.environ["ENVIRONMENT"] = "test"
 
-from main import app  # noqa: E402  (after env setup)
+from main import app, limiter as main_limiter  # noqa: E402  (after env setup)
+from routers.auth import limiter as auth_limiter  # noqa: E402
+main_limiter.enabled = False
+auth_limiter.enabled = False
 from database import engine, Base  # noqa: E402
 
 
@@ -420,8 +424,10 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
     settings = get_settings()
     orig = settings.otp_auth_enabled
     orig_sim = settings.otp_simulation_mode
+    orig_keys = settings.admin_keys
     settings.otp_auth_enabled = True
     settings.otp_simulation_mode = True
+    settings.admin_keys = "valid-test-admin-key"
     try:
         admin_email = "custom_admin_faculty@gmail.com"
         reg_resp = await client.post(
@@ -430,7 +436,7 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
                 "email": admin_email,
                 "password": "AdminPassword123",
                 "full_name": "Prof. Custom Admin",
-                "admin_key": "Admin@StudyBuddy2024",
+                "admin_key": "valid-test-admin-key",
             },
         )
         assert reg_resp.status_code == 201
@@ -470,23 +476,357 @@ async def test_admin_register_and_otp_login(client: AsyncClient):
     finally:
         settings.otp_auth_enabled = orig
         settings.otp_simulation_mode = orig_sim
+        settings.admin_keys = orig_keys
 
 
 @pytest.mark.asyncio
 async def test_admin_register_via_standard_endpoint(client: AsyncClient):
-    # Test registering an admin via /api/auth/register with role="admin"
-    reg_resp = await client.post(
-        "/api/auth/register",
-        json={
-            "email": "faculty_standard_reg@gmail.com",
-            "password": "AdminPassword123",
-            "full_name": "Faculty Standard",
-            "role": "admin",
-            "admin_key": "Admin@StudyBuddy2024",
-        },
-    )
-    assert reg_resp.status_code == 201
-    data = reg_resp.json()
-    assert data["user"]["role"] == "admin"
-    assert data["user"]["email"] == "faculty_standard_reg@gmail.com"
+    from config import get_settings
+    settings = get_settings()
+    orig_keys = settings.admin_keys
+    settings.admin_keys = "valid-test-admin-key"
+    try:
+        reg_resp = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "faculty_standard_reg@gmail.com",
+                "password": "AdminPassword123",
+                "full_name": "Faculty Standard",
+                "role": "admin",
+                "admin_key": "valid-test-admin-key",
+            },
+        )
+        assert reg_resp.status_code == 201
+        data = reg_resp.json()
+        assert data["user"]["role"] == "admin"
+        assert data["user"]["email"] == "faculty_standard_reg@gmail.com"
+    finally:
+        settings.admin_keys = orig_keys
 
+
+@pytest.mark.asyncio
+async def test_admin_registration_bypass_attempts(client: AsyncClient):
+    """
+    Verify that admin registration cannot be bypassed by:
+    1. Omitting admin_key
+    2. Passing admin_key = null / None
+    3. Passing empty or whitespace string
+    4. Passing incorrect key
+    And that passing a valid key succeeds.
+    """
+    from config import get_settings
+    settings = get_settings()
+    orig_keys = settings.admin_keys
+    settings.admin_keys = "secret-admin-token-xyz"
+
+    try:
+        # Case 1: /api/auth/register with role="admin" and no admin_key
+        r1 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "bypass_no_key@test.com",
+                "password": "Password123!",
+                "full_name": "Hacker No Key",
+                "role": "admin",
+            },
+        )
+        assert r1.status_code == 403, f"Expected 403 for omitted key, got {r1.status_code}: {r1.text}"
+
+        # Case 2: /api/auth/register with null admin_key
+        r2 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "bypass_null_key@test.com",
+                "password": "Password123!",
+                "full_name": "Hacker Null Key",
+                "role": "admin",
+                "admin_key": None,
+            },
+        )
+        assert r2.status_code == 403, f"Expected 403 for null key, got {r2.status_code}: {r2.text}"
+
+        # Case 3: /api/auth/register-admin with empty/whitespace key
+        r3 = await client.post(
+            "/api/auth/register-admin",
+            json={
+                "email": "bypass_empty_key@test.com",
+                "password": "Password123!",
+                "full_name": "Hacker Empty Key",
+                "admin_key": "   ",
+            },
+        )
+        assert r3.status_code == 403, f"Expected 403 for empty key, got {r3.status_code}: {r3.text}"
+
+        # Case 4: /api/auth/register-admin with wrong key
+        r4 = await client.post(
+            "/api/auth/register-admin",
+            json={
+                "email": "bypass_wrong_key@test.com",
+                "password": "Password123!",
+                "full_name": "Hacker Wrong Key",
+                "admin_key": "wrong_guess_123",
+            },
+        )
+        assert r4.status_code == 403, f"Expected 403 for wrong key, got {r4.status_code}: {r4.text}"
+
+        # Case 5: Correct key succeeds
+        r5 = await client.post(
+            "/api/auth/register-admin",
+            json={
+                "email": "legit_admin@test.com",
+                "password": "Password123!",
+                "full_name": "Legit Admin",
+                "admin_key": "secret-admin-token-xyz",
+            },
+        )
+        assert r5.status_code == 201, f"Expected 201 for valid key, got {r5.status_code}: {r5.text}"
+        assert r5.json()["user"]["role"] == "admin"
+
+        # Case 6: Standard student registration cannot escalate to admin without role="admin"
+        r6 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "student_no_escalate@test.com",
+                "password": "Password123!",
+                "full_name": "Student Regular",
+                "role": "student",
+            },
+        )
+        assert r6.status_code == 201
+        assert r6.json()["user"]["role"] == "student"
+
+    finally:
+        settings.admin_keys = orig_keys
+
+
+@pytest.mark.asyncio
+async def test_otp_never_present_in_production_or_simulation_off(client: AsyncClient):
+    """
+    Verify that simulation_otp is NEVER leaked when:
+    - simulation_mode is False
+    - environment is "production"
+    """
+    from config import get_settings
+    settings = get_settings()
+    orig_env = settings.environment
+    orig_sim = settings.otp_simulation_mode
+    orig_otp = settings.otp_auth_enabled
+
+    try:
+        settings.otp_auth_enabled = True
+
+        # 1. Simulation mode OFF in dev -> simulation_otp MUST be None
+        settings.otp_simulation_mode = False
+        settings.environment = "development"
+        r1 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "otp_sim_off@test.com",
+                "password": "Password123!",
+                "full_name": "OTP Sim Off",
+                "student_id": "STU_SIM_OFF",
+            },
+        )
+        assert r1.status_code == 201
+        assert r1.json().get("otp_required") is True
+        assert r1.json().get("simulation_otp") is None
+
+        # 2. Simulation mode ON in production -> simulation_otp MUST STILL be None
+        settings.otp_simulation_mode = True
+        settings.environment = "production"
+        r2 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "otp_prod_env@test.com",
+                "password": "Password123!",
+                "full_name": "OTP Prod Env",
+                "student_id": "STU_PROD_ENV",
+            },
+        )
+        assert r2.status_code == 201
+        assert r2.json().get("otp_required") is True
+        assert r2.json().get("simulation_otp") is None
+
+        # 3. Simulation mode ON in development -> simulation_otp is provided for dev/test
+        settings.otp_simulation_mode = True
+        settings.environment = "development"
+        r3 = await client.post(
+            "/api/auth/register",
+            json={
+                "email": "otp_dev_ok@test.com",
+                "password": "Password123!",
+                "full_name": "OTP Dev OK",
+                "student_id": "STU_DEV_OK",
+            },
+        )
+        assert r3.status_code == 201
+        assert r3.json().get("otp_required") is True
+        assert r3.json().get("simulation_otp") is not None
+        assert len(r3.json().get("simulation_otp")) == 6
+
+    finally:
+        settings.environment = orig_env
+        settings.otp_simulation_mode = orig_sim
+        settings.otp_auth_enabled = orig_otp
+
+
+
+@pytest.mark.asyncio
+async def test_duplicate_unused_otps_dont_crash_verify(client: AsyncClient):
+    """
+    Test that having multiple unused OTP records in the DB does not cause
+    MultipleResultsFound (HTTP 500) and scalars().first() successfully verifies.
+    """
+    from datetime import datetime, timezone, timedelta
+    from database import AsyncSessionLocal
+    from models.db_models import AuthOTP, User
+    from services.auth_service import hash_password
+
+    email = "multi_otp_user@example.com"
+    async with AsyncSessionLocal() as db:
+        user = User(
+            email=email,
+            password_hash=hash_password("Password123!"),
+            full_name="Multi OTP User",
+            role="student",
+            is_active=True,
+        )
+        db.add(user)
+        now = datetime.now(timezone.utc)
+        otp1 = AuthOTP(
+            email=email,
+            otp_code="111111",
+            purpose="login",
+            expires_at=now + timedelta(minutes=10),
+            is_used=False,
+            created_at=now - timedelta(minutes=2),
+        )
+        otp2 = AuthOTP(
+            email=email,
+            otp_code="222222",
+            purpose="login",
+            expires_at=now + timedelta(minutes=10),
+            is_used=False,
+            created_at=now - timedelta(minutes=1),
+        )
+        db.add(otp1)
+        db.add(otp2)
+        await db.commit()
+
+    resp = await client.post("/api/auth/verify-otp", json={"email": email, "otp_code": "222222"})
+    assert resp.status_code == 200, f"Expected 200 with duplicate unused OTPs, got {resp.status_code}: {resp.text}"
+    assert "access_token" in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_init_db_creates_all_28_tables():
+    """
+    Test that init_db() on a fresh database registers and creates all 28 tables.
+    """
+    from database import Base, init_db
+    from sqlalchemy.ext.asyncio import create_async_engine
+    import tempfile
+    from pathlib import Path
+
+    assert len(Base.metadata.tables) == 28, f"Expected 28 tables in Base.metadata, got {len(Base.metadata.tables)}"
+    tmp_db_file = Path(tempfile.gettempdir()) / "test_init_db_fresh.db"
+    if tmp_db_file.exists():
+        tmp_db_file.unlink()
+
+    test_engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_db_file.as_posix()}")
+    try:
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with test_engine.connect() as conn:
+            from sqlalchemy import text
+            res = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"))
+            tables = [row[0] for row in res.fetchall()]
+            assert len(tables) == 28, f"Expected 28 tables in fresh DB, got {len(tables)}: {tables}"
+    finally:
+        await test_engine.dispose()
+        if tmp_db_file.exists():
+            tmp_db_file.unlink()
+
+
+def test_path_traversal_blocked_in_delete_file():
+    """
+    Test that delete_file() blocks directory traversal attempts and absolute paths outside upload_dir.
+    """
+    import tempfile
+    from pathlib import Path
+    from services.storage_service import delete_file
+
+    assert delete_file("../../etc/passwd") is False
+    assert delete_file("../secret.txt") is False
+    assert delete_file("uploads/../../etc/passwd") is False
+
+    outside_file = Path(tempfile.gettempdir()) / "do_not_delete_me.txt"
+    outside_file.write_text("critical data", encoding="utf-8")
+    try:
+        assert delete_file(str(outside_file.resolve())) is False
+        assert outside_file.exists() is True
+    finally:
+        if outside_file.exists():
+            outside_file.unlink()
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_and_non_owner_share_deletion(client: AsyncClient):
+    """
+    Test that DELETE /api/share/{id} requires authentication, allows owner or admin,
+    and rejects non-owners with 403.
+    """
+    u_a_payload = _reg_payload("share_user_a")
+    u_b_payload = _reg_payload("share_user_b")
+    r_a = await client.post("/api/auth/register", json=u_a_payload)
+    r_b = await client.post("/api/auth/register", json=u_b_payload)
+    token_a = r_a.json()["access_token"]
+    token_b = r_b.json()["access_token"]
+
+    share_create = await client.post(
+        "/api/share",
+        json={"resource_type": "quiz", "payload": {"question": "test?"}, "title": "A's Quiz"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert share_create.status_code == 201
+    share_id = share_create.json()["id"]
+
+    # 1. Unauthenticated DELETE -> 401 (clear any cookies persisted in client session)
+    client.cookies.clear()
+    del_unauth = await client.delete(f"/api/share/{share_id}")
+    assert del_unauth.status_code == 401
+
+    # 2. User B (non-owner, non-admin) attempts DELETE -> 403
+    del_user_b = await client.delete(
+        f"/api/share/{share_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert del_user_b.status_code == 403
+
+    # 3. User A (owner) deletes -> 204
+    del_user_a = await client.delete(
+        f"/api/share/{share_id}",
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert del_user_a.status_code == 204
+
+    # 4. Resolve now returns 404 (deactivated)
+    res_get = await client.get(f"/api/share/{share_id}")
+    assert res_get.status_code == 404
+
+
+def test_empty_document_user_cannot_retrieve_rag_content():
+    """
+    Test that retrieve_context returns an empty list when user_doc_ids is empty,
+    preventing any cross-tenant data leak from global FAISS or ChromaDB.
+    """
+    from services.document_service import retrieve_context
+    results_empty = retrieve_context(query="sensitive private exam secrets", user_doc_ids=[])
+    assert results_empty == []
+
+    results_unowned = retrieve_context(
+        query="sensitive private exam secrets",
+        doc_id="unowned_doc_999",
+        user_doc_ids=["user_doc_1", "user_doc_2"],
+    )
+    assert results_unowned == []

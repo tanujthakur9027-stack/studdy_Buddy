@@ -12,6 +12,7 @@ import json
 import random
 import string
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,7 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db_models import SharedResource
+from dependencies.auth import get_current_user, get_current_user_flex
+from models.db_models import SharedResource, User
 
 router = APIRouter()
 
@@ -67,7 +69,11 @@ class ShareResolved(BaseModel):
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/share", response_model=ShareOut, status_code=201, tags=["Share"])
-async def create_share(body: ShareCreate, db: AsyncSession = Depends(get_db)):
+async def create_share(
+    body: ShareCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_flex),
+):
     """Create a share link containing the given payload JSON."""
     # Collision-safe short id
     for _ in range(5):
@@ -84,6 +90,7 @@ async def create_share(body: ShareCreate, db: AsyncSession = Depends(get_db)):
 
     resource = SharedResource(
         id=sid,
+        user_id=current_user.id if current_user else None,
         resource_type=body.resource_type,
         payload_json=json.dumps(body.payload),
         title=body.title,
@@ -124,10 +131,16 @@ async def resolve_share(share_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/share/{share_id}", status_code=204, tags=["Share"])
-async def deactivate_share(share_id: str, db: AsyncSession = Depends(get_db)):
-    """Soft-delete a share link (marks it inactive)."""
+async def deactivate_share(
+    share_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete a share link (marks it inactive). Requires creator or admin."""
     resource = await db.get(SharedResource, share_id)
     if not resource:
         raise HTTPException(status_code=404, detail="Share link not found")
+    if current_user.role != "admin" and (not resource.user_id or resource.user_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to deactivate this share link")
     resource.is_active = False
     await db.commit()

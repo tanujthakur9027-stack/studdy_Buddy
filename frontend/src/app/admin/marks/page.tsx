@@ -61,7 +61,7 @@ export default function AdminMarksPage() {
     });
     setMarksInput(newInput);
     setRemarksInput(newRemarks);
-  }, [selectedCategory]);
+  }, [selectedCategory, report]);
 
   const createCategory = async (e: React.FormEvent) => {
     e.preventDefault();

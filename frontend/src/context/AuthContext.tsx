@@ -106,8 +106,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem("sb_token");
           }
           delete api.defaults.headers.common["Authorization"];
-          if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-            window.location.href = "/login";
+          if (typeof window !== "undefined") {
+            const path = window.location.pathname;
+            const isPublicRoute =
+              path === "/" ||
+              path.startsWith("/login") ||
+              path.startsWith("/register") ||
+              path.startsWith("/share");
+            if (!isPublicRoute) {
+              window.location.href = "/login";
+            }
           }
         }
         return Promise.reject(err);
